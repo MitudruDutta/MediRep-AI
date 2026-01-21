@@ -1,4 +1,9 @@
+"""
+FULL Re-Vectorization Job for indian_drugs table.
 
+Creates FRESH embeddings for ALL records, replacing existing ones.
+Uses bulk processing and concurrent updates for speed.
+"""
 import asyncio
 import logging
 import os
@@ -7,6 +12,7 @@ from typing import List
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from sentence_transformers import SentenceTransformer
+import concurrent.futures
 
 load_dotenv()
 
@@ -17,10 +23,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Constants
-BATCH_SIZE = 50  # Reduced batch size to prevent timeouts
+# Constants - TUNED FOR SPEED
+BATCH_SIZE = 200  # Records per batch
+CONCURRENT_UPDATES = 10  # Parallel update workers
 TABLE_NAME = "indian_drugs"
-MODEL_NAME = "all-MiniLM-L6-v2"  # Produces 384 dimensions
+MODEL_NAME = "all-MiniLM-L6-v2"  # 384 dimensions
+
+# Set to 0 to start from beginning, or set higher to resume
+START_OFFSET = 0
+
 
 def get_supabase() -> Client:
     url = os.getenv("SUPABASE_URL")
@@ -29,8 +40,24 @@ def get_supabase() -> Client:
         raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set")
     return create_client(url, key)
 
-async def vectorize_drugs():
-    logger.info("Initializing ROBUST vectorization job...")
+
+def update_single_record(supabase: Client, record_id: str, embedding: list) -> bool:
+    """Update a single record with its embedding."""
+    try:
+        supabase.table(TABLE_NAME).update({"embedding": embedding}).eq("id", record_id).execute()
+        return True
+    except Exception as e:
+        # Log error details for diagnosis while keeping flow
+        logger.debug(
+            f"Failed to update record_id={record_id} in table={TABLE_NAME}: "
+            f"{type(e).__name__}: {e}"
+        )
+        return False
+
+
+def vectorize_all_drugs():
+    """Synchronous vectorization job - uses blocking I/O."""
+    logger.info("🔄 Starting FULL RE-VECTORIZATION (replacing all embeddings)...")
     
     try:
         supabase = get_supabase()
@@ -39,101 +66,98 @@ async def vectorize_drugs():
         logger.info(f"Loading embedding model: {MODEL_NAME}")
         model = SentenceTransformer(MODEL_NAME)
         
+        offset = START_OFFSET
         total_processed = 0
+        total_success = 0
         consecutive_errors = 0
         
         while True:
             try:
-                # Optimized Fetch: Get only rows that DON'T have an embedding yet
-                # This automatically handles "resuming" and avoids deep offset timeouts
-                logger.info("Fetching next batch of unprocessed records...")
-                
+                # Fetch ALL records using pagination (no null filter)
                 response = supabase.table(TABLE_NAME)\
                     .select("id, name, description, generic_name")\
-                    .is_("embedding", "null")\
-                    .limit(BATCH_SIZE)\
+                    .range(offset, offset + BATCH_SIZE - 1)\
                     .execute()
                 
                 records = response.data
                 
                 if not records:
-                    logger.info("No more unprocessed records found. Job complete!")
+                    logger.info("✅ Reached end of table. Job complete!")
                     break
                 
-                logger.info(f"Processing batch of {len(records)} records...")
-                
-                updates = []
-                texts_to_embed = []
+                batch_start = time.time()
                 
                 # Prepare text for embedding
+                texts_to_embed = []
                 for record in records:
                     text_parts = [f"Drug Name: {record['name']}"]
                     if record.get('generic_name'):
                         text_parts.append(f"Generic: {record['generic_name']}")
                     if record.get('description'):
                         text_parts.append(f"Description: {record['description']}")
-                    
-                    full_text = ". ".join(text_parts)
-                    texts_to_embed.append(full_text)
+                    texts_to_embed.append(". ".join(text_parts))
                 
-                # Generate embeddings
-                if texts_to_embed:
-                    embeddings = model.encode(texts_to_embed)
-                    
-                    for i, record in enumerate(records):
-                        # Construct update object
-                        updates.append({
-                            "id": record['id'],
-                            "embedding": embeddings[i].tolist()
-                        })
+                # Generate embeddings (batch operation - fast)
+                embeddings = model.encode(texts_to_embed)
                 
-                # Update records individually or in small batches
-                # Bulk update by ID isn't natively supported as a single atomic call nicely in all Supabase libs
-                # without an explicit "upsert" that requires all columns.
-                # However, since we are just updating 'embedding' for a specific 'id', 
-                # we can use upsert if we include the PK.
-                # But safer to just iterate updates for reliability if bulk fails, 
-                # OR use a custom RPC. For now, we'll try standard upsert.
+                # Update records using thread pool for concurrency
+                success_count = 0
                 
-                # To minimize payload, we only send ID and embedding. 
-                # Supabase upsert requires the primary key to match.
-                
-                if updates:
-                    # We upsert. Since ID is PK, it will update the existing row.
-                    # IMPORTANT: Partial updates via upsert might require explicitly handling other columns?
-                    # No, Postgres ON CONFLICT DO UPDATE SET ... handles it if configured.
-                    # But Supabase API client usually treats upsert as "overwrite row".
-                    # A safer bet for partial update is to loop update by ID.
-                    # It's slower but 100% safe against overwriting other fields with nulls.
+                with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENT_UPDATES) as executor:
+                    futures = []
+                    for record, embedding in zip(records, embeddings):
+                        futures.append(
+                            executor.submit(
+                                update_single_record,
+                                supabase,
+                                record['id'],
+                                embedding.tolist()
+                            )
+                        )
                     
-                    # Optimization: Parallelize these individual updates?
-                    # Or just do them sequentially to be nice to the DB.
-                    
-                    success_count = 0
-                    for update_item in updates:
-                        try:
-                            supabase.table(TABLE_NAME).update({"embedding": update_item["embedding"]}).eq("id", update_item["id"]).execute()
+                    # Wait for all updates to complete
+                    for future in concurrent.futures.as_completed(futures):
+                        if future.result():
                             success_count += 1
-                        except Exception as inner_e:
-                            logger.error(f"Failed to update single record {update_item['id']}: {inner_e}")
-                    
-                    total_processed += success_count
-                    logger.info(f"Successfully updated {success_count}/{len(updates)} records. Total: {total_processed}")
-                    consecutive_errors = 0
+                
+                batch_time = time.time() - batch_start
+                total_processed += len(records)
+                total_success += success_count
+                offset += BATCH_SIZE
+                
+                # Calculate progress
+                progress_pct = (offset / 250000) * 100  # Approximate total
+                
+                logger.info(
+                    f"📊 Batch: {success_count}/{len(records)} ok | "
+                    f"Total: {total_success:,}/{total_processed:,} | "
+                    f"~{progress_pct:.1f}% | "
+                    f"{batch_time:.1f}s/batch"
+                )
+                consecutive_errors = 0
             
             except Exception as e:
-                logger.error(f"Batch failed: {e}")
+                logger.error(f"❌ Batch error at offset {offset}: {e}")
                 consecutive_errors += 1
-                if consecutive_errors > 5:
+                if consecutive_errors > 10:
                     logger.critical("Too many consecutive errors. Aborting.")
+                    logger.info(f"💾 Resume from offset: {offset}")
                     break
-                time.sleep(5) # Backoff
+                time.sleep(3)  # Brief backoff
             
-            # Small sleep to prevent rate limiting
-            time.sleep(0.5)
+            # Small delay between batches
+            time.sleep(0.2)
+        
+        # Safe logging with ZeroDivisionError protection
+        if total_processed > 0:
+            success_rate = (total_success / total_processed) * 100
+            logger.info(f"🎉 DONE! Processed {total_processed:,} records, {total_success:,} successful.")
+            logger.info(f"📈 Success rate: {success_rate:.1f}%")
+        else:
+            logger.info("⚠️ DONE! No records processed - table may be empty or offset too high.")
                 
     except Exception as e:
         logger.error(f"Vectorization job failed: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(vectorize_drugs())
+    vectorize_all_drugs()

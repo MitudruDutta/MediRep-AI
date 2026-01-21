@@ -19,6 +19,10 @@ class Message(BaseModel):
     content: str
 
 
+# Alias for compatibility
+ChatMessage = Message
+
+
 class Citation(BaseModel):
     title: str
     url: str

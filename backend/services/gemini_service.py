@@ -7,7 +7,7 @@ from typing import List, Optional
 import google.generativeai as genai
 
 from config import GEMINI_API_KEY, GEMINI_MODEL, MAX_HISTORY_MESSAGES
-from models import PatientContext, Message, Citation, DrugInfo
+from models import PatientContext, Message, Citation, DrugInfo, ChatMessage
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)

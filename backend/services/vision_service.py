@@ -1,18 +1,34 @@
+"""
+Pill Identification Service - Two-Step Approach using REAL Database
+
+WORKFLOW:
+1. Extract visual features using Gemini Vision (OCR for imprint, color, shape)
+2. Query indian_drugs table using:
+   - Vector similarity search on embeddings (for semantic matching)
+   - Fuzzy text matching on drug name (for imprint matching)
+3. Return multiple possible matches with confidence scores
+
+This uses the ACTUAL 250k+ drug database, not a hardcoded list.
+"""
 import asyncio
 import json
 import logging
 import base64
-from typing import Optional
+from typing import Optional, List
+from dataclasses import dataclass
 
 import google.generativeai as genai
+from sentence_transformers import SentenceTransformer
 
 from config import GEMINI_API_KEY, GEMINI_MODEL, API_TIMEOUT
 from models import PillIdentification
+from services.supabase_service import SupabaseService
 
 logger = logging.getLogger(__name__)
 
-# Lazy initialization with async lock
+# Lazy initialization
 _vision_model = None
+_embedding_model = None
 _configured = False
 _init_lock: Optional[asyncio.Lock] = None
 
@@ -20,6 +36,30 @@ _init_lock: Optional[asyncio.Lock] = None
 class PillIdentificationError(Exception):
     """Custom exception for pill identification failures."""
     pass
+
+
+@dataclass
+class PillFeatures:
+    """Extracted visual features from pill image."""
+    imprint: Optional[str] = None
+    color: Optional[str] = None
+    shape: Optional[str] = None
+    size: Optional[str] = None
+    coating: Optional[str] = None
+    ocr_confidence: float = 0.0
+    raw_description: str = ""
+
+
+@dataclass
+class DrugMatch:
+    """A potential drug match from the database."""
+    name: str
+    generic_name: Optional[str]
+    manufacturer: Optional[str]
+    price_raw: Optional[str]
+    description: Optional[str]
+    match_score: float
+    match_reason: str
 
 
 def _get_init_lock() -> asyncio.Lock:
@@ -31,7 +71,7 @@ def _get_init_lock() -> asyncio.Lock:
 
 
 async def _get_vision_model():
-    """Lazy initialization of Gemini Vision model (async/coroutine-safe)."""
+    """Lazy initialization of Gemini Vision model."""
     global _vision_model, _configured
     
     if _vision_model is not None:
@@ -42,7 +82,7 @@ async def _get_vision_model():
             return _vision_model
         
         if not GEMINI_API_KEY:
-            logger.error("GEMINI_API_KEY is not configured for vision service")
+            logger.error("GEMINI_API_KEY is not configured")
             raise ValueError("GEMINI_API_KEY is not configured")
         
         if not _configured:
@@ -54,35 +94,56 @@ async def _get_vision_model():
     return _vision_model
 
 
-# Honest, useful prompt that extracts searchable information
-PILL_PROMPT = """Analyze this image of a pill/tablet/capsule and extract identifying features.
+def _get_embedding_model():
+    """Get the sentence transformer model for vector search."""
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _embedding_model
 
-Your task is to describe visual characteristics that can be used to look up the medication.
 
-Extract the following:
-1. IMPRINT: Any text, numbers, letters, or logos stamped/printed on the pill (e.g., "M365", "IP 466", "TEVA 833")
-2. COLOR: Primary color and any secondary colors
-3. SHAPE: round, oval, oblong, capsule, diamond, triangle, rectangle, etc.
-4. SIZE: small, medium, large (estimate)
-5. COATING: coated, uncoated, scored (line through middle)
-6. ADDITIONAL FEATURES: any other distinguishing marks
+# Feature extraction prompt - focused on ACCURATE extraction
+FEATURE_EXTRACTION_PROMPT = """You are analyzing a pill/tablet/capsule image for a medical database lookup.
 
-IMPORTANT: 
-- If you can clearly read an imprint, that is the MOST IMPORTANT feature for identification
-- Do NOT guess the drug name unless you are 95%+ confident based on the imprint
-- Be very precise about the imprint text - exact characters matter
+Extract ONLY what you can SEE. Be extremely precise about imprint text.
+
+Extract:
+1. IMPRINT: Any text/numbers printed or embossed on the pill
+   - Read EXACTLY (e.g., "DOLO 650", "PAN 40", "AZITHRAL 500", "CROCIN")
+   - Indian pills often have brand name + strength
+   - If unclear, indicate with [?]
+   - If none visible, say "none"
+
+2. COLOR: Primary color (white, off-white, pink, yellow, orange, red, blue, green, purple)
+
+3. SHAPE: round, oval, oblong, capsule, diamond, triangle, rectangle
+
+4. SIZE: small (<8mm), medium (8-12mm), large (>12mm)
+
+5. COATING: film-coated (shiny), sugar-coated (smooth), uncoated (rough/chalky)
+
+6. OCR_CONFIDENCE: How confident are you in the imprint reading? 0.0 to 1.0
 
 Return ONLY valid JSON:
 {
-  "imprint": "exact text or null if none visible",
+  "imprint": "exact text or none",
   "color": "primary color",
-  "shape": "shape name", 
+  "shape": "shape name",
   "size": "small/medium/large",
-  "features": "any additional features",
-  "possible_id": "drug name ONLY if 95%+ confident from imprint, otherwise null",
-  "confidence": 0.0 to 1.0,
-  "search_tip": "suggestion for how to search for this pill"
+  "coating": "coating type",
+  "ocr_confidence": 0.0-1.0,
+  "raw_description": "brief description of what you see"
 }"""
+
+
+def _safe_float(value, default: float) -> float:
+    """Safely convert value to float, returning default on failure."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 
 def extract_balanced_json(text: str) -> Optional[str]:
@@ -103,137 +164,267 @@ def extract_balanced_json(text: str) -> Optional[str]:
     return None
 
 
-def safe_parse_confidence(value) -> float:
-    """Safely parse confidence value with clamping."""
-    try:
-        conf = float(value) if value is not None else 0.5
-        return max(0.0, min(1.0, conf))
-    except (TypeError, ValueError):
-        return 0.5
-
-
-async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentification:
+async def extract_pill_features(image_bytes: bytes, content_type: str) -> PillFeatures:
     """
-    Analyze a pill image and extract identifying features.
-    
-    NOTE: This service extracts visual characteristics for pill lookup.
-    It is NOT a definitive drug identifier. Users should verify with 
-    a pharmacist or use the extracted imprint to search official databases.
+    Step 1: Extract visual features from pill image using Gemini Vision.
     """
     try:
         model = await _get_vision_model()
         
         image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-        
         image_part = {
             "mime_type": content_type,
             "data": image_b64
         }
         
-        # Generate content with timeout
         try:
             response = await asyncio.wait_for(
-                asyncio.to_thread(model.generate_content, [PILL_PROMPT, image_part]),
+                asyncio.to_thread(model.generate_content, [FEATURE_EXTRACTION_PROMPT, image_part]),
                 timeout=API_TIMEOUT
             )
         except asyncio.TimeoutError:
-            logger.error("Pill identification timed out")
-            return PillIdentification(
-                name="Analysis Timeout",
-                confidence=0.0,
-                description="Request timed out. Please try again with a clearer image."
-            )
+            logger.error("Feature extraction timed out")
+            return PillFeatures(raw_description="Analysis timed out")
         
-        # Handle response safely
         try:
             response_text = (response.text if response.text else "").strip()
         except ValueError as e:
-            logger.warning("Gemini response blocked or unavailable: %s", e)
-            
-            safety_msg = "Could not analyze image"
-            if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
-                safety_msg = "Image analysis blocked by safety filters"
-            
-            return PillIdentification(
-                name="Analysis Blocked",
-                confidence=0.0,
-                description=safety_msg
-            )
+            logger.warning("Gemini response blocked: %s", e)
+            return PillFeatures(raw_description="Image blocked by safety filters")
         
         if not response_text:
+            return PillFeatures(raw_description="Could not analyze image")
+        
+        json_str = extract_balanced_json(response_text)
+        if not json_str:
+            return PillFeatures(raw_description="Could not parse response")
+        
+        try:
+            result = json.loads(json_str)
+            return PillFeatures(
+                imprint=result.get("imprint") if result.get("imprint") not in ["none", "None", None] else None,
+                color=result.get("color"),
+                shape=result.get("shape"),
+                size=result.get("size"),
+                coating=result.get("coating"),
+                ocr_confidence=_safe_float(result.get("ocr_confidence"), 0.5),
+                raw_description=result.get("raw_description", "")
+            )
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning("Failed to parse features: %s", e)
+            return PillFeatures(raw_description="Failed to parse features")
+    
+    except Exception as e:
+        logger.exception("Feature extraction error")
+        return PillFeatures(raw_description=f"Error: {str(e)}")
+
+
+async def query_drugs_by_features(features: PillFeatures) -> List[DrugMatch]:
+    """
+    Step 2: Query the indian_drugs table using multiple strategies:
+    1. Fuzzy text match on drug name (for imprint)
+    2. Vector similarity search (for semantic matching)
+    """
+    client = SupabaseService.get_client()
+    if not client:
+        logger.warning("Supabase not available for drug lookup")
+        return []
+    
+    matches: List[DrugMatch] = []
+    
+    try:
+        # Strategy 1: Direct name/imprint matching (most reliable if imprint is visible)
+        if features.imprint:
+            # Try exact-ish match first
+            imprint_clean = features.imprint.strip()
+            
+            response = await asyncio.to_thread(
+                lambda: client.table("indian_drugs")
+                    .select("name, generic_name, manufacturer, price_raw, description")
+                    .ilike("name", f"%{imprint_clean}%")
+                    .limit(10)
+                    .execute()
+            )
+            
+            for row in response.data:
+                # Calculate match score based on how close the name is
+                name_lower = row.get("name", "").lower()
+                imprint_lower = imprint_clean.lower()
+                
+                if imprint_lower in name_lower or name_lower in imprint_lower:
+                    score = 0.9  # Very high match
+                else:
+                    score = 0.6  # Partial match
+                
+                matches.append(DrugMatch(
+                    name=row.get("name", "Unknown"),
+                    generic_name=row.get("generic_name"),
+                    manufacturer=row.get("manufacturer"),
+                    price_raw=row.get("price_raw"),
+                    description=row.get("description"),
+                    match_score=score,
+                    match_reason="Imprint match"
+                ))
+        
+        # Strategy 2: Vector similarity search (semantic matching)
+        # This helps when imprint is partial or unclear
+        if features.imprint or features.color or features.shape:
+            # Build search query from features
+            search_text = " ".join(filter(None, [
+                features.imprint or "",
+                features.color or "",
+                features.shape or "",
+                "tablet" if features.shape != "capsule" else "capsule"
+            ]))
+            
+            if search_text.strip():
+                # Generate embedding for search (non-blocking)
+                model = _get_embedding_model()
+                query_embedding = await asyncio.to_thread(
+                    lambda: model.encode(search_text).tolist()
+                )
+                
+                # Query using vector similarity via RPC
+                try:
+                    response = await asyncio.to_thread(
+                        lambda: client.rpc(
+                            "match_indian_drugs",
+                            {
+                                "query_embedding": query_embedding,
+                                "match_count": 5
+                            }
+                        ).execute()
+                    )
+                    
+                    for row in response.data:
+                        # Check if not already in matches
+                        if not any(m.name == row.get("name") for m in matches):
+                            matches.append(DrugMatch(
+                                name=row.get("name", "Unknown"),
+                                generic_name=row.get("generic_name"),
+                                manufacturer=row.get("manufacturer"),
+                                price_raw=row.get("price_raw"),
+                                description=row.get("description"),
+                                match_score=float(row.get("similarity", 0.5)),
+                                match_reason="Vector similarity"
+                            ))
+                except Exception as e:
+                    logger.warning(f"Vector search failed (RPC may not exist): {e}")
+        
+        # Sort by score and return top matches
+        matches.sort(key=lambda x: x.match_score, reverse=True)
+        return matches[:5]
+    
+    except Exception as e:
+        logger.error(f"Drug lookup failed: {e}")
+        return []
+
+
+async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentification:
+    """
+    Two-Step Pill Identification using REAL database:
+    
+    1. Extract visual features using Gemini Vision
+    2. Query indian_drugs (250k+ entries) for matches
+    
+    Returns multiple possible matches with confidence scores.
+    """
+    try:
+        # Step 1: Extract features from image
+        features = await extract_pill_features(image_bytes, content_type)
+        
+        if not features.color and not features.imprint:
             return PillIdentification(
-                name="No Analysis",
+                name="Could Not Analyze",
                 confidence=0.0,
-                description="Could not analyze image. Please try with clearer lighting."
+                description="Unable to extract pill features. Please try with:\n"
+                           "• Better lighting\n"
+                           "• White background\n"
+                           "• Clear focus on the pill\n"
+                           "• Imprint text facing camera"
             )
         
-        # Extract JSON
-        json_str = extract_balanced_json(response_text)
+        # Step 2: Query database for matches
+        matches = await query_drugs_by_features(features)
         
-        if json_str:
-            try:
-                result = json.loads(json_str)
-                
-                # Build descriptive name based on features
-                imprint = result.get("imprint")
-                color = result.get("color", "")
-                shape = result.get("shape", "")
-                possible_id = result.get("possible_id")
-                
-                # Determine the name to show
-                if possible_id and result.get("confidence", 0) >= 0.9:
-                    name = f"Possible: {possible_id}"
-                elif imprint:
-                    name = f"Imprint: {imprint}"
-                else:
-                    name = f"{color.title()} {shape.title()} Pill"
-                
-                # Build helpful description
-                description_parts = []
-                if imprint:
-                    description_parts.append(f"📝 Imprint: {imprint}")
-                if color:
-                    description_parts.append(f"🎨 Color: {color}")
-                if shape:
-                    description_parts.append(f"⭕ Shape: {shape}")
-                if result.get("size"):
-                    description_parts.append(f"📏 Size: {result.get('size')}")
-                if result.get("features"):
-                    description_parts.append(f"✨ Features: {result.get('features')}")
-                
-                # Add search tip
-                search_tip = result.get("search_tip", "")
-                if imprint:
-                    search_tip = f"Search '{imprint} pill' on drugs.com/pill_identification.html"
-                elif not search_tip:
-                    search_tip = f"Search '{color} {shape} pill' on drugs.com"
-                
-                description_parts.append(f"\n🔍 How to identify: {search_tip}")
-                description_parts.append("\n⚠️ Verify with pharmacist before use")
-                
-                description = "\n".join(description_parts)
-                
-                color_val = result.get("color")
-                shape_val = result.get("shape")
-                imprint_val = result.get("imprint")
-                
-                return PillIdentification(
-                    name=name,
-                    confidence=safe_parse_confidence(result.get("confidence", 0.5)),
-                    description=description,
-                    color=str(color_val) if color_val else None,
-                    shape=str(shape_val) if shape_val else None,
-                    imprint=str(imprint_val) if imprint_val else None
+        # Build response
+        if matches:
+            best_match = matches[0]
+            
+            description_parts = [
+                "📋 **Extracted Features:**",
+                f"   • Imprint: {features.imprint or 'Not visible'}",
+                f"   • Color: {features.color or 'Unknown'}",
+                f"   • Shape: {features.shape or 'Unknown'}",
+                f"   • OCR Confidence: {features.ocr_confidence:.0%}",
+                "",
+                "💊 **Database Matches:**"
+            ]
+            
+            for i, match in enumerate(matches[:3], 1):
+                description_parts.append(
+                    f"   {i}. **{match.name}**"
                 )
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse pill identification JSON")
+                if match.generic_name:
+                    description_parts.append(f"      Generic: {match.generic_name}")
+                if match.manufacturer:
+                    description_parts.append(f"      Manufacturer: {match.manufacturer}")
+                if match.price_raw:
+                    description_parts.append(f"      Price: {match.price_raw}")
+                description_parts.append(f"      Match: {match.match_score:.0%} ({match.match_reason})")
+                description_parts.append("")
+            
+            description_parts.extend([
+                "⚠️ **IMPORTANT:** This is visual matching only.",
+                "   ALWAYS verify with a pharmacist before use.",
+                "   Many pills look similar but contain different medications."
+            ])
+            
+            return PillIdentification(
+                name=f"Possible: {best_match.name}",
+                confidence=best_match.match_score,
+                description="\n".join(description_parts),
+                color=features.color,
+                shape=features.shape,
+                imprint=features.imprint
+            )
         
-        # Fallback
-        return PillIdentification(
-            name="Analysis Incomplete",
-            confidence=0.0,
-            description="Could not extract pill features. Tips:\n- Use good lighting\n- Place pill on white background\n- Ensure imprint is visible\n\n⚠️ Verify any medication with a pharmacist"
-        )
+        else:
+            # No matches found
+            description_parts = [
+                "📋 **Extracted Features:**",
+                f"   • Imprint: {features.imprint or 'Not visible'}",
+                f"   • Color: {features.color or 'Unknown'}",
+                f"   • Shape: {features.shape or 'Unknown'}",
+                "",
+                "❌ **No matches found in database.**",
+                "",
+                "🔍 **Try searching manually:**"
+            ]
+            
+            if features.imprint:
+                description_parts.append(
+                    f"   • Search '{features.imprint}' on 1mg.com or pharmeasy.in"
+                )
+            else:
+                description_parts.append(
+                    f"   • Search '{features.color or ''} {features.shape or ''} pill India'"
+                )
+            
+            description_parts.extend([
+                "",
+                "⚠️ **Cannot identify this pill.**",
+                "   Please consult a pharmacist."
+            ])
+            
+            return PillIdentification(
+                name=f"{(features.color or 'Unknown').title()} {(features.shape or '').title()} Pill",
+                confidence=0.0,
+                description="\n".join(description_parts),
+                color=features.color,
+                shape=features.shape,
+                imprint=features.imprint
+            )
     
     except PillIdentificationError:
         raise

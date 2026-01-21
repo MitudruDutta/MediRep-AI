@@ -35,10 +35,10 @@ create table if not exists saved_drugs (
     unique(user_id, drug_name)
 );
 
--- Indian Medicines Database
+-- Indian Medicines Database (250k+ entries)
 create table if not exists indian_drugs (
     id uuid default gen_random_uuid() primary key,
-    name text not null,
+    name text not null unique,
     generic_name text,
     manufacturer text,
     price_raw text,
@@ -49,12 +49,22 @@ create table if not exists indian_drugs (
     action_class text,
     side_effects text,
     substitutes text[],
-    embedding vector(768),
+    description text,  -- Drug description/indications
+    interactions_data jsonb,  -- Structured interaction data
+    embedding vector(384),  -- Sentence transformer embeddings (all-MiniLM-L6-v2)
     created_at timestamptz default now()
 );
 
+-- Indexes for efficient drug lookup
 create index if not exists idx_indian_drugs_name_trgm on indian_drugs using gin (name gin_trgm_ops);
 create index if not exists idx_indian_drugs_generic_trgm on indian_drugs using gin (generic_name gin_trgm_ops);
+create unique index if not exists idx_indian_drugs_name_unique on indian_drugs (name);
+
+-- Vector similarity index (for AI-powered search)
+-- Note: This may take time to build on large tables
+create index if not exists idx_indian_drugs_embedding on indian_drugs 
+using hnsw (embedding vector_cosine_ops)
+with (m = 16, ef_construction = 64);
 
 -- RAG match function
 create or replace function match_documents(
@@ -80,3 +90,34 @@ begin
     limit match_count;
 end;
 $$;
+
+-- Vector similarity search for indian_drugs (used by vision service)
+create or replace function match_indian_drugs(
+    query_embedding vector(384),
+    match_count int default 5
+)
+returns table (
+    name text,
+    generic_name text,
+    manufacturer text,
+    price_raw text,
+    description text,
+    similarity float
+)
+language plpgsql as $$
+begin
+    return query
+    select
+        d.name,
+        d.generic_name,
+        d.manufacturer,
+        d.price_raw,
+        d.description,
+        1 - (d.embedding <=> query_embedding) as similarity
+    from indian_drugs d
+    where d.embedding is not null
+    order by d.embedding <=> query_embedding
+    limit match_count;
+end;
+$$;
+

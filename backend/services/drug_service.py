@@ -9,14 +9,18 @@ Data sources mentioned:
 - Jan Aushadhi (Government generic medicines)
 """
 import logging
+import asyncio
 import time
+import json
+import threading
 from collections import OrderedDict
 from typing import Any, Optional, List, Dict
 
 import httpx
+import google.generativeai as genai
 from services.supabase_service import SupabaseService
 from models import DrugInfo, DrugSearchResult
-from config import OPENFDA_LABEL_URL, CACHE_TTL_DRUG, API_TIMEOUT
+from config import OPENFDA_LABEL_URL, CACHE_TTL_DRUG, API_TIMEOUT, GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -285,6 +289,160 @@ def escape_lucene_special_chars(query: str) -> str:
     return ''.join(escaped)
 
 
+# Gemini model for enrichment (lazy init with thread-safe lock)
+_enrichment_model = None
+_enrichment_model_lock = threading.Lock()
+
+
+def _get_enrichment_model():
+    """Get Gemini model for drug info enrichment (thread-safe)."""
+    global _enrichment_model
+    
+    # Fast path: already initialized
+    if _enrichment_model is not None:
+        return _enrichment_model
+    
+    # Slow path: acquire lock and initialize
+    with _enrichment_model_lock:
+        # Double-check after acquiring lock
+        if _enrichment_model is not None:
+            return _enrichment_model
+        
+        if not GEMINI_API_KEY:
+            return None
+        
+        try:
+            genai.configure(api_key=GEMINI_API_KEY)
+            _enrichment_model = genai.GenerativeModel("gemini-2.0-flash")
+        except Exception as e:
+            logger.error(f"Failed to initialize Gemini enrichment model: {e}")
+            return None
+    
+    return _enrichment_model
+
+
+async def enrich_drug_with_gemini(drug_info: DrugInfo) -> DrugInfo:
+    """
+    HYBRID APPROACH: Enrich missing drug information using Gemini's knowledge.
+    
+    - Database provides: Price, manufacturer, pack size (ground truth)
+    - Gemini provides: Indications, side effects, interactions (clinical knowledge)
+    """
+    model = _get_enrichment_model()
+    if not model:
+        return drug_info
+    
+    # Identify what's missing
+    missing_fields = []
+    if not drug_info.indications:
+        missing_fields.append("indications (what is this drug used for)")
+    if not drug_info.side_effects:
+        missing_fields.append("common side effects")
+    if not drug_info.dosage:
+        missing_fields.append("typical dosage")
+    if not drug_info.contraindications:
+        missing_fields.append("contraindications")
+    if not drug_info.interactions:
+        missing_fields.append("major drug interactions")
+    if not drug_info.warnings:
+        missing_fields.append("important warnings")
+    
+    # If nothing is missing, return as-is
+    if not missing_fields:
+        return drug_info
+    
+    try:
+        # Build prompt
+        prompt = f"""You are a pharmaceutical knowledge assistant. Provide ACCURATE medical information.
+
+DRUG: {drug_info.name}
+GENERIC NAME: {drug_info.generic_name or 'Unknown'}
+MANUFACTURER: {drug_info.manufacturer or 'Unknown'}
+
+I need you to provide the following MISSING information (be concise but accurate):
+{chr(10).join(f"- {field}" for field in missing_fields)}
+
+Return ONLY valid JSON with these exact keys (use empty arrays if unknown):
+{{
+  "indications": ["indication1", "indication2"],
+  "side_effects": ["effect1", "effect2"],
+  "dosage": ["dosage info"],
+  "contraindications": ["contraindication1"],
+  "interactions": ["interaction1"],
+  "warnings": ["warning1"]
+}}
+
+IMPORTANT: Only include fields you are confident about. Indian pharmaceutical context preferred."""
+
+        # Timeout for Gemini API call (30 seconds)
+        ENRICHMENT_TIMEOUT = 30
+        
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    lambda: model.generate_content(
+                        prompt,
+                        generation_config=genai.types.GenerationConfig(
+                            response_mime_type="application/json",
+                            temperature=0.1
+                        )
+                    )
+                ),
+                timeout=ENRICHMENT_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Gemini enrichment timed out after {ENRICHMENT_TIMEOUT}s for drug: {drug_info.name}")
+            return drug_info
+        
+        # Parse response
+        try:
+            result_text = response.text.strip()
+            # Extract JSON if wrapped
+            if result_text.startswith('```'):
+                result_text = result_text.split('```')[1]
+                if result_text.startswith('json'):
+                    result_text = result_text[4:]
+            
+            enrichment = json.loads(result_text)
+            
+            # Track whether any field was actually enriched
+            enrichment_occurred = False
+            
+            # Apply enrichment only to empty fields
+            if not drug_info.indications and enrichment.get("indications"):
+                drug_info.indications = enrichment["indications"]
+                enrichment_occurred = True
+            if not drug_info.side_effects and enrichment.get("side_effects"):
+                drug_info.side_effects = enrichment["side_effects"]
+                enrichment_occurred = True
+            if not drug_info.dosage and enrichment.get("dosage"):
+                drug_info.dosage = enrichment["dosage"]
+                enrichment_occurred = True
+            if not drug_info.contraindications and enrichment.get("contraindications"):
+                drug_info.contraindications = enrichment["contraindications"]
+                enrichment_occurred = True
+            if not drug_info.interactions and enrichment.get("interactions"):
+                drug_info.interactions = enrichment["interactions"]
+                enrichment_occurred = True
+            if not drug_info.warnings and enrichment.get("warnings"):
+                drug_info.warnings = enrichment["warnings"]
+                enrichment_occurred = True
+            
+            # Only mark as AI-enriched if actual enrichment occurred
+            if enrichment_occurred:
+                if not drug_info.warnings:
+                    drug_info.warnings = []
+                drug_info.warnings.append("ℹ️ Some information enriched by AI. Verify with pharmacist.")
+            
+        except (json.JSONDecodeError, AttributeError) as e:
+            logger.warning(f"Failed to parse Gemini enrichment response: {e}")
+    
+    except Exception as e:
+        logger.warning(f"Gemini enrichment failed: {e}")
+    
+    return drug_info
+
+
 async def search_drug_descriptions(query: str, limit: int = 5) -> str:
     """Search drug descriptions (FTS or partial match) to bridge RAG disconnect."""
     if not query or len(query) < 3:
@@ -433,6 +591,9 @@ async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
                 if data.get("is_discontinued"):
                     info.warnings.append("⚠️ This product is marked as DISCONTINUED.")
                 
+                # HYBRID APPROACH: Enrich missing fields with Gemini
+                info = await enrich_drug_with_gemini(info)
+                
                 cache.set(cache_key, info)
                 return info
     except Exception as e:
@@ -456,6 +617,9 @@ async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
             dpco_controlled=drug_lower in DPCO_CONTROLLED_DRUGS,
             schedule=india_data.get("schedule")
         )
+        
+        # HYBRID: Enrich with Gemini
+        info = await enrich_drug_with_gemini(info)
         
         cache.set(cache_key, info)
         return info
@@ -509,6 +673,9 @@ async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
                 interactions=get_field("drug_interactions"),
                 dpco_controlled=drug_lower in DPCO_CONTROLLED_DRUGS
             )
+            
+            # HYBRID: Enrich any missing fields with Gemini
+            info = await enrich_drug_with_gemini(info)
             
             cache.set(cache_key, info)
             return info
