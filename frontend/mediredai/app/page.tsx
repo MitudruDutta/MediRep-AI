@@ -1,13 +1,9 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import React from 'react'
 
-export default async function Home() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (user) {
-    redirect("/dashboard");
-  } else {
-    redirect("/auth/login");
-  }
+const page = () => {
+  return (
+    <div>MediRep AI Landing Page</div>
+  )
 }
+
+export default page

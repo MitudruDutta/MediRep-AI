@@ -21,7 +21,7 @@ export async function login(formData: FormData) {
 
   const data = {
     email: email.trim(),
-    password: password, // Do not trim password - whitespace may be intentional
+    password: password,
   };
 
   const { data: authData, error } = await supabase.auth.signInWithPassword(data);
@@ -31,10 +31,12 @@ export async function login(formData: FormData) {
     redirect(`/auth/error?message=${encodeURIComponent(error.message)}`);
   }
 
-  console.log("[Login] Auth successful, user:", authData?.user?.email);
-  console.log("[Login] Session exists:", !!authData?.session);
-
+  console.log("[Login] Auth successful for:", authData.user?.email);
+  console.log("[Login] Session created:", !!authData.session);
+  console.log("[Login] Access token present:", !!authData.session?.access_token);
+  
   revalidatePath("/", "layout");
+  revalidatePath("/dashboard", "page");
   redirect("/dashboard");
 }
 
@@ -58,11 +60,18 @@ export async function signup(formData: FormData) {
     password: password, // Do not trim password - whitespace may be intentional
   };
 
-  const { error } = await supabase.auth.signUp(data);
+  const { data: signUpData, error } = await supabase.auth.signUp(data);
 
   if (error) {
     console.error("Signup error:", error.message);
     redirect(`/auth/error?message=${encodeURIComponent(error.message)}`);
+  }
+
+  // Check if email confirmation is required
+  if (signUpData.user && !signUpData.session) {
+    // Email confirmation is required
+    console.log("Email confirmation required for:", email.trim());
+    redirect("/auth/confirm");
   }
 
   revalidatePath("/", "layout");

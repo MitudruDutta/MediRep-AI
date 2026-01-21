@@ -24,7 +24,7 @@ export default function SignupPage() {
             <div className={cn("flex flex-col gap-6")}>
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">
-                  SignUp your account for DAVA
+                  SignUp your account for MediRep AI
                 </h1>
                 <p className="text-muted-foreground text-sm text-balance">
                   Enter your email below to Signup

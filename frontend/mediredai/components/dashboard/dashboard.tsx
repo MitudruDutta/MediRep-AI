@@ -53,47 +53,31 @@ const features = [
   },
 ];
 
-export default function Dashboard() {
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+interface DashboardProps {
+  initialUserEmail?: string | null;
+}
+
+export default function Dashboard({ initialUserEmail }: DashboardProps) {
+  const [userEmail, setUserEmail] = useState<string | null>(initialUserEmail || null);
   const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
-    const checkUser = async () => {
-      try {
+    if (!initialUserEmail) {
+      const getUser = async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           setUserEmail(user.email || null);
-        } else {
-          router.push('/auth/login');
         }
-      } catch (error) {
-        console.error("Error checking user:", error);
-        router.push('/auth/login');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkUser();
-  }, [router, supabase.auth]);
+      };
+      getUser();
+    }
+  }, [initialUserEmail, supabase.auth]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/auth/login');
   };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="container mx-auto p-6">

@@ -38,6 +38,7 @@ MediRep AI is an intelligent medical information assistant that helps healthcare
 ### Prerequisites
 
 - Python 3.10+ (3.11 recommended)
+- Node.js 18+ and npm
 - [Gemini API Key](https://aistudio.google.com/)
 - [Supabase Project](https://supabase.com/)
 
@@ -45,7 +46,6 @@ MediRep AI is an intelligent medical information assistant that helps healthcare
 
 ```bash
 # Clone the repository
-# Replace <your-username> with your GitHub username or fork
 git clone https://github.com/<your-username>/medirep-ai.git
 cd medirep-ai
 
@@ -59,19 +59,29 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your API keys
 
-# Run the server (from backend directory)
+# Run the server
 uvicorn main:app --reload --port 8000
 ```
 
-### Verify Installation
+### Frontend Setup
 
 ```bash
-# Run from backend directory
-cd backend
-python brutal_verify.py
+# From project root
+cd frontend/mediredai
+
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.local.example .env.local
+# Edit .env.local with your Supabase credentials
+
+# Run development server
+npm run dev
 ```
 
-The API will be available at `http://localhost:8000`
+The frontend will be available at `http://localhost:3000`  
+The backend API will be available at `http://localhost:8000`
 
 ## 📡 API Documentation
 
@@ -127,6 +137,8 @@ http://localhost:8000/docs
 
 | Layer             | Technology                       |
 | ----------------- | -------------------------------- |
+| **Frontend**      | Next.js 16, React 19, TypeScript |
+| **UI Components** | Radix UI, Tailwind CSS           |
 | **AI Engine**     | Google Gemini 2.5 Flash          |
 | **Backend**       | FastAPI (Python 3.10+)           |
 | **Database**      | Supabase (PostgreSQL + pgvector) |
@@ -157,7 +169,22 @@ medirep-ai/
 │   ├── requirements.txt
 │   ├── .env.example
 │   └── README.md
-├── frontend/                # (Coming Soon)
+├── frontend/
+│   └── mediredai/
+│       ├── app/             # Next.js app router
+│       │   ├── auth/        # Authentication pages
+│       │   ├── dashboard/   # Main dashboard
+│       │   └── layout.tsx
+│       ├── components/      # React components
+│       │   ├── dashboard/
+│       │   ├── ui/          # Radix UI components
+│       │   └── account/
+│       ├── lib/             # Utilities
+│       │   ├── supabase/    # Supabase clients
+│       │   └── api.ts       # API client
+│       ├── hooks/           # Custom React hooks
+│       ├── .env.local
+│       └── package.json
 ├── LICENSE
 └── README.md
 ```
@@ -166,13 +193,26 @@ medirep-ai/
 
 ### Environment Variables
 
+#### Backend (.env)
+
 | Variable         | Required | Description                              |
 | ---------------- | -------- | ---------------------------------------- |
 | `GEMINI_API_KEY` | ✅       | Google AI Studio API key                 |
 | `SUPABASE_URL`   | ✅       | Supabase project URL                     |
-| `SUPABASE_KEY`   | ✅       | Supabase anon key                        |
+| `SUPABASE_KEY`   | ✅       | Supabase service role key                |
 | `GEMINI_MODEL`   | ❌       | Model name (default: `gemini-2.5-flash`) |
 | `PORT`           | ❌       | Server port (default: `8000`)            |
+
+#### Frontend (.env.local)
+
+| Variable                                      | Required | Description                                |
+| --------------------------------------------- | -------- | ------------------------------------------ |
+| `NEXT_PUBLIC_SUPABASE_URL`                    | ✅       | Supabase project URL                       |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`| ✅       | Supabase publishable key (sb_publishable_) |
+| `NEXT_PUBLIC_API_URL`                         | ✅       | Backend API URL (http://localhost:8000)    |
+| `NEXT_PUBLIC_SITE_URL`                        | ✅       | Frontend URL (http://localhost:3000)       |
+
+> **Note**: Supabase now uses `sb_publishable_` keys instead of the old JWT-based `anon` keys. Get your publishable key from the [Supabase Dashboard](https://supabase.com/dashboard/project/_/settings/api).
 
 ## 🚀 Deployment
 
