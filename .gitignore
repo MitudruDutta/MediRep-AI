@@ -1,0 +1,73 @@
+# General
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+*.sqlite3
+*.db
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+env/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+build/
+dist/
+*.egg
+*.whl
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Vite/Next.js
+/.next/
+/.vite/
+
+# VS Code
+.vscode/
+.idea/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Misc
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Guide
+CLAUDE.md
+IMPLEMENTATION.md
+TASKS_BACKEND.md
+TASKS_FRONTEND.md
+TASKS.md
