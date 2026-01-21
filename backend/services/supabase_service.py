@@ -1,0 +1,52 @@
+import logging
+import threading
+from typing import Optional
+
+from supabase import create_client, Client
+
+from config import SUPABASE_URL, SUPABASE_KEY
+
+logger = logging.getLogger(__name__)
+
+
+class SupabaseService:
+    """Thread-safe singleton for Supabase client."""
+    
+    _client: Optional[Client] = None
+    _lock: threading.Lock = threading.Lock()
+    _init_attempted: bool = False
+    
+    @classmethod
+    def get_client(cls) -> Optional[Client]:
+        """Get the Supabase client singleton with double-checked locking.
+        
+        Only attempts initialization once to avoid repeated logging.
+        """
+        if cls._client is not None:
+            return cls._client
+        
+        # Fast path: already attempted and failed
+        if cls._init_attempted:
+            return None
+        
+        with cls._lock:
+            # Double-check after acquiring lock
+            if cls._client is not None:
+                return cls._client
+            
+            if cls._init_attempted:
+                return None
+            
+            cls._init_attempted = True
+            
+            if not SUPABASE_URL or not SUPABASE_KEY:
+                logger.warning("Supabase credentials not configured")
+                return None
+            
+            try:
+                cls._client = create_client(SUPABASE_URL, SUPABASE_KEY)
+                logger.info("Supabase client initialized")
+                return cls._client
+            except Exception as e:
+                logger.error("Failed to initialize Supabase: %s", e)
+                return None

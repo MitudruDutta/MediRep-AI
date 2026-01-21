@@ -1,73 +1,57 @@
-# General
-.DS_Store
-Thumbs.db
-
-# Environment files
+# Environment files - .env.* catches all variants
 .env
 .env.*
 
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
 *.egg
-*.sqlite3
-*.db
-
-# Virtual environments
 venv/
 .venv/
-ENV/
-env/
 
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Logs
 *.log
 logs/
 
-# Build artifacts
-build/
-dist/
-*.egg
-*.whl
+# Cache
+.cache/
+*.cache
 
-# Node.js
-node_modules/
-npm-debug.log
-yarn-debug.log
-yarn-error.log
-
-# Vite/Next.js
-/.next/
-/.vite/
-
-# VS Code
-.vscode/
-.idea/
-
-# Coverage reports
-htmlcov/
+# Test
 .coverage
-.coverage.*
+htmlcov/
 .pytest_cache/
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
+.tox/
 
-# Misc
-*.swp
-*.swo
-*.bak
+# Temp
+tmp/
+temp/
 *.tmp
-
-# Guide
-CLAUDE.md
-IMPLEMENTATION.md
-TASKS_BACKEND.md
-TASKS_FRONTEND.md
-TASKS.md
