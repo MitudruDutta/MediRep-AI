@@ -24,12 +24,15 @@ export async function login(formData: FormData) {
     password: password, // Do not trim password - whitespace may be intentional
   };
 
-  const { error } = await supabase.auth.signInWithPassword(data);
+  const { data: authData, error } = await supabase.auth.signInWithPassword(data);
 
   if (error) {
     console.error("Login error:", error.message);
     redirect(`/auth/error?message=${encodeURIComponent(error.message)}`);
   }
+
+  console.log("[Login] Auth successful, user:", authData?.user?.email);
+  console.log("[Login] Session exists:", !!authData?.session);
 
   revalidatePath("/", "layout");
   redirect("/dashboard");

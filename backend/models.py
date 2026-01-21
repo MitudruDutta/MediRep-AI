@@ -47,6 +47,20 @@ class DrugInfo(BaseModel):
     contraindications: List[str] = Field(default_factory=list)
     side_effects: List[str] = Field(default_factory=list)
     interactions: List[str] = Field(default_factory=list)
+    
+    # India-specific fields
+    indian_brands: List[str] = Field(default_factory=list)
+    substitutes: List[str] = Field(default_factory=list)
+    mrp_range: Optional[str] = None
+    price_raw: Optional[str] = None
+    price: Optional[float] = None
+    jan_aushadhi_price: Optional[str] = None
+    pack_size: Optional[str] = None
+    nlem_status: bool = False
+    dpco_controlled: bool = False
+    schedule: Optional[str] = None
+    therapeutic_class: Optional[str] = None
+    action_class: Optional[str] = None
 
 
 class DrugSearchResult(BaseModel):

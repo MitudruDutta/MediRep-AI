@@ -111,6 +111,38 @@ CREATE TABLE saved_drugs (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT unique_user_drug UNIQUE (user_id, drug_name)
 );
+
+-- Indian Medicines Database
+CREATE TABLE indian_drugs (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name TEXT NOT NULL,
+    generic_name TEXT,
+    manufacturer TEXT,
+    price_raw TEXT,         -- e.g. "₹120"
+    price NUMERIC,          -- e.g. 120.00
+    pack_size TEXT,
+    is_discontinued BOOLEAN DEFAULT FALSE,
+    therapeutic_class TEXT,
+    action_class TEXT,
+    side_effects TEXT,
+    substitutes TEXT[],     -- Array of brand names
+    embedding vector(768),  -- For semantic search
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Fuzzy search index for drugs
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX idx_indian_drugs_name ON indian_drugs USING GIN (name gin_trgm_ops);
+CREATE INDEX idx_indian_drugs_generic ON indian_drugs USING GIN (generic_name gin_trgm_ops);
+```
+
+### 4. Ingest Indian Medicines Data
+
+Download the dataset and run the ingestion script:
+
+```bash
+# Ensure A_Z_medicines_dataset_of_India.csv is in data/ directory
+python ingest_indian_drugs.py
 ```
 
 ### 4. Run the Server
@@ -157,6 +189,12 @@ GET /api/drugs/search?q=aspirin
 
 ```
 GET /api/drugs/{drug_name}
+```
+
+### Generic Substitutes
+
+```
+GET /api/drugs/substitutes?drug_name=dolo
 ```
 
 ### Drug Interactions

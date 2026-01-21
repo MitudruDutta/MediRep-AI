@@ -38,7 +38,6 @@ async def _get_vision_model():
         return _vision_model
     
     async with _get_init_lock():
-        # Double-check after acquiring lock
         if _vision_model is not None:
             return _vision_model
         
@@ -55,19 +54,35 @@ async def _get_vision_model():
     return _vision_model
 
 
-PILL_PROMPT = """Analyze this image and identify the pill/medication shown.
+# Honest, useful prompt that extracts searchable information
+PILL_PROMPT = """Analyze this image of a pill/tablet/capsule and extract identifying features.
 
-Provide a JSON response with:
-- name: Drug name or "Unknown" if cannot identify
-- confidence: 0.0 to 1.0 confidence score
-- description: Brief description
-- color: Pill color
-- shape: Pill shape (round, oval, capsule, etc.)
-- imprint: Any text/numbers on the pill
+Your task is to describe visual characteristics that can be used to look up the medication.
 
-If this is not a pill or medication, set name to "Unknown" and confidence to 0.0.
+Extract the following:
+1. IMPRINT: Any text, numbers, letters, or logos stamped/printed on the pill (e.g., "M365", "IP 466", "TEVA 833")
+2. COLOR: Primary color and any secondary colors
+3. SHAPE: round, oval, oblong, capsule, diamond, triangle, rectangle, etc.
+4. SIZE: small, medium, large (estimate)
+5. COATING: coated, uncoated, scored (line through middle)
+6. ADDITIONAL FEATURES: any other distinguishing marks
 
-Return ONLY valid JSON, no other text."""
+IMPORTANT: 
+- If you can clearly read an imprint, that is the MOST IMPORTANT feature for identification
+- Do NOT guess the drug name unless you are 95%+ confident based on the imprint
+- Be very precise about the imprint text - exact characters matter
+
+Return ONLY valid JSON:
+{
+  "imprint": "exact text or null if none visible",
+  "color": "primary color",
+  "shape": "shape name", 
+  "size": "small/medium/large",
+  "features": "any additional features",
+  "possible_id": "drug name ONLY if 95%+ confident from imprint, otherwise null",
+  "confidence": 0.0 to 1.0,
+  "search_tip": "suggestion for how to search for this pill"
+}"""
 
 
 def extract_balanced_json(text: str) -> Optional[str]:
@@ -98,14 +113,18 @@ def safe_parse_confidence(value) -> float:
 
 
 async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentification:
-    """Identify a pill from image bytes."""
+    """
+    Analyze a pill image and extract identifying features.
+    
+    NOTE: This service extracts visual characteristics for pill lookup.
+    It is NOT a definitive drug identifier. Users should verify with 
+    a pharmacist or use the extracted imprint to search official databases.
+    """
     try:
         model = await _get_vision_model()
         
-        # Encode image
         image_b64 = base64.b64encode(image_bytes).decode('utf-8')
         
-        # Create image part
         image_part = {
             "mime_type": content_type,
             "data": image_b64
@@ -120,52 +139,88 @@ async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentifica
         except asyncio.TimeoutError:
             logger.error("Pill identification timed out")
             return PillIdentification(
-                name="Unknown",
+                name="Analysis Timeout",
                 confidence=0.0,
-                description="Request timed out"
+                description="Request timed out. Please try again with a clearer image."
             )
         
-        # Handle null or blocked response safely
+        # Handle response safely
         try:
             response_text = (response.text if response.text else "").strip()
         except ValueError as e:
-            # Gemini may raise ValueError for safety-blocked responses
             logger.warning("Gemini response blocked or unavailable: %s", e)
             
-            # Check prompt feedback if available
             safety_msg = "Could not analyze image"
             if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
                 safety_msg = "Image analysis blocked by safety filters"
             
             return PillIdentification(
-                name="Unknown",
+                name="Analysis Blocked",
                 confidence=0.0,
                 description=safety_msg
             )
         
         if not response_text:
             return PillIdentification(
-                name="Unknown",
+                name="No Analysis",
                 confidence=0.0,
-                description="Could not analyze image"
+                description="Could not analyze image. Please try with clearer lighting."
             )
         
-        # Extract JSON with balanced brace matching
+        # Extract JSON
         json_str = extract_balanced_json(response_text)
         
         if json_str:
             try:
                 result = json.loads(json_str)
                 
-                # Fetch each value once, then convert
+                # Build descriptive name based on features
+                imprint = result.get("imprint")
+                color = result.get("color", "")
+                shape = result.get("shape", "")
+                possible_id = result.get("possible_id")
+                
+                # Determine the name to show
+                if possible_id and result.get("confidence", 0) >= 0.9:
+                    name = f"Possible: {possible_id}"
+                elif imprint:
+                    name = f"Imprint: {imprint}"
+                else:
+                    name = f"{color.title()} {shape.title()} Pill"
+                
+                # Build helpful description
+                description_parts = []
+                if imprint:
+                    description_parts.append(f"📝 Imprint: {imprint}")
+                if color:
+                    description_parts.append(f"🎨 Color: {color}")
+                if shape:
+                    description_parts.append(f"⭕ Shape: {shape}")
+                if result.get("size"):
+                    description_parts.append(f"📏 Size: {result.get('size')}")
+                if result.get("features"):
+                    description_parts.append(f"✨ Features: {result.get('features')}")
+                
+                # Add search tip
+                search_tip = result.get("search_tip", "")
+                if imprint:
+                    search_tip = f"Search '{imprint} pill' on drugs.com/pill_identification.html"
+                elif not search_tip:
+                    search_tip = f"Search '{color} {shape} pill' on drugs.com"
+                
+                description_parts.append(f"\n🔍 How to identify: {search_tip}")
+                description_parts.append("\n⚠️ Verify with pharmacist before use")
+                
+                description = "\n".join(description_parts)
+                
                 color_val = result.get("color")
                 shape_val = result.get("shape")
                 imprint_val = result.get("imprint")
                 
                 return PillIdentification(
-                    name=str(result.get("name", "Unknown")),
+                    name=name,
                     confidence=safe_parse_confidence(result.get("confidence", 0.5)),
-                    description=str(result.get("description", "")),
+                    description=description,
                     color=str(color_val) if color_val else None,
                     shape=str(shape_val) if shape_val else None,
                     imprint=str(imprint_val) if imprint_val else None
@@ -175,9 +230,9 @@ async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentifica
         
         # Fallback
         return PillIdentification(
-            name="Unknown - please consult a pharmacist",
+            name="Analysis Incomplete",
             confidence=0.0,
-            description="Could not parse identification result"
+            description="Could not extract pill features. Tips:\n- Use good lighting\n- Place pill on white background\n- Ensure imprint is visible\n\n⚠️ Verify any medication with a pharmacist"
         )
     
     except PillIdentificationError:

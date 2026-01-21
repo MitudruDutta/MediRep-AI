@@ -9,6 +9,7 @@ import google.generativeai as genai
 
 from config import GEMINI_API_KEY, GEMINI_MODEL, API_TIMEOUT
 from models import DrugInteraction
+from services.supabase_service import SupabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,46 @@ _interaction_init_lock = threading.Lock()
 
 # Valid severity values
 VALID_SEVERITIES = {"major", "moderate", "minor"}
+
+# Known dangerous interactions (hardcoded for reliability)
+KNOWN_MAJOR_INTERACTIONS = {
+    ("warfarin", "aspirin"): {
+        "severity": "major",
+        "description": "Significantly increased bleeding risk. Both drugs affect hemostasis.",
+        "recommendation": "Avoid combination unless benefits outweigh risks. Monitor INR closely.",
+        "source": "FDA/Clinical Guidelines"
+    },
+    ("metformin", "contrast"): {
+        "severity": "major",
+        "description": "Risk of contrast-induced nephropathy and lactic acidosis.",
+        "recommendation": "Hold metformin 48h before and after contrast procedures.",
+        "source": "ACR Guidelines"
+    },
+    ("ssri", "maoi"): {
+        "severity": "major",
+        "description": "Serotonin syndrome risk - potentially fatal.",
+        "recommendation": "Contraindicated. Allow 14-day washout between drugs.",
+        "source": "FDA Black Box Warning"
+    },
+    ("warfarin", "nsaid"): {
+        "severity": "major",
+        "description": "Increased bleeding risk and potential GI hemorrhage.",
+        "recommendation": "Use alternative analgesic. Monitor INR if unavoidable.",
+        "source": "Clinical Guidelines"
+    },
+    ("ace inhibitor", "potassium"): {
+        "severity": "major",
+        "description": "Hyperkalemia risk - can cause fatal arrhythmias.",
+        "recommendation": "Monitor potassium levels regularly. Avoid K+ supplements.",
+        "source": "FDA Label"
+    },
+    ("statin", "gemfibrozil"): {
+        "severity": "major",
+        "description": "Increased risk of rhabdomyolysis.",
+        "recommendation": "Avoid combination. Use fenofibrate if fibrate needed.",
+        "source": "FDA Label"
+    }
+}
 
 
 def _get_interaction_model():
@@ -32,7 +73,6 @@ def _get_interaction_model():
         return _interaction_model
     
     with _interaction_init_lock:
-        # Double-check after acquiring lock
         if _interaction_model is not None:
             return _interaction_model
         
@@ -45,32 +85,67 @@ def _get_interaction_model():
     return _interaction_model
 
 
-INTERACTION_PROMPT = """You are a clinical pharmacology expert. Analyze potential drug-drug interactions.
+INTERACTION_PROMPT = """You are a clinical pharmacology expert. Analyze drug-drug interactions.
 
 Drugs to analyze: {drugs}
 
-For each potential interaction, provide a JSON array with objects containing:
+For each CLINICALLY SIGNIFICANT interaction, provide JSON with:
 - drug1: first drug name (lowercase)
 - drug2: second drug name (lowercase)  
-- severity: "minor", "moderate", or "major"
-- description: brief description of the interaction
-- recommendation: clinical recommendation
+- severity: "minor", "moderate", or "major" (use major only for life-threatening)
+- description: mechanism and clinical significance
+- recommendation: actionable clinical guidance
 
-Return ONLY a valid JSON array. If no significant interactions, return empty array [].
+SEVERITY CRITERIA:
+- major: Life-threatening, contraindicated, or requires intervention
+- moderate: May require monitoring or dose adjustment  
+- minor: Minimal clinical significance
 
-Example format:
-[{{"drug1": "warfarin", "drug2": "aspirin", "severity": "major", "description": "Increased bleeding risk", "recommendation": "Avoid combination or monitor closely"}}]"""
+Return ONLY a valid JSON array. Empty array [] if no significant interactions.
+
+Example: [{{"drug1": "warfarin", "drug2": "aspirin", "severity": "major", "description": "Increased bleeding risk via dual antiplatelet and anticoagulant effects", "recommendation": "Avoid combination or monitor INR closely"}}]"""
 
 
 def sanitize_drug_name(name: str) -> str:
     """Sanitize drug name to prevent prompt injection."""
-    # Remove control characters and excess whitespace
     cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', name)
     cleaned = cleaned.strip()
-    # Only allow letters, numbers, spaces, hyphens, and slashes
     cleaned = re.sub(r'[^a-zA-Z0-9\s\-/]', '', cleaned)
-    # Limit length
     return cleaned[:50]
+
+
+def check_known_interactions(drugs: List[str]) -> List[DrugInteraction]:
+    """Check against known dangerous interactions first."""
+    interactions = []
+    drugs_lower = [d.lower() for d in drugs]
+    
+    # Check each pair
+    for i, drug1 in enumerate(drugs_lower):
+        for drug2 in drugs_lower[i+1:]:
+            # Check both orderings
+            for key in [(drug1, drug2), (drug2, drug1)]:
+                if key in KNOWN_MAJOR_INTERACTIONS:
+                    info = KNOWN_MAJOR_INTERACTIONS[key]
+                    interactions.append(DrugInteraction(
+                        drug1=drug1,
+                        drug2=drug2,
+                        severity=info["severity"],
+                        description=f"{info['description']} (Source: {info['source']})",
+                        recommendation=info["recommendation"]
+                    ))
+                    break
+            
+            # Check for drug class matches
+            if any(x in drug1 for x in ["warfarin", "coumadin"]) and any(x in drug2 for x in ["aspirin", "ibuprofen", "naproxen", "nsaid"]):
+                interactions.append(DrugInteraction(
+                    drug1=drug1,
+                    drug2=drug2,
+                    severity="major",
+                    description="Anticoagulant + NSAID: High bleeding risk (Source: FDA)",
+                    recommendation="Avoid combination. Use acetaminophen for pain if needed."
+                ))
+    
+    return interactions
 
 
 def _parse_interaction_item(item: Dict[str, Any]) -> Optional[DrugInteraction]:
@@ -81,11 +156,9 @@ def _parse_interaction_item(item: Dict[str, Any]) -> Optional[DrugInteraction]:
     drug1 = str(item.get("drug1", "")).strip()
     drug2 = str(item.get("drug2", "")).strip()
     
-    # Skip if either drug is empty
     if not drug1 or not drug2:
         return None
     
-    # Validate and normalize severity
     severity = str(item.get("severity", "moderate")).lower().strip()
     if severity not in VALID_SEVERITIES:
         logger.warning("Invalid severity '%s', defaulting to 'moderate'", severity)
@@ -138,42 +211,140 @@ def _extend_interactions_from_results(
     results: List[Dict[str, Any]],
     interactions: List[DrugInteraction]
 ) -> None:
-    """Parse results list and append valid DrugInteraction objects.
-    
-    Args:
-        results: List of dicts with drug1, drug2, severity, description, recommendation keys
-        interactions: List to append parsed DrugInteraction objects to
-    """
+    """Parse results list and append valid DrugInteraction objects."""
     for item in results:
         parsed = _parse_interaction_item(item)
         if parsed:
             interactions.append(parsed)
 
 
+async def check_database_interactions(drugs: List[str]) -> List[DrugInteraction]:
+    """Check interactions using the curated database."""
+    interactions = []
+    if len(drugs) < 2:
+        return []
+        
+    try:
+        supabase = SupabaseService.get_client()
+        if not supabase:
+            return []
+
+        # We need to find the interaction data for EACH drug in the list
+        # Since exact match might be tricky, we use simple loop or OR query
+        # For efficiency, let's fetch data for all drugs in one go using 'ilike' logic is tricky
+        # So we fetch potential matches for each drug name.
+        
+        # 1. Fetch data for input drugs
+        drug_data_map = {} # drug_name_lower -> interaction_json
+        
+        for drug in drugs:
+            # Search for this drug in DB to get its interactions
+            # We use ilike pattern to catch "Dolo 650" from "Dolo"
+            resp = await asyncio.to_thread(
+                lambda: supabase.table("indian_drugs")
+                    .select("name, interactions_data")
+                    .ilike("name", f"{drug}%") # Prefix match safest
+                    .limit(1)
+                    .execute()
+            )
+            if resp.data and resp.data[0].get("interactions_data"):
+                drug_data_map[drug.lower()] = resp.data[0]["interactions_data"]
+
+        # 2. Cross-check
+        # drug_data_map[d1] contains list of drugs that interact with d1.
+        # We need to see if any OTHER drug in our input list (d2) is present in d1's interaction list.
+        
+        input_drugs_lower = [d.lower() for d in drugs]
+        
+        for d1 in input_drugs_lower:
+            if d1 not in drug_data_map:
+                continue
+                
+            data = drug_data_map[d1]
+            # Structure: {"drug": ["A", "B"], "brand": ["X", "Y"], "effect": ["MODERATE", "MAJOR"]}
+            
+            interacting_drugs = [x.lower() for x in data.get("drug", [])]
+            interacting_brands = [x.lower() for x in data.get("brand", [])]
+            effects = data.get("effect", [])
+            
+            for i, d2 in enumerate(input_drugs_lower):
+                if d1 == d2:
+                    continue
+                
+                # Check if d2 matches any in interacting_drugs or interacting_brands (fuzzy match?)
+                # Simple substring match: is d2 substring of bad_drug OR bad_drug substring of d2
+                match_idx = -1
+                
+                # Check generic names list
+                for idx, bad_drug in enumerate(interacting_drugs):
+                    if d2 in bad_drug or bad_drug in d2:
+                        match_idx = idx
+                        break
+                
+                # Check brand names list
+                if match_idx == -1:
+                    for idx, bad_brand in enumerate(interacting_brands):
+                        if d2 in bad_brand or bad_brand in d2:
+                            match_idx = idx
+                            break
+                            
+                if match_idx != -1:
+                    # Found interaction!
+                    severity = "moderate" # Default
+                    if match_idx < len(effects):
+                         severity = effects[match_idx].lower()
+                    
+                    interactions.append(DrugInteraction(
+                        drug1=d1,
+                        drug2=d2,
+                        severity=severity,
+                        description=f"Database indicates interaction between {d1} and {d2}",
+                        recommendation="Consult doctor."
+                    ))
+
+    except Exception as e:
+        logger.error(f"Database interaction check failed: {e}")
+        
+    return interactions
+
+
 async def check_interactions(drugs: List[str]) -> List[DrugInteraction]:
-    """Check drug-drug interactions using Gemini."""
+    """
+    Check drug-drug interactions.
+    
+    Uses a hybrid approach:
+    1. First checks known dangerous interactions (hardcoded, reliable)
+    2. Then uses AI for additional analysis
+    
+    ⚠️ DISCLAIMER: This is clinical decision support only.
+    Always verify with official sources and use clinical judgment.
+    """
     if len(drugs) < 2:
         return []
     
     # Sanitize all drug names
     sanitized_drugs = [sanitize_drug_name(d) for d in drugs if d]
-    sanitized_drugs = [d for d in sanitized_drugs if d]  # Remove empty
+    sanitized_drugs = [d for d in sanitized_drugs if d]
     
     if len(sanitized_drugs) < 2:
         return []
     
+    # 1. Check known dangerous interactions FIRST
+    known_interactions = check_known_interactions(sanitized_drugs)
+    
+    # 2. Check Database interactions
+    db_interactions = await check_database_interactions(sanitized_drugs)
+    known_interactions.extend(db_interactions)
+    
     try:
         model = _get_interaction_model()
-        
         prompt = INTERACTION_PROMPT.format(drugs=", ".join(sanitized_drugs))
         
-        # Use timeout to prevent hanging - direct callable instead of lambda
         response = await asyncio.wait_for(
             asyncio.to_thread(model.generate_content, prompt),
             timeout=API_TIMEOUT
         )
         
-        # Safely access response.text
         try:
             response_text = (response.text or "").strip()
         except Exception as e:
@@ -181,34 +352,40 @@ async def check_interactions(drugs: List[str]) -> List[DrugInteraction]:
             response_text = ""
         
         if not response_text:
-            return []
+            return known_interactions
         
-        # Try to parse JSON
-        interactions: List[DrugInteraction] = []
+        # Parse AI response
+        ai_interactions: List[DrugInteraction] = []
         
-        # First try parsing the whole response
         try:
             results = json.loads(response_text)
             if isinstance(results, list):
-                _extend_interactions_from_results(results, interactions)
-                return interactions
+                _extend_interactions_from_results(results, ai_interactions)
         except json.JSONDecodeError:
-            pass
+            json_str = extract_balanced_json_array(response_text)
+            if json_str:
+                try:
+                    results = json.loads(json_str)
+                    _extend_interactions_from_results(results, ai_interactions)
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning("Failed to parse interaction JSON")
         
-        # Try extracting JSON array with balanced bracket matching
-        json_str = extract_balanced_json_array(response_text)
-        if json_str:
-            try:
-                results = json.loads(json_str)
-                _extend_interactions_from_results(results, interactions)
-            except (json.JSONDecodeError, TypeError):
-                logger.warning("Failed to parse interaction response JSON")
+        # Merge: known interactions take priority (dedup by drug pair)
+        seen_pairs = {(i.drug1.lower(), i.drug2.lower()) for i in known_interactions}
+        seen_pairs.update({(i.drug2.lower(), i.drug1.lower()) for i in known_interactions})
         
-        return interactions
+        for interaction in ai_interactions:
+            pair = (interaction.drug1.lower(), interaction.drug2.lower())
+            reverse_pair = (interaction.drug2.lower(), interaction.drug1.lower())
+            if pair not in seen_pairs and reverse_pair not in seen_pairs:
+                known_interactions.append(interaction)
+                seen_pairs.add(pair)
+        
+        return known_interactions
     
     except asyncio.TimeoutError:
         logger.error("Interaction check timed out")
-        return []
+        return known_interactions  # Return known even on timeout
     except Exception as e:
         logger.error("Interaction check error: %s", e)
-        return []
+        return known_interactions

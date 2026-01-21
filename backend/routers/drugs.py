@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from models import DrugInfo, DrugSearchResult, InteractionRequest, InteractionResponse, SavedDrug
-from services.drug_service import search_drugs, get_drug_info
+from services.drug_service import search_drugs, get_drug_info, find_cheaper_substitutes
 from services.interaction_service import check_interactions
 from services.supabase_service import SupabaseService
 from dependencies import get_current_user
@@ -19,6 +19,15 @@ async def search_drugs_endpoint(
 ):
     """Search for drugs by name"""
     results = await search_drugs(q)
+    return results
+
+
+@router.get("/substitutes", response_model=List[DrugInfo])
+async def find_substitutes(
+    drug_name: str = Query(..., min_length=2, description="Drug name to find substitutes for")
+):
+    """Find cheaper generic substitutes for a drug."""
+    results = await find_cheaper_substitutes(drug_name)
     return results
 
 
