@@ -2,69 +2,87 @@
 create extension if not exists vector;
 create extension if not exists pg_trgm;
 
--- RAG document chunks
+-- ============================================================================
+-- USER DATA TABLES (Supabase - RLS Protected)
+-- ============================================================================
+
+-- User profiles (extends auth.users)
+create table if not exists user_profiles (
+    id uuid primary key references auth.users(id) on delete cascade,
+    display_name text,
+    avatar_url text,
+    patient_context jsonb,  -- Age, weight, conditions, allergies
+    preferences jsonb default '{}',
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
+);
+
+alter table user_profiles enable row level security;
+
+create policy "Users can view own profile"
+    on user_profiles for select using (auth.uid() = id);
+create policy "Users can update own profile"
+    on user_profiles for update using (auth.uid() = id);
+create policy "Users can insert own profile"
+    on user_profiles for insert with check (auth.uid() = id);
+
+-- Chat history (PRIVATE per user)
+create table if not exists chat_history (
+    id uuid default gen_random_uuid() primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    message text not null,
+    response text not null,
+    patient_context jsonb,
+    citations jsonb,
+    created_at timestamptz default now()
+);
+
+alter table chat_history enable row level security;
+create policy "Users can CRUD own chats"
+    on chat_history for all using (auth.uid() = user_id);
+
+-- Saved drugs (PRIVATE per user)
+create table if not exists saved_drugs (
+    id uuid default gen_random_uuid() primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    drug_name text not null,
+    notes text,
+    reminder_time time,
+    created_at timestamptz default now(),
+    unique(user_id, drug_name)
+);
+
+alter table saved_drugs enable row level security;
+create policy "Users can CRUD own saved drugs"
+    on saved_drugs for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- SHARED DATA TABLES (Public Read)
+-- ============================================================================
+
+-- Shared RAG documents
 create table if not exists document_chunks (
     id uuid default gen_random_uuid() primary key,
     content text not null,
+    source text,
     metadata jsonb,
     embedding vector(768),
     created_at timestamptz default now()
 );
 
-create index if not exists document_chunks_embedding_idx on document_chunks 
-using hnsw (embedding vector_cosine_ops)
-with (m = 16, ef_construction = 64);
+alter table document_chunks enable row level security;
+create policy "Public read access"
+    on document_chunks for select using (true);
 
--- Chat history
-create table if not exists chat_history (
-    id uuid default gen_random_uuid() primary key,
-    user_id uuid references auth.users(id),
-    message text not null,
-    response text not null,
-    patient_context jsonb,
-    created_at timestamptz default now()
-);
+-- Indexes
+create index if not exists idx_chat_history_user on chat_history(user_id);
+create index if not exists idx_saved_drugs_user on saved_drugs(user_id);
+create index if not exists idx_document_chunks_embedding on document_chunks 
+    using hnsw (embedding vector_cosine_ops) with (m = 16, ef_construction = 64);
 
--- Saved drugs
-create table if not exists saved_drugs (
-    id uuid default gen_random_uuid() primary key,
-    user_id uuid references auth.users(id),
-    drug_name text not null,
-    notes text,
-    created_at timestamptz default now(),
-    unique(user_id, drug_name)
-);
-
--- Indian Medicines Database (250k+ entries)
-create table if not exists indian_drugs (
-    id uuid default gen_random_uuid() primary key,
-    name text not null unique,
-    generic_name text,
-    manufacturer text,
-    price_raw text,
-    price numeric,
-    pack_size text,
-    is_discontinued boolean default false,
-    therapeutic_class text,
-    action_class text,
-    side_effects text,
-    substitutes text[],
-    description text,  -- Drug description/indications
-    interactions_data jsonb,  -- Structured interaction data
-    embedding vector(384),  -- Sentence transformer embeddings (all-MiniLM-L6-v2)
-    created_at timestamptz default now()
-);
-
--- Indexes for efficient drug lookup
-create index if not exists idx_indian_drugs_name_trgm on indian_drugs using gin (name gin_trgm_ops);
-create index if not exists idx_indian_drugs_generic_trgm on indian_drugs using gin (generic_name gin_trgm_ops);
-create unique index if not exists idx_indian_drugs_name_unique on indian_drugs (name);
-
--- Vector similarity index (for AI-powered search)
--- Note: This may take time to build on large tables
-create index if not exists idx_indian_drugs_embedding on indian_drugs 
-using hnsw (embedding vector_cosine_ops)
-with (m = 16, ef_construction = 64);
+-- ============================================================================
+-- FUNCTIONS
+-- ============================================================================
 
 -- RAG match function
 create or replace function match_documents(
@@ -91,33 +109,7 @@ begin
 end;
 $$;
 
--- Vector similarity search for indian_drugs (used by vision service)
-create or replace function match_indian_drugs(
-    query_embedding vector(384),
-    match_count int default 5
-)
-returns table (
-    name text,
-    generic_name text,
-    manufacturer text,
-    price_raw text,
-    description text,
-    similarity float
-)
-language plpgsql as $$
-begin
-    return query
-    select
-        d.name,
-        d.generic_name,
-        d.manufacturer,
-        d.price_raw,
-        d.description,
-        1 - (d.embedding <=> query_embedding) as similarity
-    from indian_drugs d
-    where d.embedding is not null
-    order by d.embedding <=> query_embedding
-    limit match_count;
-end;
-$$;
-
+-- ============================================================================
+-- NOTE: Drug data is stored in Turso, not Supabase.
+-- Vector embeddings for drugs are stored in Qdrant.
+-- ============================================================================

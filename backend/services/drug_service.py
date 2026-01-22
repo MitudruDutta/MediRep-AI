@@ -18,6 +18,8 @@ from typing import Any, Optional, List, Dict
 
 import httpx
 import google.generativeai as genai
+
+from services import turso_service
 from services.supabase_service import SupabaseService
 from models import DrugInfo, DrugSearchResult
 from config import OPENFDA_LABEL_URL, CACHE_TTL_DRUG, API_TIMEOUT, GEMINI_API_KEY
@@ -478,7 +480,7 @@ async def search_drug_descriptions(query: str, limit: int = 5) -> str:
 
 
 async def search_drugs(query: str, limit: int = 10) -> List[DrugSearchResult]:
-    """Search for drugs - combines Indian DB with openFDA."""
+    """Search for drugs - combines Indian DB (Turso) with openFDA."""
     if not query or len(query) < 2:
         return []
     
@@ -488,47 +490,59 @@ async def search_drugs(query: str, limit: int = 10) -> List[DrugSearchResult]:
         return cached
     
     results = []
-    query_lower = query.lower()
     
-    # 1. Search Indian medicines DB first
-    for drug_key, drug_data in INDIAN_MEDICINES_DB.items():
-        if query_lower in drug_key or query_lower in drug_data.get("generic_name", "").lower():
-            results.append(DrugSearchResult(
-                name=drug_key.title(),
-                generic_name=drug_data.get("generic_name"),
-                manufacturer=drug_data.get("indian_brands", [""])[0].split("(")[1].rstrip(")") if drug_data.get("indian_brands") else None
-            ))
-    
-    # 2. Also search openFDA for completeness
+    # 1. Search Turso DB first (Real 250k+ Data)
     try:
-        escaped_query = escape_lucene_special_chars(query)
-        async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
-            response = await client.get(
-                OPENFDA_LABEL_URL,
-                params={
-                    "search": f'openfda.brand_name:"{escaped_query}" OR openfda.generic_name:"{escaped_query}"',
-                    "limit": limit
-                }
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                for item in data.get("results", []):
-                    openfda = item.get("openfda", {})
-                    brand_names = openfda.get("brand_name", [])
-                    generic_names = openfda.get("generic_name", [])
-                    manufacturers = openfda.get("manufacturer_name", [])
-                    
-                    name = brand_names[0] if brand_names else "Unknown"
-                    # Skip if already in results
-                    if not any(r.name.lower() == name.lower() for r in results):
-                        results.append(DrugSearchResult(
-                            name=name,
-                            generic_name=generic_names[0] if generic_names else None,
-                            manufacturer=manufacturers[0] if manufacturers else None
-                        ))
+        turso_results = await asyncio.to_thread(turso_service.search_drugs, query, limit)
+        for row in turso_results:
+            results.append(DrugSearchResult(
+                name=row.get("name", "").title(),
+                generic_name=row.get("generic_name"),
+                manufacturer=row.get("manufacturer")
+            ))
     except Exception as e:
-        logger.error("openFDA search error: %s", e)
+        logger.error(f"Turso search failed: {e}")
+        # Fallback to static dictionary only if Turso completely fails
+        query_lower = query.lower()
+        for drug_key, drug_data in INDIAN_MEDICINES_DB.items():
+            if query_lower in drug_key or query_lower in drug_data.get("generic_name", "").lower():
+                results.append(DrugSearchResult(
+                    name=drug_key.title(),
+                    generic_name=drug_data.get("generic_name"),
+                    manufacturer=drug_data.get("indian_brands", [""])[0].split("(")[1].rstrip(")") if drug_data.get("indian_brands") else None
+                ))
+    
+    # 2. Also search openFDA for completeness if needed
+    if len(results) < limit:
+        try:
+            escaped_query = escape_lucene_special_chars(query)
+            async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
+                response = await client.get(
+                    OPENFDA_LABEL_URL,
+                    params={
+                        "search": f'openfda.brand_name:"{escaped_query}" OR openfda.generic_name:"{escaped_query}"',
+                        "limit": limit
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    for item in data.get("results", []):
+                        openfda = item.get("openfda", {})
+                        brand_names = openfda.get("brand_name", [])
+                        generic_names = openfda.get("generic_name", [])
+                        manufacturers = openfda.get("manufacturer_name", [])
+                        
+                        name = brand_names[0] if brand_names else "Unknown"
+                        # Skip if already in results
+                        if not any(r.name.lower() == name.lower() for r in results):
+                            results.append(DrugSearchResult(
+                                name=name,
+                                generic_name=generic_names[0] if generic_names else None,
+                                manufacturer=manufacturers[0] if manufacturers else None
+                            ))
+        except Exception as e:
+            logger.error("openFDA search error: %s", e)
     
     results = results[:limit]
     cache.set(cache_key, results)
@@ -536,7 +550,7 @@ async def search_drugs(query: str, limit: int = 10) -> List[DrugSearchResult]:
 
 
 async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
-    """Get detailed drug info - Supabase -> India Static -> openFDA."""
+    """Get detailed drug info - Turso -> India Static -> openFDA."""
     if not drug_name:
         return None
     
@@ -547,55 +561,47 @@ async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
     
     drug_lower = drug_name.lower()
     
-    # 0. Check Supabase First (Real Data)
+    # 0. Check Turso First (Real Data)
     try:
-        supabase = SupabaseService.get_client()
-        if supabase:
-            # Query by exact name or fuzzy
-            response = await asyncio.to_thread(
-                lambda: supabase.table("indian_drugs")
-                    .select("*")
-                    .ilike("name", drug_name)
-                    .limit(1)
-                    .execute()
+        data = await asyncio.to_thread(turso_service.get_drug_by_name, drug_name)
+        
+        if data:
+            # Map Turso Row to DrugInfo
+            info = DrugInfo(
+                name=data.get("name"),
+                generic_name=data.get("generic_name"),
+                manufacturer=data.get("manufacturer"),
+                price_raw=data.get("price_raw"),
+                price=float(data.get("price")) if data.get("price") is not None else None,
+                pack_size=data.get("pack_size"),
+                # Convert string lists
+                side_effects=[s.strip() for s in data.get("side_effects", "").split(",")] if data.get("side_effects") else [],
+                indications=[data.get("therapeutic_class")] if data.get("therapeutic_class") else [],
+                substitutes=data.get("substitutes") or [],
+                # Map extra fields
+                therapeutic_class=data.get("therapeutic_class"),
+                action_class=data.get("action_class"),
+                nlem_status=bool(data.get("is_discontinued")), # Using field context
+                dpco_controlled=data.get("name").lower() in DPCO_CONTROLLED_DRUGS 
             )
             
-            if response.data:
-                data = response.data[0]
-                # Map Supabase Row to DrugInfo
-                info = DrugInfo(
-                    name=data.get("name"),
-                    generic_name=data.get("generic_name"),
-                    manufacturer=data.get("manufacturer"),
-                    price_raw=data.get("price_raw"),
-                    price=float(data.get("price")) if data.get("price") is not None else None,
-                    pack_size=data.get("pack_size"),
-                    # Convert single string side_effects to list if needed
-                    side_effects=[s.strip() for s in data.get("side_effects", "").split(",")] if data.get("side_effects") else [],
-                    indications=[data.get("therapeutic_class")] if data.get("therapeutic_class") else [],
-                    substitutes=data.get("substitutes") or [],
-                    # Map extra fields
-                    therapeutic_class=data.get("therapeutic_class"),
-                    action_class=data.get("action_class"),
-                    nlem_status=data.get("nlem_status", False),
-                    dpco_controlled=data.get("name").lower() in DPCO_CONTROLLED_DRUGS 
-                )
-                
-                # Enrich with Description if available
-                if data.get("description"):
-                    if not info.indications:
-                        info.indications = []
-                    info.indications.append(data.get("description"))
+            # Enrich with Description if available
+            if data.get("description"):
+                if not info.indications:
+                    info.indications = []
+                info.indications.append(data.get("description"))
 
-                # Check for "Is Discontinued"
-                if data.get("is_discontinued"):
-                    info.warnings.append("⚠️ This product is marked as DISCONTINUED.")
-                
-                # HYBRID APPROACH: Enrich missing fields with Gemini
-                info = await enrich_drug_with_gemini(info)
-                
-                cache.set(cache_key, info)
-                return info
+            # Check for "Is Discontinued"
+            if data.get("is_discontinued"):
+                info.warnings.append("⚠️ This product is marked as DISCONTINUED.")
+            
+            # HYBRID APPROACH: Enrich missing fields with Gemini
+            info = await enrich_drug_with_gemini(info)
+            
+            cache.set(cache_key, info)
+            return info
+    except Exception as e:
+        logger.warning(f"Turso drug info lookup failed: {e}")
     except Exception as e:
         logger.warning(f"Supabase drug info lookup failed: {e}")
 
@@ -687,55 +693,37 @@ async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
 async def find_cheaper_substitutes(drug_name: str) -> List[DrugInfo]:
     """Find cheaper substitutes for a given drug using Supabase."""
     supabase = SupabaseService.get_client()
-    if not supabase:
-        return []
+async def find_cheaper_substitutes(drug_name: str) -> List[DrugInfo]:
+    """Find cheaper substitutes using Turso."""
+    cache_key = f"subs:india:{drug_name.lower()}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    results = []
     
+    # 0. Turso Search (Real Data)
     try:
-        # 1. Get current drug price and generic name
-        response = await asyncio.to_thread(
-            lambda: supabase.table("indian_drugs")
-                .select("name, price, generic_name")
-                .ilike("name", drug_name)
-                .limit(1)
-                .execute()
-        )
+        substitutes = await asyncio.to_thread(turso_find_substitutes, drug_name)
         
-        if not response.data:
-            return []
+        for sub in substitutes:
+            results.append(DrugInfo(
+                name=sub.get("name"),
+                generic_name=sub.get("generic_name"),
+                manufacturer=sub.get("manufacturer"),
+                price_raw=sub.get("price_raw"),
+                price=float(sub.get("price")) if sub.get("price") is not None else None,
+                pack_size=sub.get("pack_size"),
+                therapeutic_class=sub.get("therapeutic_class"),
+                action_class=sub.get("action_class"),
+                substitutes=sub.get("substitutes") or []
+            ))
             
-        current_drug = response.data[0]
-        current_price = current_drug.get("price")
-        generic_name = current_drug.get("generic_name")
-        
-        if not current_price or not generic_name:
-            return []
+        if results:
+            cache.set(cache_key, results)
+            return results
             
-        # 2. Find cheaper alternatives with same generic
-        # Using a simple query. Note: Supabase/PostgREST uses 'lt' for less than
-        alternatives_resp = await asyncio.to_thread(
-            lambda: supabase.table("indian_drugs")
-                .select("*")
-                .ilike("generic_name", generic_name)
-                .lt("price", current_price)
-                .order("price", desc=False) # Cheapest first
-                .limit(10)
-                .execute()
-        )
-        
-        return [
-            DrugInfo(
-                name=d.get("name"),
-                generic_name=d.get("generic_name"),
-                manufacturer=d.get("manufacturer"),
-                price_raw=d.get("price_raw"),
-                price=float(d.get("price")) if d.get("price") is not None else None,
-                pack_size=d.get("pack_size"),
-                therapeutic_class=d.get("therapeutic_class"),
-                action_class=d.get("action_class"),
-                substitutes=d.get("substitutes") or []
-            ) for d in alternatives_resp.data
-        ]
-        
     except Exception as e:
-        logger.error(f"Error finding substitutes: {e}")
-        return []
+        logger.warning(f"Turso substitute search failed: {e}")
+        
+    return results

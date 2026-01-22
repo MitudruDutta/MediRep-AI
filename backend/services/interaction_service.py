@@ -389,3 +389,11 @@ async def check_interactions(drugs: List[str]) -> List[DrugInteraction]:
     except Exception as e:
         logger.error("Interaction check error: %s", e)
         return known_interactions
+
+# Singleton wrapper for compatibility
+class InteractionService:
+    """Wrapper to provide object-oriented access to interaction checking."""
+    async def check(self, drugs: List[str]) -> List[DrugInteraction]:
+        return await check_interactions(drugs)
+
+interaction_service = InteractionService()

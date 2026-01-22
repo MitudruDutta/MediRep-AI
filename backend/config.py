@@ -98,3 +98,24 @@ if MAX_RESPONSE_LENGTH <= 0:
 # openFDA URLs
 OPENFDA_LABEL_URL = "https://api.fda.gov/drug/label.json"
 OPENFDA_ENFORCEMENT_URL = "https://api.fda.gov/drug/enforcement.json"
+
+# Turso Configuration (Drug Data Storage)
+TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL")
+TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
+
+if not TURSO_DATABASE_URL or not TURSO_AUTH_TOKEN:
+    logger.warning(
+        "TURSO_DATABASE_URL or TURSO_AUTH_TOKEN not set. "
+        "Drug database features will fall back to Supabase or static data."
+    )
+
+# Qdrant Configuration (Vector Embeddings)
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+
+if not QDRANT_URL or not QDRANT_API_KEY:
+    logger.warning(
+        "QDRANT_URL or QDRANT_API_KEY not set. "
+        "Vector search will be disabled, falling back to text search."
+    )
+

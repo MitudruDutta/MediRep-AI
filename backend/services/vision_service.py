@@ -1,14 +1,16 @@
 """
-Pill Identification Service - Two-Step Approach using REAL Database
+Pill Identification Service - Two-Step Approach using Turso + Qdrant
 
 WORKFLOW:
 1. Extract visual features using Gemini Vision (OCR for imprint, color, shape)
-2. Query indian_drugs table using:
-   - Vector similarity search on embeddings (for semantic matching)
-   - Fuzzy text matching on drug name (for imprint matching)
+2. Query drugs using:
+   - Qdrant vector similarity search (for semantic matching)
+   - Turso text search on drug name (for imprint matching)
 3. Return multiple possible matches with confidence scores
 
-This uses the ACTUAL 250k+ drug database, not a hardcoded list.
+Architecture:
+- Turso: Stores 250k+ drug records (name, price, etc.)
+- Qdrant: Stores vector embeddings for semantic search
 """
 import asyncio
 import json
@@ -22,7 +24,6 @@ from sentence_transformers import SentenceTransformer
 
 from config import GEMINI_API_KEY, GEMINI_MODEL, API_TIMEOUT
 from models import PillIdentification
-from services.supabase_service import SupabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -221,40 +222,36 @@ async def extract_pill_features(image_bytes: bytes, content_type: str) -> PillFe
 
 async def query_drugs_by_features(features: PillFeatures) -> List[DrugMatch]:
     """
-    Step 2: Query the indian_drugs table using multiple strategies:
-    1. Fuzzy text match on drug name (for imprint)
-    2. Vector similarity search (for semantic matching)
+    Query drugs using Turso (text search) + Qdrant (vector search).
+    
+    Flow:
+    1. Text search in Turso for imprint matches
+    2. Vector search in Qdrant for semantic matches
+    3. Fetch full drug data from Turso
+    4. Return combined results sorted by score
     """
-    client = SupabaseService.get_client()
-    if not client:
-        logger.warning("Supabase not available for drug lookup")
-        return []
+    from services import turso_service, qdrant_service
     
     matches: List[DrugMatch] = []
     
     try:
-        # Strategy 1: Direct name/imprint matching (most reliable if imprint is visible)
+        # Strategy 1: Direct text search in Turso (for imprint)
         if features.imprint:
-            # Try exact-ish match first
             imprint_clean = features.imprint.strip()
             
-            response = await asyncio.to_thread(
-                lambda: client.table("indian_drugs")
-                    .select("name, generic_name, manufacturer, price_raw, description")
-                    .ilike("name", f"%{imprint_clean}%")
-                    .limit(10)
-                    .execute()
+            # Run text search in thread pool
+            turso_results = await asyncio.to_thread(
+                turso_service.search_drugs, imprint_clean, 10
             )
             
-            for row in response.data:
-                # Calculate match score based on how close the name is
+            for row in turso_results:
                 name_lower = row.get("name", "").lower()
                 imprint_lower = imprint_clean.lower()
                 
                 if imprint_lower in name_lower or name_lower in imprint_lower:
-                    score = 0.9  # Very high match
+                    score = 0.9
                 else:
-                    score = 0.6  # Partial match
+                    score = 0.6
                 
                 matches.append(DrugMatch(
                     name=row.get("name", "Unknown"),
@@ -263,13 +260,11 @@ async def query_drugs_by_features(features: PillFeatures) -> List[DrugMatch]:
                     price_raw=row.get("price_raw"),
                     description=row.get("description"),
                     match_score=score,
-                    match_reason="Imprint match"
+                    match_reason="Text match"
                 ))
         
-        # Strategy 2: Vector similarity search (semantic matching)
-        # This helps when imprint is partial or unclear
+        # Strategy 2: Vector similarity search in Qdrant
         if features.imprint or features.color or features.shape:
-            # Build search query from features
             search_text = " ".join(filter(None, [
                 features.imprint or "",
                 features.color or "",
@@ -277,39 +272,37 @@ async def query_drugs_by_features(features: PillFeatures) -> List[DrugMatch]:
                 "tablet" if features.shape != "capsule" else "capsule"
             ]))
             
-            if search_text.strip():
-                # Generate embedding for search (non-blocking)
-                model = _get_embedding_model()
-                query_embedding = await asyncio.to_thread(
-                    lambda: model.encode(search_text).tolist()
-                )
-                
-                # Query using vector similarity via RPC
+            if search_text.strip() and len(matches) < 5:
                 try:
-                    response = await asyncio.to_thread(
-                        lambda: client.rpc(
-                            "match_indian_drugs",
-                            {
-                                "query_embedding": query_embedding,
-                                "match_count": 5
-                            }
-                        ).execute()
+                    # Search Qdrant for similar drugs
+                    qdrant_results = await asyncio.to_thread(
+                        qdrant_service.search_similar, search_text, 5
                     )
                     
-                    for row in response.data:
-                        # Check if not already in matches
-                        if not any(m.name == row.get("name") for m in matches):
-                            matches.append(DrugMatch(
-                                name=row.get("name", "Unknown"),
-                                generic_name=row.get("generic_name"),
-                                manufacturer=row.get("manufacturer"),
-                                price_raw=row.get("price_raw"),
-                                description=row.get("description"),
-                                match_score=float(row.get("similarity", 0.5)),
-                                match_reason="Vector similarity"
-                            ))
+                    if qdrant_results:
+                        # Get drug IDs from Qdrant results
+                        drug_ids = [r["drug_id"] for r in qdrant_results if r.get("drug_id")]
+                        
+                        # Fetch full drug data from Turso
+                        if drug_ids:
+                            turso_drugs = await asyncio.to_thread(
+                                turso_service.get_drugs_by_ids, drug_ids
+                            )
+                            
+                            # Map drug data and add to matches
+                            for result, drug in zip(qdrant_results, turso_drugs):
+                                if not any(m.name == drug.get("name") for m in matches):
+                                    matches.append(DrugMatch(
+                                        name=drug.get("name", result.get("drug_name", "Unknown")),
+                                        generic_name=drug.get("generic_name"),
+                                        manufacturer=drug.get("manufacturer"),
+                                        price_raw=drug.get("price_raw"),
+                                        description=drug.get("description"),
+                                        match_score=result.get("score", 0.5),
+                                        match_reason="Vector similarity"
+                                    ))
                 except Exception as e:
-                    logger.warning(f"Vector search failed (RPC may not exist): {e}")
+                    logger.warning(f"Qdrant search failed (graceful fallback): {e}")
         
         # Sort by score and return top matches
         matches.sort(key=lambda x: x.match_score, reverse=True)

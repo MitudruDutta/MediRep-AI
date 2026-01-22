@@ -7,7 +7,7 @@ from models import DrugInfo, DrugSearchResult, InteractionRequest, InteractionRe
 from services.drug_service import search_drugs, get_drug_info, find_cheaper_substitutes
 from services.interaction_service import check_interactions
 from services.supabase_service import SupabaseService
-from dependencies import get_current_user
+from middleware.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -33,14 +33,14 @@ async def find_substitutes(
 
 # FIXED: /saved routes BEFORE /{drug_name} to prevent route shadowing
 @router.post("/saved", response_model=bool)
-async def save_drug(drug: SavedDrug, user: dict = Depends(get_current_user)):
+async def save_drug(drug: SavedDrug, user = Depends(get_current_user)):
     """Save a drug to user's list"""
     try:
         client = SupabaseService.get_client()
         if not client:
             raise HTTPException(status_code=503, detail="Database unavailable")
         
-        user_id = user.get("id")
+        user_id = user.id
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid user")
         
@@ -81,14 +81,14 @@ async def save_drug(drug: SavedDrug, user: dict = Depends(get_current_user)):
 
 
 @router.get("/saved", response_model=List[SavedDrug])
-async def get_saved_drugs(user: dict = Depends(get_current_user)):
+async def get_saved_drugs(user = Depends(get_current_user)):
     """Get user's saved drugs"""
     try:
         client = SupabaseService.get_client()
         if not client:
             raise HTTPException(status_code=503, detail="Database unavailable")
         
-        user_id = user.get("id")
+        user_id = user.id
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid user")
         

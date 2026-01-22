@@ -11,7 +11,7 @@ from services.drug_service import get_drug_info, find_cheaper_substitutes, searc
 from services.rag_service import rag_service
 from services.interaction_service import interaction_service
 from services.supabase_service import SupabaseService
-from dependencies import get_current_user
+from middleware.auth import get_current_user, get_optional_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -103,7 +103,7 @@ async def chat_endpoint(
         suggestions = gemini_result.get("suggestions", [])
 
         # 5. Save to chat history
-        user_id = user.get("id")
+        user_id = user.id
         if user_id:
             try:
                 client = SupabaseService.get_client()
