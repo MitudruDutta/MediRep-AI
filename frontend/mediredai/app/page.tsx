@@ -1,9 +1,5 @@
-import React from 'react'
+import { redirect } from 'next/navigation'
 
-const page = () => {
-  return (
-    <div>MediRep AI Landing Page</div>
-  )
+export default function HomePage() {
+  redirect('/dashboard')
 }
-
-export default page

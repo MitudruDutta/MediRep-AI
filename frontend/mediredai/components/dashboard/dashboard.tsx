@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { MessageSquare, Activity, Pill, AlertTriangle, FileText, User, LogOut } from "lucide-react";
 
 const features = [
@@ -58,25 +57,11 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ initialUserEmail }: DashboardProps) {
-  const [userEmail, setUserEmail] = useState<string | null>(initialUserEmail || null);
+  const [userEmail] = useState<string | null>(initialUserEmail || null);
   const router = useRouter();
-  const supabase = createClient();
 
-  useEffect(() => {
-    if (!initialUserEmail) {
-      const getUser = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setUserEmail(user.email || null);
-        }
-      };
-      getUser();
-    }
-  }, [initialUserEmail, supabase.auth]);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/auth/login');
+  const handleLogout = () => {
+    router.push('/');
   };
 
   return (

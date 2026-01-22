@@ -46,18 +46,29 @@ MediRep AI is an intelligent medical information assistant that helps healthcare
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/medirep-ai.git
+git clone https://github.com/your-username/medirep-ai.git
 cd medirep-ai
 
-# Setup backend
+# Navigate to backend
 cd backend
+
+# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Activate virtual environment
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+# source venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 
-# Configure environment
-cp .env.example .env
-# Edit .env with your API keys
+# Configure environment variables
+# Create a .env file and add your API keys:
+# GEMINI_API_KEY=your_gemini_api_key
+# SUPABASE_URL=your_supabase_url
+# SUPABASE_KEY=your_supabase_service_role_key
 
 # Run the server
 uvicorn main:app --reload --port 8000
@@ -66,22 +77,27 @@ uvicorn main:app --reload --port 8000
 ### Frontend Setup
 
 ```bash
-# From project root
+# From project root, navigate to frontend
 cd frontend/mediredai
 
 # Install dependencies
 npm install
 
-# Configure environment
-cp .env.local.example .env.local
-# Edit .env.local with your Supabase credentials
+# Configure environment variables
+# Create a .env.local file and add:
+# NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+# NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your_supabase_publishable_key
+# NEXT_PUBLIC_API_URL=http://localhost:8000
+# NEXT_PUBLIC_SITE_URL=http://localhost:3000
 
 # Run development server
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:3000`  
-The backend API will be available at `http://localhost:8000`
+Access the application:
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:8000`
+- API Documentation: `http://localhost:8000/docs`
 
 ## 📡 API Documentation
 
@@ -103,35 +119,33 @@ http://localhost:8000
 | `POST` | `/api/vision/identify-pill` | Identify pill from image |
 | `GET`  | `/api/alerts/{drug_name}`   | Get FDA alerts           |
 
-### Interactive Docs
+### Interactive API Documentation
 
-Once running, access Swagger UI at:
+Once the backend is running, you can explore and test all endpoints using:
 
-```
-http://localhost:8000/docs
-```
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
 
 ## 🏗️ Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        MediRep AI                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                            │
-│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐   │
-│  │   Frontend  │────▶│   FastAPI  │───▶│  Supabase   │   │
-│  │  (Next.js)  │     │   Backend   │     │  (Postgres) │   │
-│  └─────────────┘     └──────┬──────┘     └─────────────┘   │
-│                             │                              │
-│         ┌───────────────────┼───────────────────┐          │
-│         ▼                   ▼                   ▼          │
-│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐   │
-│  │   Gemini    │     │   openFDA   │     │   RAG       │   │
-│  │   2.5 Flash │     │   API       │     │   (pgvector)│   │
-│  └─────────────┘     └─────────────┘     └─────────────┘   │
-│                                                            │
-└─────────────────────────────────────────────────────────────┘
-```
+### System Overview
+
+![alt text](image.png)
+
+### Data Flow
+
+1. **User Request** → Frontend (Next.js)
+2. **Authentication** → Supabase Auth validates JWT token
+3. **API Call** → FastAPI backend receives request
+4. **Service Layer** → Appropriate service processes the request:
+   - **Chat**: Gemini AI + RAG Service (vector similarity search)
+   - **Drug Search**: openFDA API + caching
+   - **Interactions**: Gemini AI analysis
+   - **Pill ID**: Gemini Vision API
+   - **Alerts**: openFDA Enforcement API
+5. **Data Storage** → Supabase (chat history, saved drugs, user data)
+6. **Response** → JSON response back to frontend
+7. **UI Update** → React components render the data
 
 ### Tech Stack
 
@@ -216,19 +230,34 @@ medirep-ai/
 
 ## 🚀 Deployment
 
-### Railway
+### Backend Deployment (Railway/Heroku)
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app)
+The backend includes a `Procfile` for easy deployment:
 
-1. Connect your GitHub repo
-2. Set environment variables
-3. Deploy!
+1. Push your code to GitHub
+2. Connect to Railway/Heroku
+3. Set environment variables in the dashboard
+4. Deploy automatically
 
-### Docker
+### Frontend Deployment (Vercel)
 
 ```bash
-docker build -t medirep-ai ./backend
-docker run -p 8000:8000 --env-file .env medirep-ai
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy from frontend directory
+cd frontend/mediredai
+vercel
+```
+
+### Docker (Optional)
+
+```bash
+# Build backend image
+docker build -t medirep-ai-backend ./backend
+
+# Run backend container
+docker run -p 8000:8000 --env-file backend/.env medirep-ai-backend
 ```
 
 ## 🤝 Contributing
