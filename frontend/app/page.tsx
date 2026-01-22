@@ -49,10 +49,10 @@ export default function HomePage() {
               </Link>
             ) : (
               <div className="flex items-center gap-2">
-                <Link href="/login">
+                <Link href="/auth/login">
                   <Button variant="ghost">Sign In</Button>
                 </Link>
-                <Link href="/signup">
+                <Link href="/auth/signup">
                   <Button>Get Started</Button>
                 </Link>
               </div>
@@ -91,13 +91,13 @@ export default function HomePage() {
                 </Link>
               ) : (
                 <>
-                  <Link href="/signup">
+                  <Link href="/auth/signup">
                     <Button size="lg" className="text-lg px-8">
                       Start Free Trial
                       <ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>
-                  <Link href="/login">
+                  <Link href="/auth/login">
                     <Button size="lg" variant="outline" className="text-lg px-8">
                       Sign In
                     </Button>

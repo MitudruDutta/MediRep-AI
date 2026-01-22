@@ -1,123 +1,204 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, X, Search } from "lucide-react";
+import { RefreshCw, Shield } from "lucide-react";
 import { getFDAAlerts } from "@/lib/api";
-import { FDAAlert } from "@/types";
+import {
+  AlertSearchInput,
+  AlertList,
+  AlertSummary,
+  AlertFilters,
+  AlertTimeline,
+  AlertExport,
+  AlertStats,
+  FDAAlert,
+  AlertSeverity,
+} from "@/components/SafetyAlert";
 
-const severityColors = {
-  info: "bg-blue-500/20 text-blue-500 border-blue-500/30",
-  warning: "bg-warning/20 text-warning border-warning/30",
-  recall: "bg-danger/20 text-danger border-danger/30",
-};
+interface FDAAlertResponse {
+  drug_name: string;
+  alerts: FDAAlert[];
+}
 
 export default function SafetyAlertWidget() {
-  const [drugName, setDrugName] = useState("");
+  const [drugName, setDrugName] = useState<string>("");
   const [alerts, setAlerts] = useState<FDAAlert[]>([]);
+  const [filteredAlerts, setFilteredAlerts] = useState<FDAAlert[]>([]);
+  const [selectedSeverity, setSelectedSeverity] = useState<AlertSeverity>("all");
   const [isLoading, setIsLoading] = useState(false);
-  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
+  const [hasSearched, setHasSearched] = useState(false);
 
-  const searchAlerts = async () => {
-    if (!drugName.trim()) return;
+  const fetchAlerts = useCallback(async (drug: string) => {
+    if (!drug.trim()) return;
 
     setIsLoading(true);
+    setHasSearched(true);
+    setDrugName(drug);
+
     try {
-      const response = await getFDAAlerts(drugName);
+      const response: FDAAlertResponse = await getFDAAlerts(drug);
       setAlerts(response.alerts || []);
-      setDismissedAlerts(new Set());
+      setFilteredAlerts(response.alerts || []);
+      setSelectedSeverity("all");
     } catch (error) {
-      console.error("Error fetching alerts:", error);
-      alert("Failed to fetch alerts. Please try again.");
+      console.error("Error fetching FDA alerts:", error);
+      setAlerts([]);
+      setFilteredAlerts([]);
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  const handleRefresh = async () => {
+    if (drugName) {
+      await fetchAlerts(drugName);
+    }
   };
 
-  const dismissAlert = (alertId: string) => {
-    setDismissedAlerts(prev => new Set(prev).add(alertId));
+  const handleSeverityChange = (severity: AlertSeverity) => {
+    setSelectedSeverity(severity);
+    if (severity === "all") {
+      setFilteredAlerts(alerts);
+    } else {
+      setFilteredAlerts(alerts.filter((alert) => alert.severity === severity));
+    }
   };
 
-  const visibleAlerts = alerts.filter(alert => !dismissedAlerts.has(alert.id));
+
+
+  const severityCounts = {
+    recall: alerts.filter((a) => a.severity === "recall").length,
+    warning: alerts.filter((a) => a.severity === "warning").length,
+    info: alerts.filter((a) => a.severity === "info").length,
+  };
 
   return (
-    <Card className="glass-card p-6">
-      <h2 className="text-2xl font-bold mb-6">FDA Safety Alerts</h2>
-
-      <div className="flex gap-2 mb-6">
-        <Input
-          value={drugName}
-          onChange={(e) => setDrugName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && searchAlerts()}
-          placeholder="Enter drug name to check alerts"
-        />
-        <Button onClick={searchAlerts} disabled={isLoading}>
-          <Search className="h-4 w-4 mr-2" />
-          {isLoading ? "Searching..." : "Search"}
-        </Button>
-      </div>
-
-      <div className="space-y-4">
-        {visibleAlerts.length === 0 && !isLoading && (
-          <div className="text-center text-muted-foreground py-8">
-            {alerts.length === 0
-              ? "Enter a drug name to check for FDA alerts"
-              : "All alerts dismissed"}
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Shield className="h-8 w-8" />
+            FDA Safety Alerts
+          </h2>
+          <p className="text-muted-foreground mt-1">
+            Check for FDA recalls, warnings, and safety alerts for medications
+          </p>
+        </div>
+        {hasSearched && (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading || !drugName}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <AlertExport
+              alerts={filteredAlerts}
+              drugName={drugName}
+              disabled={alerts.length === 0}
+            />
           </div>
         )}
-
-        {visibleAlerts.map((alert) => (
-          <div
-            key={alert.id}
-            className={`p-4 border-2 rounded-lg animate-in slide-in-from-top ${
-              severityColors[alert.severity]
-            }`}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex gap-3 flex-1">
-                <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="font-bold">{alert.title}</h3>
-                    <Badge variant="outline" className={severityColors[alert.severity]}>
-                      {alert.severity.toUpperCase()}
-                    </Badge>
-                  </div>
-                  <p className="text-sm mb-2">{alert.description}</p>
-                  {alert.date && (
-                    <p className="text-xs text-muted-foreground">
-                      Date: {new Date(alert.date).toLocaleDateString()}
-                    </p>
-                  )}
-                  {alert.lot_numbers && alert.lot_numbers.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-xs font-semibold mb-1">Affected Lot Numbers:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {alert.lot_numbers.map((lot, idx) => (
-                          <Badge key={idx} variant="secondary" className="text-xs">
-                            {lot}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6 shrink-0"
-                onClick={() => dismissAlert(alert.id)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        ))}
       </div>
-    </Card>
+
+      {/* Search Input */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Search Drug Alerts</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AlertSearchInput onSearch={fetchAlerts} isLoading={isLoading} />
+        </CardContent>
+      </Card>
+
+      {/* Summary Cards */}
+      {hasSearched && alerts.length > 0 && (
+        <AlertSummary alerts={alerts} drugName={drugName} />
+      )}
+
+      {/* Main Content */}
+      {hasSearched && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Alerts List */}
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>
+                  {drugName ? `Alerts for ${drugName}` : "Alerts"}
+                  {filteredAlerts.length > 0 && ` (${filteredAlerts.length})`}
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {alerts.length > 0 && (
+                <div className="mb-4">
+                  <AlertFilters
+                    selectedSeverity={selectedSeverity}
+                    onSeverityChange={handleSeverityChange}
+                    counts={severityCounts}
+                  />
+                </div>
+              )}
+              <AlertList
+                alerts={filteredAlerts}
+                emptyMessage={
+                  selectedSeverity !== "all"
+                    ? `No ${selectedSeverity} alerts found for this drug.`
+                    : undefined
+                }
+              />
+            </CardContent>
+          </Card>
+
+          {/* Timeline & Stats Sidebar */}
+          {alerts.length > 0 && (
+            <div className="space-y-6">
+              <AlertStats alerts={alerts} />
+              <AlertTimeline alerts={filteredAlerts} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!hasSearched && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="rounded-full bg-primary/10 p-6 mb-4">
+              <Shield className="h-16 w-16 text-primary" />
+            </div>
+            <h3 className="text-xl font-semibold mb-2">Search for Drug Safety Alerts</h3>
+            <p className="text-muted-foreground max-w-md mb-6">
+              Enter a drug name above to check for FDA recalls, warnings, and safety alerts.
+              Stay informed about medication safety.
+            </p>
+            <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-red-500" />
+                <span>Product Recalls</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-yellow-500" />
+                <span>Safety Warnings</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-blue-500" />
+                <span>Information Updates</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-green-500" />
+                <span>Lot Number Tracking</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }

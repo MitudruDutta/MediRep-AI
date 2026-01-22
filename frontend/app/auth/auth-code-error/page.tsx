@@ -58,13 +58,13 @@ export default function AuthCodeErrorPage() {
           </Card>
 
           <div className="space-y-3">
-            <Link href="/login" className="block">
+            <Link href="/auth/login" className="block">
               <Button className="w-full h-11">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Sign In
               </Button>
             </Link>
-            <Link href="/signup" className="block">
+            <Link href="/auth/signup" className="block">
               <Button variant="outline" className="w-full h-11">
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Try Signing Up Again

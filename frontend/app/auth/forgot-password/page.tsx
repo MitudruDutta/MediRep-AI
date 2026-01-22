@@ -49,7 +49,7 @@ export default function ForgotPasswordPage() {
       <main className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md space-y-6">
           <Link
-            href="/login"
+            href="/auth/login"
             className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -122,7 +122,7 @@ export default function ForgotPasswordPage() {
 
           <p className="text-center text-sm text-muted-foreground">
             Remember your password?{" "}
-            <Link href="/login" className="text-primary font-medium hover:underline">
+            <Link href="/auth/login" className="text-primary font-medium hover:underline">
               Sign in
             </Link>
           </p>

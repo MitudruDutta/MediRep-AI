@@ -1,44 +1,49 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { X, Plus, AlertTriangle } from "lucide-react";
+import { AlertTriangle, RefreshCw, Download } from "lucide-react";
 import { checkInteractions } from "@/lib/api";
 import { DrugInteraction } from "@/types";
 import dynamic from "next/dynamic";
+import {
+  DrugSearchInput,
+  DrugList,
+  InteractionCard,
+  InteractionList,
+  InteractionSummary,
+} from "@/components/InteractionGraph";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
 const severityColors = {
-  major: "#ff4444",
-  moderate: "#ffaa00",
-  minor: "#00ff88",
+  major: "#ef4444",
+  moderate: "#eab308",
+  minor: "#3b82f6",
 };
 
 export default function InteractionGraphWidget() {
   const [drugs, setDrugs] = useState<string[]>([]);
-  const [drugInput, setDrugInput] = useState("");
   const [interactions, setInteractions] = useState<DrugInteraction[]>([]);
   const [selectedInteraction, setSelectedInteraction] = useState<DrugInteraction | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const addDrug = () => {
-    if (drugInput.trim() && !drugs.includes(drugInput.trim())) {
-      setDrugs([...drugs, drugInput.trim()]);
-      setDrugInput("");
+  const addDrug = (drug: string) => {
+    if (drug.trim() && !drugs.includes(drug.trim())) {
+      setDrugs([...drugs, drug.trim()]);
     }
   };
 
   const removeDrug = (index: number) => {
     setDrugs(drugs.filter((_, i) => i !== index));
+    setSelectedInteraction(null);
   };
 
   const fetchInteractions = useCallback(async () => {
     if (drugs.length < 2) {
       setInteractions([]);
+      setSelectedInteraction(null);
       return;
     }
 
@@ -48,6 +53,7 @@ export default function InteractionGraphWidget() {
       setInteractions(response.interactions || []);
     } catch (error) {
       console.error("Error fetching interactions:", error);
+      setInteractions([]);
     } finally {
       setIsLoading(false);
     }
@@ -56,6 +62,45 @@ export default function InteractionGraphWidget() {
   useEffect(() => {
     fetchInteractions();
   }, [fetchInteractions]);
+
+  const handleRefresh = async () => {
+    console.log("Refresh clicked, drugs:", drugs);
+    if (drugs.length >= 2) {
+      await fetchInteractions();
+    }
+  };
+
+  const exportData = () => {
+    console.log("Export clicked, drugs:", drugs, "interactions:", interactions);
+    try {
+      const data = {
+        drugs,
+        interactions,
+        timestamp: new Date().toISOString(),
+        summary: {
+          total: interactions.length,
+          major: interactions.filter(i => i.severity === "major").length,
+          moderate: interactions.filter(i => i.severity === "moderate").length,
+          minor: interactions.filter(i => i.severity === "minor").length,
+        }
+      };
+      
+      const jsonString = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `drug-interactions-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      console.log("Export successful");
+    } catch (error) {
+      console.error("Error exporting data:", error);
+      alert("Failed to export data. Please try again.");
+    }
+  };
 
   const graphData = {
     nodes: drugs.map((drug) => ({ id: drug, name: drug })),
@@ -70,134 +115,140 @@ export default function InteractionGraphWidget() {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <Card className="glass-card p-6 lg:col-span-2">
-        <h2 className="text-2xl font-bold mb-4">Drug Interaction Graph</h2>
-        
-        {drugs.length === 0 ? (
-          <div className="flex items-center justify-center h-100 text-muted-foreground">
-            <p>Add drugs to visualize interactions</p>
-          </div>
-        ) : drugs.length === 1 ? (
-          <div className="flex items-center justify-center h-100 text-muted-foreground">
-            <p>Add at least 2 drugs to check interactions</p>
-          </div>
-        ) : (
-          <div className="h-100 border border-border rounded-lg overflow-hidden">
-            <ForceGraph2D
-              graphData={graphData}
-              nodeLabel="name"
-              nodeColor={() => "#00d4ff"}
-              nodeRelSize={8}
-              linkColor={(link: any) => link.color}
-              linkWidth={2}
-              linkDirectionalParticles={2}
-              onLinkClick={(link: any) => {
-                setSelectedInteraction({
-                  drug1: link.source.id,
-                  drug2: link.target.id,
-                  severity: link.severity,
-                  description: link.description,
-                  recommendation: link.recommendation,
-                });
-              }}
-              backgroundColor="#0a0a0f"
-            />
-          </div>
-        )}
-
-        {selectedInteraction && (
-          <Card className="mt-4 p-4 border-2" style={{ borderColor: severityColors[selectedInteraction.severity] }}>
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5" style={{ color: severityColors[selectedInteraction.severity] }} />
-                <h3 className="font-bold">
-                  {selectedInteraction.drug1} + {selectedInteraction.drug2}
-                </h3>
-              </div>
-              <Badge
-                variant="outline"
-                style={{
-                  borderColor: severityColors[selectedInteraction.severity],
-                  color: severityColors[selectedInteraction.severity],
-                }}
-              >
-                {selectedInteraction.severity.toUpperCase()}
-              </Badge>
-            </div>
-            <p className="text-sm mb-2">{selectedInteraction.description}</p>
-            {selectedInteraction.recommendation && (
-              <p className="text-sm text-muted-foreground">
-                <strong>Recommendation:</strong> {selectedInteraction.recommendation}
-              </p>
-            )}
-          </Card>
-        )}
-      </Card>
-
-      <Card className="glass-card p-6">
-        <h3 className="text-xl font-bold mb-4">Manage Drugs</h3>
-        
-        <div className="flex gap-2 mb-4">
-          <Input
-            value={drugInput}
-            onChange={(e) => setDrugInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addDrug()}
-            placeholder="Enter drug name"
-          />
-          <Button size="icon" onClick={addDrug}>
-            <Plus className="h-4 w-4" />
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Drug Interaction Checker</h2>
+          <p className="text-muted-foreground mt-1">
+            Visualize and analyze potential drug-drug interactions
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRefresh} 
+            disabled={isLoading || drugs.length < 2}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={exportData} 
+            disabled={drugs.length === 0}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export
           </Button>
         </div>
+      </div>
 
-        <div className="space-y-2">
-          {drugs.map((drug, index) => (
-            <div key={index} className="flex items-center justify-between p-2 bg-secondary/20 rounded">
-              <span className="text-sm">{drug}</span>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6"
-                onClick={() => removeDrug(index)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-        </div>
+      {/* Summary Cards */}
+      {interactions.length > 0 && <InteractionSummary interactions={interactions} />}
 
-        {interactions.length > 0 && (
-          <div className="mt-6">
-            <h4 className="font-semibold mb-2">Interactions Found</h4>
-            <div className="space-y-2">
-              {interactions.map((interaction, index) => (
-                <div
-                  key={index}
-                  className="p-2 border rounded cursor-pointer hover:bg-secondary/10"
-                  style={{ borderColor: severityColors[interaction.severity] }}
-                  onClick={() => setSelectedInteraction(interaction)}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs">
-                      {interaction.drug1} + {interaction.drug2}
-                    </span>
-                    <Badge
-                      variant="outline"
-                      className="text-xs"
-                      style={{
-                        borderColor: severityColors[interaction.severity],
-                        color: severityColors[interaction.severity],
-                      }}
-                    >
-                      {interaction.severity}
-                    </Badge>
-                  </div>
+      {/* Main Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Graph Visualization */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Interaction Network</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {drugs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-[400px] text-center">
+                <div className="rounded-full bg-muted p-6 mb-4">
+                  <AlertTriangle className="h-12 w-12 text-muted-foreground" />
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </Card>
+                <h3 className="text-lg font-semibold mb-2">No Drugs Added</h3>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  Add at least 2 drugs to visualize their interactions in the network graph
+                </p>
+              </div>
+            ) : drugs.length === 1 ? (
+              <div className="flex flex-col items-center justify-center h-[400px] text-center">
+                <div className="rounded-full bg-primary/10 p-6 mb-4">
+                  <AlertTriangle className="h-12 w-12 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Add More Drugs</h3>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  Add at least one more drug to check for interactions
+                </p>
+              </div>
+            ) : (
+              <div className="h-[400px] border border-border rounded-lg overflow-hidden bg-background">
+                <ForceGraph2D
+                  graphData={graphData}
+                  nodeLabel="name"
+                  nodeColor={() => "#3b82f6"}
+                  nodeRelSize={8}
+                  linkColor={(link: any) => link.color}
+                  linkWidth={3}
+                  linkDirectionalParticles={2}
+                  linkDirectionalParticleWidth={2}
+                  onLinkClick={(link: any) => {
+                    setSelectedInteraction({
+                      drug1: link.source.id,
+                      drug2: link.target.id,
+                      severity: link.severity,
+                      description: link.description,
+                      recommendation: link.recommendation,
+                    });
+                  }}
+                  backgroundColor="transparent"
+                />
+              </div>
+            )}
+
+            {selectedInteraction && (
+              <div className="mt-4">
+                <InteractionCard
+                  interaction={selectedInteraction}
+                  onClose={() => setSelectedInteraction(null)}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Drug Management */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Manage Drugs</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <DrugSearchInput
+                onAddDrug={addDrug}
+                existingDrugs={drugs}
+                isLoading={isLoading}
+              />
+              <DrugList drugs={drugs} onRemove={removeDrug} />
+            </CardContent>
+          </Card>
+
+          {/* Interactions List */}
+          {drugs.length >= 2 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  Interactions ({interactions.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <InteractionList
+                  interactions={interactions}
+                  onSelect={setSelectedInteraction}
+                  selectedInteraction={selectedInteraction}
+                />
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

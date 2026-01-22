@@ -1,9 +1,9 @@
-import PatientContextWidget from "@/components/dashboard/widgets/patient-context-widget";
+import PatientContextComponent from "@/components/PatientContext";
 
 export default function PatientContextPage() {
   return (
     <div className="container mx-auto p-6">
-      <PatientContextWidget />
+      <PatientContextComponent />
     </div>
   );
 }

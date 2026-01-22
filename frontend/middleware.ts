@@ -42,13 +42,13 @@ export async function middleware(request: NextRequest) {
 
   if (isProtectedPath && !user) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/auth/login";
     url.searchParams.set("next", request.nextUrl.pathname);
     return NextResponse.redirect(url);
   }
 
   // Auth routes - redirect to dashboard if already authenticated
-  const authPaths = ["/login", "/signup", "/forgot-password"];
+  const authPaths = ["/auth/login", "/auth/signup", "/auth/forgot-password"];
   const isAuthPath = authPaths.some(
     (path) => request.nextUrl.pathname === path
   );

@@ -2,29 +2,49 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Pill, Mail, Lock, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import {
+  Pill,
+  Mail,
+  Lock,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Shield,
+  Zap,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ModeToggle } from "@/components/mode-toggle";
-import { signInWithEmail, signInWithGoogle } from "@/app/auth/actions";
+import { PasswordStrength } from "@/components/auth/password-strength";
+import { signUpWithEmail, signInWithGoogle } from "@/app/auth/actions";
 
-export default function LoginPage() {
+export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [password, setPassword] = useState("");
 
   async function handleEmailSubmit(formData: FormData) {
     setIsLoading(true);
     setError(null);
+    setSuccess(null);
 
     try {
-      const result = await signInWithEmail(formData);
+      const result = await signUpWithEmail(formData);
+
       if (result?.error) {
         setError(result.error);
+      } else if (result?.success) {
+        setSuccess(result.success);
       }
     } catch {
       setError("An unexpected error occurred. Please try again.");
@@ -53,7 +73,6 @@ export default function LoginPage() {
     <div className="min-h-screen flex">
       {/* Left side - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-linear-to-br from-primary/90 via-primary to-primary/80 p-12 flex-col justify-between relative overflow-hidden">
-        {/* Decorative elements */}
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48Y2lyY2xlIGN4PSIzMCIgY3k9IjMwIiByPSIyIi8+PC9nPjwvZz48L3N2Zz4=')] opacity-50" />
 
         <div className="relative z-10">
@@ -65,36 +84,56 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        <div className="relative z-10 space-y-6">
+        <div className="relative z-10 space-y-8">
           <h1 className="text-4xl font-bold text-white leading-tight">
-            Your AI-Powered<br />Medical Assistant
+            Start Your Journey<br />With MediRep AI
           </h1>
-          <p className="text-white/80 text-lg max-w-md">
-            Access drug information, check interactions, and get safety alerts
-            instantly. Built for healthcare professionals who need accuracy.
-          </p>
-          <div className="flex gap-6 pt-4">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-white">10K+</div>
-              <div className="text-white/70 text-sm">Drug Records</div>
+
+          <div className="space-y-4">
+            <div className="flex items-start gap-4 text-white">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <Zap className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Instant Drug Information</h3>
+                <p className="text-white/70 text-sm">
+                  Get accurate data in seconds, not minutes
+                </p>
+              </div>
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-white">99.9%</div>
-              <div className="text-white/70 text-sm">Uptime</div>
+
+            <div className="flex items-start gap-4 text-white">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <Shield className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Safety First</h3>
+                <p className="text-white/70 text-sm">
+                  Automatic interaction checks and FDA alerts
+                </p>
+              </div>
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-white">HIPAA</div>
-              <div className="text-white/70 text-sm">Compliant</div>
+
+            <div className="flex items-start gap-4 text-white">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <Users className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Patient-Centered</h3>
+                <p className="text-white/70 text-sm">
+                  Personalized recommendations for better care
+                </p>
+              </div>
             </div>
           </div>
         </div>
 
         <div className="relative z-10 text-white/60 text-sm">
-          Trusted by healthcare professionals worldwide
+          Join thousands of healthcare professionals
         </div>
       </div>
 
-      {/* Right side - Login form */}
+      {/* Right side - Signup form */}
       <div className="flex-1 flex flex-col">
         <header className="p-4 flex justify-between items-center lg:justify-end">
           <Link href="/" className="flex items-center gap-2 lg:hidden">
@@ -107,16 +146,27 @@ export default function LoginPage() {
         <main className="flex-1 flex items-center justify-center p-6">
           <div className="w-full max-w-md space-y-6">
             <div className="text-center space-y-2">
-              <h2 className="text-3xl font-bold tracking-tight">Welcome back</h2>
+              <h2 className="text-3xl font-bold tracking-tight">
+                Create your account
+              </h2>
               <p className="text-muted-foreground">
-                Sign in to your account to continue
+                Get started with MediRep AI today
               </p>
             </div>
 
             {error && (
-              <Alert variant="destructive" className="animate-in fade-in-0 slide-in-from-top-1">
+              <Alert variant="destructive" className="animate-in fade-in-0 slide-in-from-top-2 duration-300">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription className="text-sm">{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {success && (
+              <Alert className="border-green-500/50 bg-green-50 dark:bg-green-950/30 animate-in fade-in-0 slide-in-from-top-2 duration-300">
+                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <AlertDescription className="text-sm text-green-700 dark:text-green-300">
+                  {success}
+                </AlertDescription>
               </Alert>
             )}
 
@@ -135,32 +185,27 @@ export default function LoginPage() {
                         required
                         autoComplete="email"
                         className="pl-10 h-11"
-                        disabled={isLoading || isGoogleLoading}
+                        disabled={isLoading || isGoogleLoading || !!success}
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="password">Password</Label>
-                      <Link
-                        href="/forgot-password"
-                        className="text-xs text-primary hover:underline"
-                      >
-                        Forgot password?
-                      </Link>
-                    </div>
+                    <Label htmlFor="password">Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="password"
                         name="password"
                         type={showPassword ? "text" : "password"}
-                        placeholder="Enter your password"
+                        placeholder="Create a strong password"
                         required
-                        autoComplete="current-password"
+                        minLength={8}
+                        autoComplete="new-password"
                         className="pl-10 pr-10 h-11"
-                        disabled={isLoading || isGoogleLoading}
+                        disabled={isLoading || isGoogleLoading || !!success}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
                       />
                       <button
                         type="button"
@@ -175,20 +220,51 @@ export default function LoginPage() {
                         )}
                       </button>
                     </div>
+                    <PasswordStrength password={password} />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirm password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="confirmPassword"
+                        name="confirmPassword"
+                        type={showConfirmPassword ? "text" : "password"}
+                        placeholder="Confirm your password"
+                        required
+                        minLength={8}
+                        autoComplete="new-password"
+                        className="pl-10 pr-10 h-11"
+                        disabled={isLoading || isGoogleLoading || !!success}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        tabIndex={-1}
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   <Button
                     type="submit"
                     className="w-full h-11 text-base font-medium"
-                    disabled={isLoading || isGoogleLoading}
+                    disabled={isLoading || isGoogleLoading || !!success}
                   >
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Signing in...
+                        Creating account...
                       </>
                     ) : (
-                      "Sign in"
+                      "Create account"
                     )}
                   </Button>
                 </form>
@@ -209,7 +285,7 @@ export default function LoginPage() {
                     type="submit"
                     variant="outline"
                     className="w-full h-11"
-                    disabled={isLoading || isGoogleLoading}
+                    disabled={isLoading || isGoogleLoading || !!success}
                   >
                     {isGoogleLoading ? (
                       <>
@@ -245,19 +321,19 @@ export default function LoginPage() {
             </Card>
 
             <p className="text-center text-sm text-muted-foreground">
-              Don&apos;t have an account?{" "}
+              Already have an account?{" "}
               <Link
-                href="/signup"
+                href="/auth/login"
                 className="text-primary font-medium hover:underline"
               >
-                Create one now
+                Sign in
               </Link>
             </p>
           </div>
         </main>
 
         <footer className="p-4 text-center text-xs text-muted-foreground">
-          By continuing, you agree to our{" "}
+          By creating an account, you agree to our{" "}
           <Link href="/terms" className="underline hover:text-foreground">
             Terms of Service
           </Link>{" "}
