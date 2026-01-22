@@ -78,7 +78,7 @@ uvicorn main:app --reload --port 8000
 
 ```bash
 # From project root, navigate to frontend
-cd frontend/mediredai
+cd frontend
 
 # Install dependencies
 npm install
@@ -184,21 +184,20 @@ medirep-ai/
 │   ├── .env.example
 │   └── README.md
 ├── frontend/
-│   └── mediredai/
-│       ├── app/             # Next.js app router
-│       │   ├── auth/        # Authentication pages
-│       │   ├── dashboard/   # Main dashboard
-│       │   └── layout.tsx
-│       ├── components/      # React components
-│       │   ├── dashboard/
-│       │   ├── ui/          # Radix UI components
-│       │   └── account/
-│       ├── lib/             # Utilities
-│       │   ├── supabase/    # Supabase clients
-│       │   └── api.ts       # API client
-│       ├── hooks/           # Custom React hooks
-│       ├── .env.local
-│       └── package.json
+│    ├── app/             # Next.js app router
+│    │   ├── auth/        # Authentication pages
+│    │   ├── dashboard/   # Main dashboard
+│    │   └── layout.tsx
+│    ├── components/      # React components
+│    │   ├── dashboard/
+│    │   ├── ui/          # Radix UI components
+│    │   └── account/
+│    ├── lib/             # Utilities
+│    │   ├── supabase/    # Supabase clients
+│    │   └── api.ts       # API client
+│    ├── hooks/           # Custom React hooks
+│    ├── .env.local
+│    └── package.json
 ├── LICENSE
 └── README.md
 ```
@@ -246,7 +245,7 @@ The backend includes a `Procfile` for easy deployment:
 npm i -g vercel
 
 # Deploy from frontend directory
-cd frontend/mediredai
+cd frontend/
 vercel
 ```
 

@@ -95,7 +95,7 @@ npm run lint
 ## Project Structure
 
 ```
-frontend/mediredai/
+frontend/
 ├── app/                      # Next.js App Router
 │   ├── auth/                 # Authentication pages
 │   │   ├── login/           # Login page
