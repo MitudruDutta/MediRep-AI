@@ -75,15 +75,15 @@ export default function InteractionGraphWidget() {
         <h2 className="text-2xl font-bold mb-4">Drug Interaction Graph</h2>
         
         {drugs.length === 0 ? (
-          <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+          <div className="flex items-center justify-center h-100 text-muted-foreground">
             <p>Add drugs to visualize interactions</p>
           </div>
         ) : drugs.length === 1 ? (
-          <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+          <div className="flex items-center justify-center h-100 text-muted-foreground">
             <p>Add at least 2 drugs to check interactions</p>
           </div>
         ) : (
-          <div className="h-[400px] border border-border rounded-lg overflow-hidden">
+          <div className="h-100 border border-border rounded-lg overflow-hidden">
             <ForceGraph2D
               graphData={graphData}
               nodeLabel="name"

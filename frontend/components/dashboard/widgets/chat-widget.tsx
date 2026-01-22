@@ -36,7 +36,7 @@ export default function ChatWidget() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] bg-gradient-to-br from-background to-muted/20 rounded-2xl border border-border/50 shadow-lg overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-8rem)] bg-linear-to-br from-background to-muted/20 rounded-2xl border border-border/50 shadow-lg overflow-hidden">
       <div className="flex flex-col h-full p-6">
         {/* Messages Area */}
         <ChatMessages className="flex-1 overflow-y-auto px-2 space-y-4 mb-6 scrollbar-hide">

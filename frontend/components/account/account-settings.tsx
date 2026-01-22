@@ -176,7 +176,7 @@ export function AccountSettings({ user }: { user: User | null }) {
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="w-full md:w-64 flex-shrink-0"
+          className="w-full md:w-64 shrink-0"
         >
           <div className="glassmorphism rounded-2xl p-6">
             <div className="flex flex-col items-center text-center mb-6">
@@ -285,7 +285,7 @@ export function AccountSettings({ user }: { user: User | null }) {
                     <Label htmlFor="bio">Bio</Label>
                     <textarea
                       id="bio"
-                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       value={bio}
                       onChange={(e) => setBio(e.target.value)}
                       placeholder="Tell us about yourself..."

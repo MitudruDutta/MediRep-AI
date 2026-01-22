@@ -111,14 +111,15 @@ function AppSidebar({ userEmail }: { userEmail?: string | null }) {
 
 interface DashboardProps {
   initialUserEmail?: string | null;
+  initialUserAvatar?: string | null;
 }
 
-export default function Dashboard({ initialUserEmail }: DashboardProps) {
+export default function Dashboard({ initialUserEmail, initialUserAvatar }: DashboardProps) {
   return (
     <SidebarProvider>
       <AppSidebar userEmail={initialUserEmail} />
       <SidebarInset>
-        <AppHeader userEmail={initialUserEmail} />
+        <AppHeader userEmail={initialUserEmail} userAvatar={initialUserAvatar} />
         <div className="bg-background px-6 py-4">
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground mt-1">

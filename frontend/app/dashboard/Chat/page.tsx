@@ -38,9 +38,9 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-4rem)] w-full flex flex-col bg-gradient-to-br from-background via-background to-muted/20">
+    <div className="h-[calc(100vh-4rem)] w-full flex flex-col bg-linear-to-br from-background via-background to-muted/20">
       {/* Header */}
-      <div className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="border-b border-border/40 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">

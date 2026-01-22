@@ -40,7 +40,7 @@ export function ChatEmpty({
         {/* Icon */}
         <div className="relative">
           <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full" />
-          <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20">
+          <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-linear-to-br from-primary/20 to-primary/5 border border-primary/20">
             <MessageSquare className="h-10 w-10 text-primary" />
           </div>
         </div>

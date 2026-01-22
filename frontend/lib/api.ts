@@ -1,85 +1,145 @@
 import { PatientContext, Message } from "@/types";
+import { createClient } from "@/lib/supabase/client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+/**
+ * Get authentication headers with the current user's access token
+ */
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+
+  if (session?.access_token) {
+    headers["Authorization"] = `Bearer ${session.access_token}`;
+  }
+
+  return headers;
+}
+
+/**
+ * Handle API response errors consistently
+ */
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    if (response.status === 401) {
+      // Token expired or invalid - trigger re-auth
+      const supabase = createClient();
+      await supabase.auth.refreshSession();
+      throw new Error("Session expired. Please try again.");
+    }
+
+    if (response.status === 403) {
+      throw new Error("You don't have permission to access this resource.");
+    }
+
+    if (response.status === 429) {
+      throw new Error("Too many requests. Please wait a moment and try again.");
+    }
+
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Request failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Authenticated fetch wrapper
+ */
+async function authFetch<T>(
+  url: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      ...headers,
+      ...options.headers,
+    },
+  });
+
+  return handleResponse<T>(response);
+}
 
 export async function sendMessage(
   message: string,
   patientContext?: PatientContext,
   history?: Message[]
 ) {
-  const response = await fetch(`${API_URL}/api/chat`, {
+  return authFetch(`${API_URL}/api/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       message,
       patient_context: patientContext,
-      history: history?.map(m => ({ role: m.role, content: m.content })),
+      history: history?.map((m) => ({ role: m.role, content: m.content })),
     }),
   });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.statusText}`);
-  }
-
-  return response.json();
 }
 
 export async function searchDrugs(query: string) {
-  const response = await fetch(`${API_URL}/api/drugs/search?q=${encodeURIComponent(query)}`);
-  
-  if (!response.ok) {
-    throw new Error(`API error: ${response.statusText}`);
-  }
-
-  return response.json();
+  const encodedQuery = encodeURIComponent(query);
+  return authFetch(`${API_URL}/api/drugs/search?q=${encodedQuery}`);
 }
 
 export async function getDrugInfo(drugName: string) {
-  const response = await fetch(`${API_URL}/api/drugs/${encodeURIComponent(drugName)}`);
-  
-  if (!response.ok) {
-    throw new Error(`API error: ${response.statusText}`);
-  }
-
-  return response.json();
+  const encodedName = encodeURIComponent(drugName);
+  return authFetch(`${API_URL}/api/drugs/${encodedName}`);
 }
 
 export async function checkInteractions(drugs: string[]) {
-  const response = await fetch(`${API_URL}/api/drugs/interactions`, {
+  return authFetch(`${API_URL}/api/drugs/interactions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ drugs }),
   });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.statusText}`);
-  }
-
-  return response.json();
 }
 
 export async function identifyPill(imageFile: File) {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+
   const formData = new FormData();
   formData.append("image", imageFile);
 
+  const headers: HeadersInit = {};
+  if (session?.access_token) {
+    headers["Authorization"] = `Bearer ${session.access_token}`;
+  }
+
   const response = await fetch(`${API_URL}/api/vision/identify-pill`, {
     method: "POST",
+    headers,
     body: formData,
   });
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.statusText}`);
-  }
-
-  return response.json();
+  return handleResponse(response);
 }
 
 export async function getFDAAlerts(drugName: string) {
-  const response = await fetch(`${API_URL}/api/alerts/${encodeURIComponent(drugName)}`);
-  
-  if (!response.ok) {
-    throw new Error(`API error: ${response.statusText}`);
-  }
+  const encodedName = encodeURIComponent(drugName);
+  return authFetch(`${API_URL}/api/alerts/${encodedName}`);
+}
 
-  return response.json();
+/**
+ * Check if the current user is authenticated
+ */
+export async function isAuthenticated(): Promise<boolean> {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return !!session;
+}
+
+/**
+ * Get current user's access token
+ */
+export async function getAccessToken(): Promise<string | null> {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token || null;
 }

@@ -11,7 +11,7 @@ export function ChatLoading({ className }: ChatLoadingProps) {
   return (
     <div className={cn("flex gap-3 justify-start", className)}>
       {/* Avatar */}
-      <div className="flex-shrink-0 mt-1">
+      <div className="shrink-0 mt-1">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
           <Bot className="h-4 w-4 text-primary" />
         </div>
