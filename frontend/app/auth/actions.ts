@@ -129,7 +129,7 @@ export async function signUpWithEmail(formData: FormData): Promise<AuthResult> {
   return { success: "Check your email for a confirmation link to complete registration." };
 }
 
-export async function signInWithGoogle(): Promise<AuthResult | void> {
+export async function signInWithGoogle(): Promise<void> {
   const supabase = await createClient();
   const headersList = await headers();
   const origin = headersList.get("origin") || process.env.NEXT_PUBLIC_SITE_URL;
@@ -146,7 +146,8 @@ export async function signInWithGoogle(): Promise<AuthResult | void> {
   });
 
   if (error) {
-    return { error: sanitizeAuthError(error.message) };
+    console.error("Google sign in error:", sanitizeAuthError(error.message));
+    redirect("/auth/login?error=oauth_error");
   }
 
   if (data.url) {
@@ -154,13 +155,14 @@ export async function signInWithGoogle(): Promise<AuthResult | void> {
   }
 }
 
-export async function signOut(): Promise<AuthResult | void> {
+export async function signOut(): Promise<void> {
   const supabase = await createClient();
 
   const { error } = await supabase.auth.signOut();
 
   if (error) {
-    return { error: sanitizeAuthError(error.message) };
+    // Log the error but don't return it - redirect will happen anyway
+    console.error("Sign out error:", sanitizeAuthError(error.message));
   }
 
   revalidatePath("/", "layout");

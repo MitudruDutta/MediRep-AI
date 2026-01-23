@@ -1,4 +1,4 @@
-import { PatientContext, Message } from "@/types";
+import { PatientContext, Message, FDAAlertResponse, ChatResponse } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -76,8 +76,8 @@ export async function sendMessage(
   message: string,
   patientContext?: PatientContext,
   history?: Message[],
-) {
-  return authFetch(`${API_URL}/api/chat`, {
+): Promise<ChatResponse> {
+  return authFetch<ChatResponse>(`${API_URL}/api/chat`, {
     method: "POST",
     body: JSON.stringify({
       message,
@@ -153,9 +153,9 @@ export async function identifyPill(imageFile: File) {
   return handleResponse(response);
 }
 
-export async function getFDAAlerts(drugName: string) {
+export async function getFDAAlerts(drugName: string): Promise<FDAAlertResponse> {
   const encodedName = encodeURIComponent(drugName);
-  return authFetch(`${API_URL}/api/alerts/${encodedName}`);
+  return authFetch<FDAAlertResponse>(`${API_URL}/api/alerts/${encodedName}`);
 }
 
 /**

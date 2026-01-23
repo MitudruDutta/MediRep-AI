@@ -58,13 +58,10 @@ export default function SignUpPage() {
     setError(null);
 
     try {
-      const result = await signInWithGoogle();
-      if (result?.error) {
-        setError(result.error);
-        setIsGoogleLoading(false);
-      }
+      await signInWithGoogle();
+      // Function will redirect on success, so we won't reach here
     } catch {
-      // setError("Failed to connect to Google. Please try again.");
+      setError("Failed to connect to Google. Please try again.");
       setIsGoogleLoading(false);
     }
   }

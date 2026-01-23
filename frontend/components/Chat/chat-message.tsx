@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Copy, Check, Bot, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Message } from "@/types"
+import Markdown from "react-markdown"
 
 export interface ChatMessageProps {
   message: Message
@@ -37,13 +38,16 @@ export function ChatMessage({ message, index, copiedIndex, onCopy }: ChatMessage
           )}
         >
           <div className="flex justify-between items-start gap-3">
-            <div className="flex-1 space-y-2">
-              <p className={cn(
-                "text-sm leading-relaxed whitespace-pre-wrap",
-                isUser ? "text-primary-foreground" : "text-foreground"
-              )}>
-                {message.content}
-              </p>
+            <div className={cn(
+              "flex-1 prose prose-sm max-w-none",
+              isUser
+                ? "prose-invert text-primary-foreground"
+                : "dark:prose-invert text-foreground",
+              "[&>p]:leading-relaxed [&>p]:my-1",
+              "[&>ul]:my-2 [&>ol]:my-2",
+              "[&>ul>li]:my-0.5 [&>ol>li]:my-0.5"
+            )}>
+              <Markdown>{message.content}</Markdown>
             </div>
             
             {!isUser && (

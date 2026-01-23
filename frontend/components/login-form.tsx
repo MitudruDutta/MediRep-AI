@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { signInWithGoogle } from "@/app/auth/action";
+import { signInWithGoogle } from "@/app/auth/actions";
 
 export default function LoginWithGoogle({ className }: { className?: string }) {
   return (

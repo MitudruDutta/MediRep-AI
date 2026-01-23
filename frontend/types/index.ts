@@ -54,6 +54,17 @@ export interface FDAAlert {
   severity: "info" | "warning" | "recall";
   title: string;
   description: string;
-  date?: string;
-  lot_numbers?: string[];
+  date: string | null;
+  lot_numbers: string[];
+}
+
+export interface FDAAlertResponse {
+  drug_name: string;
+  alerts: FDAAlert[];
+}
+
+export interface ChatResponse {
+  response: string;
+  citations?: Citation[];
+  suggestions?: string[];
 }

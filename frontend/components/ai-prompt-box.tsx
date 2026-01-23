@@ -28,10 +28,12 @@ const styles = `
   }
 `;
 
-// Inject styles into document
-const styleSheet = document.createElement("style");
-styleSheet.innerText = styles;
-document.head.appendChild(styleSheet);
+// Inject styles into document (client-side only)
+if (typeof document !== "undefined") {
+  const styleSheet = document.createElement("style");
+  styleSheet.innerText = styles;
+  document.head.appendChild(styleSheet);
+}
 
 // Textarea Component
 interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {

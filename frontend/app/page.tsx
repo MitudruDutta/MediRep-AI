@@ -35,10 +35,9 @@ export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col relative overflow-x-hidden">
       {/* GL Background */}
-      <div className="fixed inset-0 z-0 opacity-50 dark:opacity-40">
+      <div className="fixed inset-0 z-0">
         <GL hovering={false} />
       </div>
-
       {/* Header */}
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">

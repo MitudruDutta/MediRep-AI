@@ -16,11 +16,7 @@ import {
   FDAAlert,
   AlertSeverity,
 } from "@/components/SafetyAlert";
-
-interface FDAAlertResponse {
-  drug_name: string;
-  alerts: FDAAlert[];
-}
+import type { FDAAlertResponse } from "@/types";
 
 export default function SafetyAlertWidget() {
   const [drugName, setDrugName] = useState<string>("");

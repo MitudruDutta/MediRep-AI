@@ -6,15 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { FDAAlert } from "@/types";
 
-export interface FDAAlert {
-  id: string;
-  severity: "info" | "warning" | "recall";
-  title: string;
-  description: string;
-  date: string | null;
-  lot_numbers: string[];
-}
+export type { FDAAlert };
 
 const severityConfig = {
   recall: {
