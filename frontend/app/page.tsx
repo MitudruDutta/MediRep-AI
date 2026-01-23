@@ -7,6 +7,11 @@ import { Pill, ArrowRight, Shield, Zap, Users, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
+import dynamic from "next/dynamic";
+
+const GL = dynamic(() => import("@/components/gl").then((mod) => mod.GL), {
+  ssr: false,
+});
 
 export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
@@ -28,7 +33,12 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative overflow-x-hidden">
+      {/* GL Background */}
+      <div className="fixed inset-0 z-0 opacity-50 dark:opacity-40">
+        <GL hovering={false} />
+      </div>
+
       {/* Header */}
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -62,7 +72,7 @@ export default function HomePage() {
       </header>
 
       {/* Hero Section */}
-      <main className="flex-1">
+      <main className="flex-1 relative z-10">
         <section className="py-20 px-4">
           <div className="container mx-auto text-center space-y-8 max-w-4xl">
             <div className="inline-flex items-center rounded-full border px-3 py-1 text-sm text-muted-foreground">
@@ -153,7 +163,7 @@ export default function HomePage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t py-8">
+      <footer className="border-t py-8 relative z-10">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>Built for better healthcare information access</p>
         </div>
