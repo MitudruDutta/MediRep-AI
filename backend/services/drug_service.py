@@ -1,17 +1,16 @@
 """
-India-specific drug service for Digital Medical Representative.
-Uses Indian pharmaceutical data including pricing, manufacturers, and generic alternatives.
+Drug Service - Clean architecture with proper data flow.
 
-Data sources mentioned:
-- Kaggle: A-Z Medicine Dataset of India (250K+ entries)
-- Kaggle: Extensive A-Z Medicines Dataset (substitutes, side effects)
-- NLEM 2022 (National List of Essential Medicines)
-- Jan Aushadhi (Government generic medicines)
+DATA FLOW:
+1. Qdrant (semantic vector search) - Find similar drugs by meaning
+2. Turso (text search) - Find drugs by name/text match
+3. LLM (fallback) - Enrich with medical knowledge when DB is incomplete
+
+NO HARDCODED DATA - Everything comes from databases or LLM.
 """
 import logging
 import asyncio
 import time
-import json
 import threading
 from collections import OrderedDict
 from typing import Any, Optional, List, Dict
@@ -20,230 +19,15 @@ import httpx
 import google.generativeai as genai
 
 from services import turso_service
+from services import qdrant_service
 from services.supabase_service import SupabaseService
 from models import DrugInfo, DrugSearchResult
-from config import OPENFDA_LABEL_URL, CACHE_TTL_DRUG, API_TIMEOUT, GEMINI_API_KEY
+from config import OPENFDA_LABEL_URL, CACHE_TTL_DRUG, API_TIMEOUT, GEMINI_API_KEY, GROQ_API_KEY, GROQ_MODEL
+
+# Groq API configuration
+GROQ_API_BASE = "https://api.groq.com/openai/v1"
 
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# INDIA-SPECIFIC DATA: Top Indian Pharmaceutical Companies
-# ============================================================================
-INDIAN_PHARMA_COMPANIES = {
-    "sun pharmaceutical", "sun pharma", "cipla", "cipla ltd",
-    "dr reddy's", "dr reddys", "lupin", "lupin ltd",
-    "aurobindo", "aurobindo pharma", "zydus", "zydus cadila",
-    "torrent", "torrent pharma", "alkem", "alkem labs",
-    "mankind", "mankind pharma", "glenmark", "glenmark pharma",
-    "biocon", "divis labs", "ipca labs", "ajanta pharma",
-    "intas", "intas pharma", "macleods", "hetero", "natco"
-}
-
-# ============================================================================
-# INDIA-SPECIFIC: Common Medicines with Indian Brand Names & Prices
-# This simulates data from Kaggle datasets
-# ============================================================================
-INDIAN_MEDICINES_DB: Dict[str, Dict] = {
-    # Diabetes
-    "metformin": {
-        "generic_name": "Metformin Hydrochloride",
-        "indian_brands": ["Glycomet (USV)", "Glucophage (Franco-Indian)", "Glyciphage (Franco-Indian)", "Obimet (Zydus)"],
-        "mrp_range": "₹15-120",
-        "jan_aushadhi_price": "₹12 (500mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["500mg", "850mg", "1000mg"],
-        "category": "Antidiabetic"
-    },
-    "glimepiride": {
-        "generic_name": "Glimepiride",
-        "indian_brands": ["Amaryl (Sanofi)", "Glimestar (Mankind)", "Glimy (USV)"],
-        "mrp_range": "₹50-180",
-        "jan_aushadhi_price": "₹25 (2mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["1mg", "2mg", "4mg"],
-        "category": "Antidiabetic"
-    },
-    
-    # Cardiovascular
-    "atorvastatin": {
-        "generic_name": "Atorvastatin Calcium",
-        "indian_brands": ["Lipitor (Pfizer)", "Atorva (Zydus)", "Tonact (Lupin)", "Aztor (Sun)"],
-        "mrp_range": "₹80-350",
-        "jan_aushadhi_price": "₹20 (10mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["10mg", "20mg", "40mg", "80mg"],
-        "category": "Statins"
-    },
-    "amlodipine": {
-        "generic_name": "Amlodipine Besylate",
-        "indian_brands": ["Amlong (Micro Labs)", "Amlip (Cipla)", "Amlogard (Pfizer)", "Stamlo (Dr Reddy's)"],
-        "mrp_range": "₹30-120",
-        "jan_aushadhi_price": "₹8 (5mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["2.5mg", "5mg", "10mg"],
-        "category": "Calcium Channel Blocker"
-    },
-    "telmisartan": {
-        "generic_name": "Telmisartan",
-        "indian_brands": ["Telma (Glenmark)", "Telsartan (Zydus)", "Telday (Hetero)"],
-        "mrp_range": "₹90-250",
-        "jan_aushadhi_price": "₹35 (40mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["20mg", "40mg", "80mg"],
-        "category": "ARB Antihypertensive"
-    },
-    "losartan": {
-        "generic_name": "Losartan Potassium",
-        "indian_brands": ["Losar (Unichem)", "Repace (Sun)", "Losacar (Cadila)"],
-        "mrp_range": "₹60-180",
-        "jan_aushadhi_price": "₹28 (50mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["25mg", "50mg", "100mg"],
-        "category": "ARB Antihypertensive"
-    },
-    
-    # Antibiotics
-    "amoxicillin": {
-        "generic_name": "Amoxicillin Trihydrate",
-        "indian_brands": ["Mox (Ranbaxy)", "Novamox (Cipla)", "Amoxil (GSK)"],
-        "mrp_range": "₹50-150",
-        "jan_aushadhi_price": "₹18 (500mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["250mg", "500mg"],
-        "category": "Antibiotic"
-    },
-    "azithromycin": {
-        "generic_name": "Azithromycin Dihydrate",
-        "indian_brands": ["Azithral (Alembic)", "Zithromax (Pfizer)", "ATM (Cipla)"],
-        "mrp_range": "₹80-200",
-        "jan_aushadhi_price": "₹45 (500mg x 3)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["250mg", "500mg"],
-        "category": "Antibiotic (Macrolide)"
-    },
-    "ciprofloxacin": {
-        "generic_name": "Ciprofloxacin Hydrochloride",
-        "indian_brands": ["Ciplox (Cipla)", "Cifran (Sun)", "Quintor (Torrent)"],
-        "mrp_range": "₹40-120",
-        "jan_aushadhi_price": "₹15 (500mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["250mg", "500mg", "750mg"],
-        "category": "Antibiotic (Fluoroquinolone)"
-    },
-    
-    # Pain/Fever
-    "paracetamol": {
-        "generic_name": "Paracetamol (Acetaminophen)",
-        "indian_brands": ["Crocin (GSK)", "Dolo (Micro Labs)", "Calpol (GSK)", "Pacimol (Ipca)"],
-        "mrp_range": "₹15-50",
-        "jan_aushadhi_price": "₹5 (500mg x 10)",
-        "schedule": "OTC",
-        "nlem_status": True,
-        "common_strengths": ["500mg", "650mg"],
-        "category": "Analgesic/Antipyretic"
-    },
-    "ibuprofen": {
-        "generic_name": "Ibuprofen",
-        "indian_brands": ["Brufen (Abbott)", "Ibugesic (Cipla)", "Combiflam (Sanofi)"],
-        "mrp_range": "₹25-80",
-        "jan_aushadhi_price": "₹12 (400mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["200mg", "400mg", "600mg"],
-        "category": "NSAID"
-    },
-    "diclofenac": {
-        "generic_name": "Diclofenac Sodium",
-        "indian_brands": ["Voveran (Novartis)", "Diclogesic (Mankind)", "Voltaren (Novartis)"],
-        "mrp_range": "₹30-100",
-        "jan_aushadhi_price": "₹10 (50mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["50mg", "100mg"],
-        "category": "NSAID"
-    },
-    
-    # GI
-    "omeprazole": {
-        "generic_name": "Omeprazole",
-        "indian_brands": ["Omez (Dr Reddy's)", "Ocid (Zydus)", "Omesec (Cipla)"],
-        "mrp_range": "₹50-150",
-        "jan_aushadhi_price": "₹18 (20mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["20mg", "40mg"],
-        "category": "PPI (Proton Pump Inhibitor)"
-    },
-    "pantoprazole": {
-        "generic_name": "Pantoprazole Sodium",
-        "indian_brands": ["Pan (Alkem)", "Pantocid (Sun)", "Pantop (Aristo)"],
-        "mrp_range": "₹60-180",
-        "jan_aushadhi_price": "₹22 (40mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["20mg", "40mg"],
-        "category": "PPI"
-    },
-    
-    # Psychiatric
-    "escitalopram": {
-        "generic_name": "Escitalopram Oxalate",
-        "indian_brands": ["Nexito (Sun)", "Stalopam (Lupin)", "Feliz-S (Torrent)"],
-        "mrp_range": "₹80-250",
-        "jan_aushadhi_price": "₹40 (10mg x 10)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["5mg", "10mg", "20mg"],
-        "category": "SSRI Antidepressant"
-    },
-    
-    # Respiratory
-    "montelukast": {
-        "generic_name": "Montelukast Sodium",
-        "indian_brands": ["Montair (Cipla)", "Romilast (Sun)", "Montek (Mankind)"],
-        "mrp_range": "₹100-300",
-        "jan_aushadhi_price": "₹50 (10mg x 10)",
-        "schedule": "H",
-        "nlem_status": False,
-        "common_strengths": ["4mg", "5mg", "10mg"],
-        "category": "Leukotriene Antagonist"
-    },
-    "salbutamol": {
-        "generic_name": "Salbutamol Sulphate",
-        "indian_brands": ["Asthalin (Cipla)", "Ventorlin (GSK)", "Salbair (Lupin)"],
-        "mrp_range": "₹80-200",
-        "jan_aushadhi_price": "₹35 (Inhaler)",
-        "schedule": "H",
-        "nlem_status": True,
-        "common_strengths": ["2mg tablet", "100mcg inhaler"],
-        "category": "Bronchodilator"
-    }
-}
-
-# ============================================================================
-# INDIA-SPECIFIC: Drug Price Control (DPCO) Status
-# ============================================================================
-DPCO_CONTROLLED_DRUGS = {
-    "paracetamol", "metformin", "amlodipine", "atorvastatin", 
-    "omeprazole", "pantoprazole", "amoxicillin", "azithromycin",
-    "ciprofloxacin", "losartan", "telmisartan", "glimepiride",
-    "ibuprofen", "diclofenac", "salbutamol"
-}
-
-
-# ============================================================================
-# END OF LOCAL DEFINITIONS (DrugInfo imported from models)
-# ============================================================================
 
 
 # ============================================================================
@@ -300,13 +84,10 @@ def _get_enrichment_model():
     """Get Gemini model for drug info enrichment (thread-safe)."""
     global _enrichment_model
     
-    # Fast path: already initialized
     if _enrichment_model is not None:
         return _enrichment_model
     
-    # Slow path: acquire lock and initialize
     with _enrichment_model_lock:
-        # Double-check after acquiring lock
         if _enrichment_model is not None:
             return _enrichment_model
         
@@ -315,7 +96,7 @@ def _get_enrichment_model():
         
         try:
             genai.configure(api_key=GEMINI_API_KEY)
-            _enrichment_model = genai.GenerativeModel("gemini-2.0-flash")
+            _enrichment_model = genai.GenerativeModel("gemini-2.5-flash")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini enrichment model: {e}")
             return None
@@ -327,7 +108,7 @@ async def enrich_drug_with_gemini(drug_info: DrugInfo) -> DrugInfo:
     """
     HYBRID APPROACH: Enrich missing drug information using Gemini's knowledge.
     
-    - Database provides: Price, manufacturer, pack size (ground truth)
+    - Database provides: Name, Price, manufacturer, pack size (ground truth)
     - Gemini provides: Indications, side effects, interactions (clinical knowledge)
     """
     model = _get_enrichment_model()
@@ -346,173 +127,133 @@ async def enrich_drug_with_gemini(drug_info: DrugInfo) -> DrugInfo:
         missing_fields.append("contraindications")
     if not drug_info.interactions:
         missing_fields.append("major drug interactions")
-    if not drug_info.warnings:
-        missing_fields.append("important warnings")
     
-    # If nothing is missing, return as-is
     if not missing_fields:
-        return drug_info
+        return drug_info  # Nothing to enrich
     
+    prompt = f"""You are a clinical pharmacology expert. Provide BRIEF information for this drug.
+
+Drug: {drug_info.name}
+Generic Name: {drug_info.generic_name or 'Unknown'}
+
+I need the following information (be concise, 1-2 sentences each):
+{chr(10).join(f'- {field}' for field in missing_fields)}
+
+Return ONLY a valid JSON object with these keys (use exactly these names):
+- indications: array of strings (max 3)
+- side_effects: array of strings (max 5)
+- dosage: array of dosing instructions (max 2)
+- contraindications: array of strings (max 3)
+- interactions: array of drug interaction warnings (max 3)
+
+Example: {{"indications": ["Pain relief", "Fever reduction"], "side_effects": ["Nausea", "Headache"]}}"""
+
     try:
-        # Build prompt
-        prompt = f"""You are a pharmaceutical knowledge assistant. Provide ACCURATE medical information.
-
-DRUG: {drug_info.name}
-GENERIC NAME: {drug_info.generic_name or 'Unknown'}
-MANUFACTURER: {drug_info.manufacturer or 'Unknown'}
-
-I need you to provide the following MISSING information (be concise but accurate):
-{chr(10).join(f"- {field}" for field in missing_fields)}
-
-Return ONLY valid JSON with these exact keys (use empty arrays if unknown):
-{{
-  "indications": ["indication1", "indication2"],
-  "side_effects": ["effect1", "effect2"],
-  "dosage": ["dosage info"],
-  "contraindications": ["contraindication1"],
-  "interactions": ["interaction1"],
-  "warnings": ["warning1"]
-}}
-
-IMPORTANT: Only include fields you are confident about. Indian pharmaceutical context preferred."""
-
-        # Timeout for Gemini API call (30 seconds)
-        ENRICHMENT_TIMEOUT = 30
+        response = await asyncio.wait_for(
+            asyncio.to_thread(model.generate_content, prompt),
+            timeout=15.0
+        )
         
-        try:
-            response = await asyncio.wait_for(
-                asyncio.to_thread(
-                    lambda: model.generate_content(
-                        prompt,
-                        generation_config=genai.types.GenerationConfig(
-                            response_mime_type="application/json",
-                            temperature=0.1
-                        )
-                    )
-                ),
-                timeout=ENRICHMENT_TIMEOUT
-            )
-        except asyncio.TimeoutError:
-            logger.warning(f"Gemini enrichment timed out after {ENRICHMENT_TIMEOUT}s for drug: {drug_info.name}")
+        text = (response.text or "").strip()
+        if not text:
             return drug_info
         
-        # Parse response
-        try:
-            result_text = response.text.strip()
-            # Extract JSON if wrapped
-            if result_text.startswith('```'):
-                result_text = result_text.split('```')[1]
-                if result_text.startswith('json'):
-                    result_text = result_text[4:]
+        # Extract JSON from response
+        import json
+        import re
+        
+        # Find JSON in response
+        json_match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
+        if json_match:
+            data = json.loads(json_match.group())
             
-            enrichment = json.loads(result_text)
-            
-            # Track whether any field was actually enriched
-            enrichment_occurred = False
-            
-            # Apply enrichment only to empty fields
-            if not drug_info.indications and enrichment.get("indications"):
-                drug_info.indications = enrichment["indications"]
-                enrichment_occurred = True
-            if not drug_info.side_effects and enrichment.get("side_effects"):
-                drug_info.side_effects = enrichment["side_effects"]
-                enrichment_occurred = True
-            if not drug_info.dosage and enrichment.get("dosage"):
-                drug_info.dosage = enrichment["dosage"]
-                enrichment_occurred = True
-            if not drug_info.contraindications and enrichment.get("contraindications"):
-                drug_info.contraindications = enrichment["contraindications"]
-                enrichment_occurred = True
-            if not drug_info.interactions and enrichment.get("interactions"):
-                drug_info.interactions = enrichment["interactions"]
-                enrichment_occurred = True
-            if not drug_info.warnings and enrichment.get("warnings"):
-                drug_info.warnings = enrichment["warnings"]
-                enrichment_occurred = True
-            
-            # Only mark as AI-enriched if actual enrichment occurred
-            if enrichment_occurred:
-                if not drug_info.warnings:
-                    drug_info.warnings = []
-                drug_info.warnings.append("ℹ️ Some information enriched by AI. Verify with pharmacist.")
-            
-        except (json.JSONDecodeError, AttributeError) as e:
-            logger.warning(f"Failed to parse Gemini enrichment response: {e}")
-    
+            # Update only missing fields
+            if not drug_info.indications and data.get("indications"):
+                drug_info.indications = data["indications"][:3]
+            if not drug_info.side_effects and data.get("side_effects"):
+                drug_info.side_effects = data["side_effects"][:5]
+            if not drug_info.dosage and data.get("dosage"):
+                drug_info.dosage = data["dosage"][:2]
+            if not drug_info.contraindications and data.get("contraindications"):
+                drug_info.contraindications = data["contraindications"][:3]
+            if not drug_info.interactions and data.get("interactions"):
+                drug_info.interactions = data["interactions"][:3]
+                
     except Exception as e:
         logger.warning(f"Gemini enrichment failed: {e}")
     
     return drug_info
 
 
-async def search_drug_descriptions(query: str, limit: int = 5) -> str:
-    """Search drug descriptions (FTS or partial match) to bridge RAG disconnect."""
-    if not query or len(query) < 3:
-        return ""
-    
-    try:
-        supabase = SupabaseService.get_client()
-        if not supabase:
-            return ""
-
-        # Using ilike on description for simplicity (FTS is better but requires setup)
-        # We search for drugs where description contains the query info
-        response = await asyncio.to_thread(
-            lambda: supabase.table("indian_drugs")
-                .select("name, description")
-                .ilike("description", f"%{query}%")
-                .limit(limit)
-                .execute()
-        )
-        
-        if not response.data:
-            return ""
-            
-        context = "Relevant Drugs from Database (based on symptoms/description):\n"
-        for item in response.data:
-            context += f"- {item.get('name')}: {item.get('description')[:200]}...\n"
-            
-        return context
-
-    except Exception as e:
-        logger.warning(f"Description search failed: {e}")
-        return ""
-
+# ============================================================================
+# MAIN API FUNCTIONS
+# ============================================================================
 
 async def search_drugs(query: str, limit: int = 10) -> List[DrugSearchResult]:
-    """Search for drugs - combines Indian DB (Turso) with openFDA."""
+    """
+    Search for drugs using: Qdrant (semantic) → Turso (text) → openFDA (backup).
+    
+    NO HARDCODED DATA - purely database-driven.
+    """
     if not query or len(query) < 2:
         return []
     
-    cache_key = f"search:india:{query.lower()}:{limit}"
+    cache_key = f"search:{query.lower()}:{limit}"
     cached = cache.get(cache_key)
     if cached:
         return cached
     
     results = []
+    seen_names = set()
     
-    # 1. Search Turso DB first (Real 250k+ Data)
+    # 1. QDRANT: Semantic vector search (finds drugs by meaning)
     try:
-        turso_results = await asyncio.to_thread(turso_service.search_drugs, query, limit)
-        for row in turso_results:
-            results.append(DrugSearchResult(
-                name=row.get("name", "").title(),
-                generic_name=row.get("generic_name"),
-                manufacturer=row.get("manufacturer")
-            ))
+        qdrant_results = await asyncio.to_thread(
+            qdrant_service.search_similar, query, limit
+        )
+        
+        if qdrant_results:
+            # Get drug IDs from Qdrant
+            drug_ids = [r.get("drug_id") for r in qdrant_results if r.get("drug_id")]
+            
+            # Fetch full data from Turso
+            if drug_ids:
+                turso_drugs = await asyncio.to_thread(
+                    turso_service.get_drugs_by_ids, drug_ids
+                )
+                
+                for drug in turso_drugs:
+                    name = drug.get("name", "")
+                    if name.lower() not in seen_names:
+                        seen_names.add(name.lower())
+                        results.append(DrugSearchResult(
+                            name=name,
+                            generic_name=drug.get("generic_name"),
+                            manufacturer=drug.get("manufacturer")
+                        ))
     except Exception as e:
-        logger.error(f"Turso search failed: {e}")
-        # Fallback to static dictionary only if Turso completely fails
-        query_lower = query.lower()
-        for drug_key, drug_data in INDIAN_MEDICINES_DB.items():
-            if query_lower in drug_key or query_lower in drug_data.get("generic_name", "").lower():
-                results.append(DrugSearchResult(
-                    name=drug_key.title(),
-                    generic_name=drug_data.get("generic_name"),
-                    manufacturer=drug_data.get("indian_brands", [""])[0].split("(")[1].rstrip(")") if drug_data.get("indian_brands") else None
-                ))
+        logger.warning(f"Qdrant search failed: {e}")
     
-    # 2. Also search openFDA for completeness if needed
+    # 2. TURSO: Text search (if Qdrant didn't find enough)
+    if len(results) < limit:
+        try:
+            turso_results = await asyncio.to_thread(
+                turso_service.search_drugs, query, limit - len(results)
+            )
+            
+            for drug in turso_results:
+                name = drug.get("name", "")
+                if name.lower() not in seen_names:
+                    seen_names.add(name.lower())
+                    results.append(DrugSearchResult(
+                        name=name,
+                        generic_name=drug.get("generic_name"),
+                        manufacturer=drug.get("manufacturer")
+                    ))
+        except Exception as e:
+            logger.warning(f"Turso text search failed: {e}")
+    
+    # 3. openFDA: Backup for international drugs
     if len(results) < limit:
         try:
             escaped_query = escape_lucene_special_chars(query)
@@ -521,7 +262,7 @@ async def search_drugs(query: str, limit: int = 10) -> List[DrugSearchResult]:
                     OPENFDA_LABEL_URL,
                     params={
                         "search": f'openfda.brand_name:"{escaped_query}" OR openfda.generic_name:"{escaped_query}"',
-                        "limit": limit
+                        "limit": limit - len(results)
                     }
                 )
                 
@@ -534,15 +275,15 @@ async def search_drugs(query: str, limit: int = 10) -> List[DrugSearchResult]:
                         manufacturers = openfda.get("manufacturer_name", [])
                         
                         name = brand_names[0] if brand_names else "Unknown"
-                        # Skip if already in results
-                        if not any(r.name.lower() == name.lower() for r in results):
+                        if name.lower() not in seen_names:
+                            seen_names.add(name.lower())
                             results.append(DrugSearchResult(
                                 name=name,
                                 generic_name=generic_names[0] if generic_names else None,
                                 manufacturer=manufacturers[0] if manufacturers else None
                             ))
         except Exception as e:
-            logger.error("openFDA search error: %s", e)
+            logger.warning(f"openFDA search failed: {e}")
     
     results = results[:limit]
     cache.set(cache_key, results)
@@ -550,161 +291,120 @@ async def search_drugs(query: str, limit: int = 10) -> List[DrugSearchResult]:
 
 
 async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
-    """Get detailed drug info - Turso -> India Static -> openFDA."""
+    """
+    Get detailed drug info using: Turso (exact match) → LLM enrichment.
+    
+    NO HARDCODED DATA - purely database + LLM driven.
+    """
     if not drug_name:
         return None
     
-    cache_key = f"info:india:{drug_name.lower()}"
+    cache_key = f"info:{drug_name.lower()}"
     cached = cache.get(cache_key)
     if cached:
         return cached
     
-    drug_lower = drug_name.lower()
-    
-    # 0. Check Turso First (Real Data)
+    # 1. TURSO: Get drug data from database
     try:
         data = await asyncio.to_thread(turso_service.get_drug_by_name, drug_name)
         
         if data:
-            # Map Turso Row to DrugInfo
             info = DrugInfo(
                 name=data.get("name"),
                 generic_name=data.get("generic_name"),
                 manufacturer=data.get("manufacturer"),
                 price_raw=data.get("price_raw"),
-                price=float(data.get("price")) if data.get("price") is not None else None,
+                price=float(data.get("price")) if data.get("price") else None,
                 pack_size=data.get("pack_size"),
-                # Convert string lists
-                side_effects=[s.strip() for s in data.get("side_effects", "").split(",")] if data.get("side_effects") else [],
+                side_effects=[s.strip() for s in (data.get("side_effects") or "").split(",") if s.strip()],
                 indications=[data.get("therapeutic_class")] if data.get("therapeutic_class") else [],
                 substitutes=data.get("substitutes") or [],
-                # Map extra fields
                 therapeutic_class=data.get("therapeutic_class"),
                 action_class=data.get("action_class"),
-                nlem_status=bool(data.get("is_discontinued")), # Using field context
-                dpco_controlled=data.get("name").lower() in DPCO_CONTROLLED_DRUGS 
             )
             
-            # Enrich with Description if available
             if data.get("description"):
                 if not info.indications:
                     info.indications = []
                 info.indications.append(data.get("description"))
-
-            # Check for "Is Discontinued"
-            if data.get("is_discontinued"):
-                info.warnings.append("⚠️ This product is marked as DISCONTINUED.")
             
-            # HYBRID APPROACH: Enrich missing fields with Gemini
+            if data.get("is_discontinued"):
+                info.warnings.append("This product is marked as DISCONTINUED.")
+            
+            # Enrich missing fields with LLM
             info = await enrich_drug_with_gemini(info)
             
             cache.set(cache_key, info)
             return info
+            
     except Exception as e:
-        logger.warning(f"Turso drug info lookup failed: {e}")
-    except Exception as e:
-        logger.warning(f"Supabase drug info lookup failed: {e}")
-
-    # 1. Check Indian medicines DB (Static Fallback)
-    if drug_lower in INDIAN_MEDICINES_DB:
-        india_data = INDIAN_MEDICINES_DB[drug_lower]
-        
-        info = DrugInfo(
-            name=drug_name.title(),
-            generic_name=india_data.get("generic_name"),
-            manufacturer=india_data.get("indian_brands", ["Unknown"])[0],
-            indications=[f"Category: {india_data.get('category', 'Unknown')}"],
-            dosage=[f"Available strengths: {', '.join(india_data.get('common_strengths', []))}"],
-            warnings=[f"Schedule: {india_data.get('schedule', 'Unknown')}"],
-            indian_brands=india_data.get("indian_brands", []),
-            mrp_range=india_data.get("mrp_range"),
-            jan_aushadhi_price=india_data.get("jan_aushadhi_price"),
-            nlem_status=india_data.get("nlem_status", False),
-            dpco_controlled=drug_lower in DPCO_CONTROLLED_DRUGS,
-            schedule=india_data.get("schedule")
-        )
-        
-        # HYBRID: Enrich with Gemini
-        info = await enrich_drug_with_gemini(info)
-        
-        cache.set(cache_key, info)
-        return info
+        logger.warning(f"Turso drug lookup failed: {e}")
     
-    # 2. Fallback to openFDA
+    # 2. openFDA: Fallback for international drugs
     try:
         escaped_name = escape_lucene_special_chars(drug_name)
         async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
             response = await client.get(
                 OPENFDA_LABEL_URL,
-                params={
-                    "search": f'openfda.brand_name:"{escaped_name}" OR openfda.generic_name:"{escaped_name}"',
-                    "limit": 1
-                }
+                params={"search": f'openfda.brand_name:"{escaped_name}"', "limit": 1}
             )
             
-            if response.status_code == 404:
-                return None
-            
-            if response.status_code != 200:
-                return None
-            
-            data = response.json()
-            results = data.get("results", [])
-            
-            if not results:
-                return None
-            
-            item = results[0]
-            openfda = item.get("openfda", {})
-            
-            brand_list = openfda.get("brand_name", [])
-            generic_list = openfda.get("generic_name", [])
-            manufacturer_list = openfda.get("manufacturer_name", [])
-            
-            def get_field(field_name: str) -> List[str]:
-                value = item.get(field_name, [])
-                if isinstance(value, list):
-                    return value[:5]
-                return [str(value)] if value else []
-            
-            info = DrugInfo(
-                name=brand_list[0] if brand_list else drug_name,
-                generic_name=generic_list[0] if generic_list else None,
-                manufacturer=manufacturer_list[0] if manufacturer_list else None,
-                indications=get_field("indications_and_usage"),
-                dosage=get_field("dosage_and_administration"),
-                warnings=get_field("warnings"),
-                contraindications=get_field("contraindications"),
-                side_effects=get_field("adverse_reactions"),
-                interactions=get_field("drug_interactions"),
-                dpco_controlled=drug_lower in DPCO_CONTROLLED_DRUGS
-            )
-            
-            # HYBRID: Enrich any missing fields with Gemini
-            info = await enrich_drug_with_gemini(info)
-            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("results"):
+                    result = data["results"][0]
+                    openfda = result.get("openfda", {})
+                    
+                    info = DrugInfo(
+                        name=openfda.get("brand_name", [drug_name])[0],
+                        generic_name=openfda.get("generic_name", [None])[0],
+                        manufacturer=openfda.get("manufacturer_name", [None])[0],
+                        indications=result.get("indications_and_usage", [])[:3],
+                        warnings=result.get("warnings", [])[:3],
+                        dosage=result.get("dosage_and_administration", [])[:2],
+                        contraindications=result.get("contraindications", [])[:3],
+                        side_effects=result.get("adverse_reactions", [])[:5],
+                    )
+                    
+                    # Enrich if still incomplete
+                    info = await enrich_drug_with_gemini(info)
+                    
+                    cache.set(cache_key, info)
+                    return info
+    except Exception as e:
+        logger.warning(f"openFDA lookup failed: {e}")
+    
+    # 3. LLM-only: Create info from LLM knowledge if not in any database
+    try:
+        info = DrugInfo(name=drug_name)
+        info = await enrich_drug_with_gemini(info)
+        
+        if info.indications or info.side_effects:  # LLM provided useful info
             cache.set(cache_key, info)
             return info
-    
     except Exception as e:
-        logger.exception("Drug info error for %s", drug_name)
-        return None
+        logger.warning(f"LLM fallback failed: {e}")
+    
+    return None
+
 
 async def find_cheaper_substitutes(drug_name: str) -> List[DrugInfo]:
-    """Find cheaper substitutes for a given drug using Supabase."""
-    supabase = SupabaseService.get_client()
-async def find_cheaper_substitutes(drug_name: str) -> List[DrugInfo]:
-    """Find cheaper substitutes using Turso."""
-    cache_key = f"subs:india:{drug_name.lower()}"
+    """
+    Find cheaper substitutes using Turso database.
+    Falls back to LLM suggestions if database has no results.
+    """
+    cache_key = f"subs:{drug_name.lower()}"
     cached = cache.get(cache_key)
     if cached:
         return cached
-
+    
     results = []
     
-    # 0. Turso Search (Real Data)
+    # 1. TURSO: Find cheaper substitutes from database
     try:
-        substitutes = await asyncio.to_thread(turso_find_substitutes, drug_name)
+        substitutes = await asyncio.to_thread(
+            turso_service.find_cheaper_substitutes, drug_name
+        )
         
         for sub in substitutes:
             results.append(DrugInfo(
@@ -712,18 +412,89 @@ async def find_cheaper_substitutes(drug_name: str) -> List[DrugInfo]:
                 generic_name=sub.get("generic_name"),
                 manufacturer=sub.get("manufacturer"),
                 price_raw=sub.get("price_raw"),
-                price=float(sub.get("price")) if sub.get("price") is not None else None,
-                pack_size=sub.get("pack_size"),
-                therapeutic_class=sub.get("therapeutic_class"),
-                action_class=sub.get("action_class"),
-                substitutes=sub.get("substitutes") or []
+                price=float(sub.get("price")) if sub.get("price") else None,
             ))
-            
+        
         if results:
             cache.set(cache_key, results)
             return results
             
     except Exception as e:
         logger.warning(f"Turso substitute search failed: {e}")
-        
+    
+    # If no results, return empty - LLM will handle in chat flow
     return results
+
+
+async def search_drug_descriptions(query: str, limit: int = 5) -> str:
+    """Search drug descriptions using Qdrant semantic search."""
+    try:
+        qdrant_results = await asyncio.to_thread(
+            qdrant_service.search_similar, query, limit
+        )
+        
+        if qdrant_results:
+            drug_ids = [r.get("drug_id") for r in qdrant_results if r.get("drug_id")]
+            
+            if drug_ids:
+                turso_drugs = await asyncio.to_thread(
+                    turso_service.get_drugs_by_ids, drug_ids
+                )
+                
+                descriptions = []
+                for drug in turso_drugs:
+                    name = drug.get("name", "Unknown")
+                    desc = drug.get("description", "")
+                    generic = drug.get("generic_name", "")
+                    
+                    if desc or generic:
+                        descriptions.append(f"{name}: {generic or desc}")
+                
+                if descriptions:
+                    return "\n".join(descriptions[:limit])
+    except Exception as e:
+        logger.warning(f"Description search failed: {e}")
+    
+    return ""
+
+
+async def get_fda_alerts(drug_name: str, limit: int = 5):
+    """Fetch FDA enforcement reports (recalls) for a drug."""
+    from models import FDAAlert
+    from config import OPENFDA_ENFORCEMENT_URL
+    
+    alerts = []
+    try:
+        escaped_name = escape_lucene_special_chars(drug_name)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                OPENFDA_ENFORCEMENT_URL,
+                params={
+                    "search": f'openfda.brand_name:"{escaped_name}" OR openfda.generic_name:"{escaped_name}"',
+                    "limit": limit
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                for item in data.get("results", []):
+                    # Map severity logic (Class I = High/Recall, II = Medium/Warning, III = Low/Info)
+                    classification = item.get("classification", "")
+                    severity = "info"
+                    if "Class I" in classification:
+                        severity = "recall"
+                    elif "Class II" in classification:
+                        severity = "warning"
+                        
+                    alerts.append(FDAAlert(
+                        id=item.get("recall_number", "UNKNOWN"),
+                        severity=severity,
+                        title=f"{item.get('product_description', 'Product')[:100]}...",
+                        description=item.get("reason_for_recall", "No reason provided"),
+                        date=item.get("recall_initiation_date"), # YYYYMMDD format usually handled by validator
+                        lot_numbers=[item.get("code_info", "")] if item.get("code_info") else []
+                    ))
+    except Exception as e:
+        logger.warning(f"FDA alert fetch failed for {drug_name}: {e}")
+        
+    return alerts

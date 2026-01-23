@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, RefreshCw, Download } from "lucide-react";
-import { checkInteractions } from "@/lib/api";
+import { AlertTriangle, RefreshCw, Download, Loader2 } from "lucide-react";
+import { checkInteractions, saveDrug } from "@/lib/api";
 import { DrugInteraction } from "@/types";
+import { usePatientContext } from "@/lib/context/PatientContext";
 import dynamic from "next/dynamic";
 import {
   DrugSearchInput,
@@ -28,6 +29,7 @@ export default function InteractionGraphWidget() {
   const [interactions, setInteractions] = useState<DrugInteraction[]>([]);
   const [selectedInteraction, setSelectedInteraction] = useState<DrugInteraction | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const { patientContext } = usePatientContext();
 
   const addDrug = (drug: string) => {
     if (drug.trim() && !drugs.includes(drug.trim())) {
@@ -41,7 +43,9 @@ export default function InteractionGraphWidget() {
   };
 
   const fetchInteractions = useCallback(async () => {
-    if (drugs.length < 2) {
+    const hasContext = patientContext && (patientContext.conditions?.length > 0 || patientContext.allergies?.length > 0);
+
+    if (drugs.length < 1 || (drugs.length < 2 && !hasContext)) {
       setInteractions([]);
       setSelectedInteraction(null);
       return;
@@ -49,15 +53,23 @@ export default function InteractionGraphWidget() {
 
     setIsLoading(true);
     try {
-      const response = await checkInteractions(drugs);
-      setInteractions(response.interactions || []);
+      const response = await checkInteractions(drugs, patientContext) as any;
+      
+      // BRUTAL FIX: Backend returns an array directly
+      if (Array.isArray(response)) {
+        setInteractions(response);
+      } else if (response.interactions && Array.isArray(response.interactions)) {
+        setInteractions(response.interactions);
+      } else {
+        setInteractions([]);
+      }
     } catch (error) {
       console.error("Error fetching interactions:", error);
       setInteractions([]);
     } finally {
       setIsLoading(false);
     }
-  }, [drugs]);
+  }, [drugs, patientContext]);
 
   useEffect(() => {
     fetchInteractions();
@@ -102,17 +114,33 @@ export default function InteractionGraphWidget() {
     }
   };
 
-  const graphData = {
-    nodes: drugs.map((drug) => ({ id: drug, name: drug })),
-    links: interactions.map((interaction) => ({
-      source: interaction.drug1,
-      target: interaction.drug2,
-      color: severityColors[interaction.severity],
-      severity: interaction.severity,
-      description: interaction.description,
-      recommendation: interaction.recommendation,
-    })),
-  };
+  // BRUTAL FIX: Normalize IDs to lowercase to ensure links match nodes.
+  const graphData = useMemo(() => {
+    // Create a set of available node IDs for validation
+    const nodeIds = new Set(drugs.map(d => d.toLowerCase().trim()));
+    
+    return {
+      nodes: drugs.map((drug) => ({ 
+        id: drug.toLowerCase().trim(), 
+        name: drug 
+      })),
+      links: interactions
+        .filter(i => {
+          // Only create links if both source and target exist in the nodes
+          const source = i.drug1.toLowerCase().trim();
+          const target = i.drug2.toLowerCase().trim();
+          return nodeIds.has(source) && nodeIds.has(target);
+        })
+        .map((interaction) => ({
+          source: interaction.drug1.toLowerCase().trim(),
+          target: interaction.drug2.toLowerCase().trim(),
+          color: severityColors[interaction.severity as keyof typeof severityColors] || severityColors.moderate,
+          severity: interaction.severity,
+          description: interaction.description,
+          recommendation: interaction.recommendation,
+        })),
+    };
+  }, [drugs, interactions]);
 
   return (
     <div className="space-y-6">
@@ -226,7 +254,13 @@ export default function InteractionGraphWidget() {
                 existingDrugs={drugs}
                 isLoading={isLoading}
               />
-              <DrugList drugs={drugs} onRemove={removeDrug} />
+              <DrugList 
+                drugs={drugs} 
+                onRemove={removeDrug} 
+                onSave={async (drug) => {
+                  await saveDrug(drug);
+                }}
+              />
             </CardContent>
           </Card>
 

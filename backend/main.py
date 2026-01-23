@@ -24,8 +24,8 @@ app = FastAPI(
 # CORS Configuration - explicit methods and headers
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False, # Wildcard cannot be used with credentials=True
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
 )
@@ -52,11 +52,16 @@ async def health_check():
     return {"status": "healthy", "service": "MediRep AI"}
 
 
+from routers import chat, drugs, vision, alerts, user
+
+# ...
+
 # Mount routers
 app.include_router(chat.router, prefix="/api", tags=["Chat"])
 app.include_router(drugs.router, prefix="/api/drugs", tags=["Drugs"])
 app.include_router(vision.router, prefix="/api/vision", tags=["Vision"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["Alerts"])
+app.include_router(user.router, prefix="/api/user", tags=["User"])
 
 
 @app.exception_handler(Exception)

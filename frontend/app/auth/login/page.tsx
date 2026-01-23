@@ -44,7 +44,7 @@ export default function LoginPage() {
         setIsGoogleLoading(false);
       }
     } catch {
-      setError("Failed to connect to Google. Please try again.");
+      // setError("Failed to connect to Google. Please try again.");
       setIsGoogleLoading(false);
     }
   }

@@ -1,159 +1,128 @@
+"""
+RAG Service - Uses Qdrant for drug embeddings and Turso for drug data.
+
+Architecture:
+- Qdrant: Stores drug embeddings (384 dims from all-MiniLM-L6-v2)
+- Turso: Stores actual drug data (name, price, manufacturer, etc.)
+- This service bridges semantic search with structured data
+"""
 import asyncio
 import logging
-from typing import List, Literal
+from typing import List, Optional
 
-import google.generativeai as genai
-
-from config import GEMINI_API_KEY
-from services.supabase_service import SupabaseService
+from services import qdrant_service, turso_service
 
 logger = logging.getLogger(__name__)
 
-# Task types for embeddings
-TaskType = Literal["retrieval_document", "retrieval_query"]
-
 
 class RAGService:
-    """Retrieval-Augmented Generation service using Supabase pgvector."""
-    
-    def __init__(self):
-        self._configured = False
-        self._config_attempted = False
-        self._configure_lock = asyncio.Lock()
-    
-    async def _ensure_configured(self):
-        """Ensure Gemini is configured (async-safe within the event loop).
-        
-        Only attempts configuration once, even if API key is missing.
+    """Retrieval-Augmented Generation service using Qdrant + Turso."""
+
+    async def search_context(self, query: str, top_k: int = 5) -> str:
         """
-        if self._config_attempted:
-            return
-        
-        async with self._configure_lock:
-            if self._config_attempted:
-                return
-            
-            self._config_attempted = True
-            
-            if not GEMINI_API_KEY:
-                logger.warning("GEMINI_API_KEY not set - RAG embeddings will not work")
-                return
-            
-            genai.configure(api_key=GEMINI_API_KEY)
-            self._configured = True
-    
-    async def generate_embedding(
-        self,
-        text: str,
-        task_type: TaskType = "retrieval_document"
-    ) -> List[float]:
-        """Generate embedding for text using Gemini.
-        
-        Args:
-            text: Text to generate embedding for
-            task_type: Either "retrieval_document" for documents or "retrieval_query" for queries
+        Search for relevant drug context using Qdrant semantic search.
+
+        Flow:
+        1. Query -> Qdrant (semantic search) -> drug_ids
+        2. drug_ids -> Turso (structured data) -> full drug info
+        3. Return formatted context for LLM
         """
-        # Validate input
-        if not text or not text.strip():
-            logger.warning("Empty input to generate_embedding")
-            return []
-        
-        await self._ensure_configured()
-        
-        if not self._configured:
-            return []
-        
-        try:
-            result = await asyncio.to_thread(
-                genai.embed_content,
-                model="models/embedding-001",
-                content=text.strip(),
-                task_type=task_type
-            )
-            return result['embedding']
-        except Exception as e:
-            logger.error("Embedding generation failed: %s", e)
-            return []
-    
-    async def search_context(self, query: str, top_k: int = 3) -> str:
-        """Search for relevant context using vector similarity."""
         if not query or not query.strip():
             return ""
-        
-        client = SupabaseService.get_client()
-        if not client:
-            return ""
-        
+
         try:
-            # Use retrieval_query for query embeddings
-            embedding = await self.generate_embedding(query, task_type="retrieval_query")
-            if not embedding:
-                return ""
-            
-            response = await asyncio.to_thread(
-                lambda emb=embedding: client.rpc(
-                    "match_documents",
-                    {"query_embedding": emb, "match_count": top_k}
-                ).execute()
+            # Step 1: Semantic search in Qdrant
+            qdrant_results = await asyncio.to_thread(
+                qdrant_service.search_similar, query, top_k
             )
-            
-            if response.data:
-                contexts = [item.get("content", "") for item in response.data]
-                return "\n\n".join(contexts)
-            return ""
-        except Exception as e:
-            logger.error("Context search failed: %s", e)
-            return ""
-    
-    async def ingest_text(self, text: str, source: str) -> bool:
-        """Ingest text into the RAG system with overlapping chunks."""
-        if not text or not text.strip():
-            return False
-        
-        client = SupabaseService.get_client()
-        if not client:
-            return False
-        
-        # Overlapping chunking for better context preservation
-        chunk_size = 1000
-        overlap = 200
-        step = chunk_size - overlap
-        
-        text = text.strip()
-        chunks = []
-        
-        # Create overlapping chunks
-        for i in range(0, len(text), step):
-            chunk = text[i:i + chunk_size]
-            if chunk.strip():
-                chunks.append(chunk)
-            # Stop if we've covered all the text
-            if i + chunk_size >= len(text):
-                break
-        
-        success = True
-        
-        for chunk in chunks:
-            try:
-                # Use retrieval_document for document embeddings
-                embedding = await self.generate_embedding(chunk, task_type="retrieval_document")
-                if not embedding:
-                    success = False
+
+            if not qdrant_results:
+                logger.info(f"No Qdrant results for query: {query[:50]}...")
+                return ""
+
+            logger.info(f"Qdrant found {len(qdrant_results)} results for: {query[:50]}...")
+
+            # Step 2: Fetch full drug data from Turso
+            context_parts = []
+
+            for result in qdrant_results:
+                drug_name = result.get("drug_name", "")
+                score = result.get("score", 0)
+
+                if not drug_name:
                     continue
-                
-                # Direct reference in lambda - no redundant temp vars
-                await asyncio.to_thread(
-                    lambda c=chunk, s=source, e=embedding: client.table("document_chunks").insert({
-                        "content": c,
-                        "metadata": {"source": s},
-                        "embedding": e
-                    }).execute()
+
+                # Get detailed info from Turso
+                drug_data = await asyncio.to_thread(
+                    turso_service.get_drug_by_name, drug_name
                 )
-            except Exception as e:
-                logger.error("Chunk ingestion failed: %s", e)
-                success = False
-        
-        return success
+
+                if drug_data:
+                    # Format drug info for context
+                    info_parts = [f"Drug: {drug_data.get('name', drug_name)}"]
+
+                    if drug_data.get('generic_name'):
+                        info_parts.append(f"Generic: {drug_data['generic_name']}")
+                    if drug_data.get('manufacturer'):
+                        info_parts.append(f"Manufacturer: {drug_data['manufacturer']}")
+                    if drug_data.get('price_raw'):
+                        info_parts.append(f"Price: {drug_data['price_raw']}")
+                    if drug_data.get('therapeutic_class'):
+                        info_parts.append(f"Class: {drug_data['therapeutic_class']}")
+                    if drug_data.get('description'):
+                        desc = drug_data['description'][:200]
+                        info_parts.append(f"Description: {desc}")
+                    if drug_data.get('side_effects'):
+                        info_parts.append(f"Side Effects: {drug_data['side_effects'][:150]}")
+
+                    context_parts.append(" | ".join(info_parts))
+                else:
+                    # Fallback: just use the drug name from Qdrant
+                    context_parts.append(f"Drug: {drug_name} (relevance: {score:.2f})")
+
+            if context_parts:
+                return "Relevant drugs from database:\n" + "\n".join(context_parts)
+
+            return ""
+
+        except Exception as e:
+            logger.error(f"RAG search failed: {e}")
+            return ""
+
+    async def search_by_description(self, query: str, limit: int = 3) -> str:
+        """
+        Direct text search in Turso for symptom/description based queries.
+        Useful when semantic search doesn't find matches.
+        """
+        if not query or len(query) < 3:
+            return ""
+
+        try:
+            # Search drugs by description/therapeutic class in Turso
+            results = await asyncio.to_thread(
+                turso_service.search_drugs, query, limit
+            )
+
+            if not results:
+                return ""
+
+            context_parts = []
+            for drug in results:
+                info = f"Drug: {drug.get('name', 'Unknown')}"
+                if drug.get('generic_name'):
+                    info += f" ({drug['generic_name']})"
+                if drug.get('manufacturer'):
+                    info += f" by {drug['manufacturer']}"
+                context_parts.append(info)
+
+            if context_parts:
+                return "Related drugs: " + ", ".join(context_parts)
+
+            return ""
+
+        except Exception as e:
+            logger.warning(f"Description search failed: {e}")
+            return ""
 
 
 # Singleton

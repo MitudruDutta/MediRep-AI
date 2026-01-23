@@ -17,6 +17,7 @@ import { ExportFormat } from "@/components/ExportSummary/export-format-selector"
 import { ExportOptionsData } from "@/components/ExportSummary/export-options";
 import { ExportHistoryItem } from "@/components/ExportSummary/export-history";
 import { DrugInteraction, FDAAlert } from "@/types";
+import { getSavedDrugs, checkInteractions, getFDAAlerts, getPatientContext } from "@/lib/api";
 
 export default function ExportSummaryWidget() {
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>("json");
@@ -32,43 +33,70 @@ export default function ExportSummaryWidget() {
     includeMetadata: true,
   });
 
-  // Sample data - in real app, fetch from API
+  // Data state
   const [exportData, setExportData] = useState({
-    drugs: [
-      { name: "Aspirin", generic_name: "Acetylsalicylic acid", manufacturer: "Bayer" },
-      { name: "Warfarin", generic_name: "Warfarin sodium", manufacturer: "Bristol-Myers Squibb" },
-      { name: "Lisinopril", generic_name: "Lisinopril", manufacturer: "Merck" },
-    ],
-    interactions: [
-      {
-        drug1: "Aspirin",
-        drug2: "Warfarin",
-        severity: "major" as const,
-        description: "Increased risk of bleeding when used together",
-        recommendation: "Monitor closely and adjust dosage as needed",
-      },
-      {
-        drug1: "Aspirin",
-        drug2: "Lisinopril",
-        severity: "moderate" as const,
-        description: "May reduce effectiveness of blood pressure medication",
-        recommendation: "Monitor blood pressure regularly",
-      },
-    ] as DrugInteraction[],
-    alerts: [
-      {
-        id: "1",
-        severity: "warning" as const,
-        title: "Aspirin - Bleeding Risk",
-        description: "FDA warns about increased bleeding risk in elderly patients",
-        date: "2024-01-15",
-      },
-    ] as FDAAlert[],
-    savedDrugs: [
-      { drug_name: "Aspirin", notes: "Take with food" },
-      { drug_name: "Warfarin", notes: "Regular INR monitoring required" },
-    ],
+    drugs: [] as any[],
+    interactions: [] as DrugInteraction[],
+    alerts: [] as FDAAlert[],
+    savedDrugs: [] as any[],
   });
+
+  // Fetch saved drugs and enrich with interactions/alerts
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // 1. Get Saved Drugs
+        const saved = await getSavedDrugs();
+        let currentSaved = [];
+        
+        if (Array.isArray(saved)) {
+           currentSaved = saved;
+           setExportData(prev => ({ ...prev, savedDrugs: saved }));
+        }
+
+        if (currentSaved.length === 0) {
+            setIsLoading(false);
+            return;
+        }
+
+        const drugNames = currentSaved.map(d => d.drug_name);
+
+        // 2. Get Patient Context (for interaction checking)
+        let patientContext = null;
+        try {
+            patientContext = await getPatientContext();
+        } catch(e) { console.warn("No patient context found"); }
+
+        // 3. Fetch Interactions
+        try {
+            const interactionRes: any = await checkInteractions(drugNames, patientContext);
+            if (interactionRes && interactionRes.interactions) {
+                setExportData(prev => ({ ...prev, interactions: interactionRes.interactions }));
+            }
+        } catch (e) { console.error("Interaction fetch failed", e); }
+
+        // 4. Fetch FDA Alerts (Parallel)
+        try {
+            const alertPromises = drugNames.map(name => getFDAAlerts(name).catch(() => ({ alerts: [] })));
+            const alertResults = await Promise.all(alertPromises);
+            const allAlerts = alertResults.flatMap((res: any) => res.alerts || []);
+            
+            setExportData(prev => ({ ...prev, alerts: allAlerts }));
+        } catch (e) { console.error("Alert fetch failed", e); }
+
+      } catch (e) {
+        console.error("Failed to load export data:", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    // Only fetch if authenticated (simple check: if we have tokens)
+    // For now, just run it.
+    loadData();
+  }, []);
 
   useEffect(() => {
     // Load export history from localStorage

@@ -8,7 +8,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
  */
 async function getAuthHeaders(): Promise<HeadersInit> {
   const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -42,7 +44,9 @@ async function handleResponse<T>(response: Response): Promise<T> {
     }
 
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Request failed: ${response.statusText}`);
+    throw new Error(
+      errorData.detail || `Request failed: ${response.statusText}`,
+    );
   }
 
   return response.json();
@@ -53,7 +57,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
  */
 async function authFetch<T>(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
   const headers = await getAuthHeaders();
 
@@ -71,7 +75,7 @@ async function authFetch<T>(
 export async function sendMessage(
   message: string,
   patientContext?: PatientContext,
-  history?: Message[]
+  history?: Message[],
 ) {
   return authFetch(`${API_URL}/api/chat`, {
     method: "POST",
@@ -93,16 +97,44 @@ export async function getDrugInfo(drugName: string) {
   return authFetch(`${API_URL}/api/drugs/${encodedName}`);
 }
 
-export async function checkInteractions(drugs: string[]) {
+export async function checkInteractions(drugs: string[], patientContext?: any) {
   return authFetch(`${API_URL}/api/drugs/interactions`, {
     method: "POST",
-    body: JSON.stringify({ drugs }),
+    body: JSON.stringify({ drugs, patient_context: patientContext }),
   });
 }
 
+// === NEW: User Profile API ===
+export async function getPatientContext() {
+  return authFetch<any>(`${API_URL}/api/user/profile/context`);
+}
+
+export async function savePatientContext(context: any) {
+  return authFetch(`${API_URL}/api/user/profile/context`, {
+    method: "POST",
+    body: JSON.stringify(context),
+  });
+}
+// =============================
+
+// === NEW: Saved Drugs API ===
+export async function getSavedDrugs() {
+  return authFetch<any[]>(`${API_URL}/api/drugs/saved`);
+}
+
+export async function saveDrug(drugName: string, notes?: string) {
+  return authFetch(`${API_URL}/api/drugs/saved`, {
+    method: "POST",
+    body: JSON.stringify({ drug_name: drugName, notes }),
+  });
+}
+// =============================
+
 export async function identifyPill(imageFile: File) {
   const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
   const formData = new FormData();
   formData.append("image", imageFile);
@@ -131,7 +163,9 @@ export async function getFDAAlerts(drugName: string) {
  */
 export async function isAuthenticated(): Promise<boolean> {
   const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   return !!session;
 }
 
@@ -140,6 +174,8 @@ export async function isAuthenticated(): Promise<boolean> {
  */
 export async function getAccessToken(): Promise<string | null> {
   const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   return session?.access_token || null;
 }

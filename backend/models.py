@@ -82,7 +82,8 @@ class DrugInteraction(BaseModel):
 
 
 class InteractionRequest(BaseModel):
-    drugs: List[str] = Field(..., min_length=2, max_length=10)
+    drugs: List[str] = Field(..., min_length=1, max_length=10)
+    patient_context: Optional[PatientContext] = None
 
 
 class InteractionResponse(BaseModel):

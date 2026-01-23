@@ -95,33 +95,44 @@ def init_collection() -> bool:
 def search_similar(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     """
     Search for drugs similar to the query using vector similarity.
-    
-    Returns list of {drug_id, score} for lookup in Turso.
+
+    Returns list of {drug_id, drug_name, score} for lookup in Turso.
     """
     client = get_client()
     model = get_embedding_model()
-    
+
     if not client or not model:
         return []
-    
+
     try:
         # Generate query embedding
         query_embedding = model.encode(query).tolist()
-        
-        # Search Qdrant
-        results = client.search(
-            collection_name=COLLECTION_NAME,
-            query_vector=query_embedding,
-            limit=limit
-        )
-        
+
+        # Search Qdrant using query_points (newer API)
+        # Fallback to search if query_points not available
+        try:
+            results = client.query_points(
+                collection_name=COLLECTION_NAME,
+                query=query_embedding,
+                limit=limit
+            )
+            hits = results.points
+        except AttributeError:
+            # Fallback for older qdrant-client versions
+            results = client.search(
+                collection_name=COLLECTION_NAME,
+                query_vector=query_embedding,
+                limit=limit
+            )
+            hits = results
+
         return [
             {
-                "drug_id": hit.payload.get("drug_id"),
-                "drug_name": hit.payload.get("drug_name", ""),
+                "drug_id": hit.payload.get("drug_id") if hit.payload else None,
+                "drug_name": hit.payload.get("drug_name", "") if hit.payload else "",
                 "score": hit.score
             }
-            for hit in results
+            for hit in hits
             if hit.payload
         ]
     except Exception as e:

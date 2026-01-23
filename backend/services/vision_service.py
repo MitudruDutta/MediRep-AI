@@ -345,18 +345,18 @@ async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentifica
             best_match = matches[0]
             
             description_parts = [
-                "📋 **Extracted Features:**",
-                f"   • Imprint: {features.imprint or 'Not visible'}",
-                f"   • Color: {features.color or 'Unknown'}",
-                f"   • Shape: {features.shape or 'Unknown'}",
-                f"   • OCR Confidence: {features.ocr_confidence:.0%}",
+                "[Extracted Features]",
+                f"   - Imprint: {features.imprint or 'Not visible'}",
+                f"   - Color: {features.color or 'Unknown'}",
+                f"   - Shape: {features.shape or 'Unknown'}",
+                f"   - OCR Confidence: {features.ocr_confidence:.0%}",
                 "",
-                "💊 **Database Matches:**"
+                "[Database Matches]"
             ]
-            
+
             for i, match in enumerate(matches[:3], 1):
                 description_parts.append(
-                    f"   {i}. **{match.name}**"
+                    f"   {i}. {match.name}"
                 )
                 if match.generic_name:
                     description_parts.append(f"      Generic: {match.generic_name}")
@@ -366,9 +366,9 @@ async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentifica
                     description_parts.append(f"      Price: {match.price_raw}")
                 description_parts.append(f"      Match: {match.match_score:.0%} ({match.match_reason})")
                 description_parts.append("")
-            
+
             description_parts.extend([
-                "⚠️ **IMPORTANT:** This is visual matching only.",
+                "IMPORTANT: This is visual matching only.",
                 "   ALWAYS verify with a pharmacist before use.",
                 "   Many pills look similar but contain different medications."
             ])
@@ -385,28 +385,28 @@ async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentifica
         else:
             # No matches found
             description_parts = [
-                "📋 **Extracted Features:**",
-                f"   • Imprint: {features.imprint or 'Not visible'}",
-                f"   • Color: {features.color or 'Unknown'}",
-                f"   • Shape: {features.shape or 'Unknown'}",
+                "[Extracted Features]",
+                f"   - Imprint: {features.imprint or 'Not visible'}",
+                f"   - Color: {features.color or 'Unknown'}",
+                f"   - Shape: {features.shape or 'Unknown'}",
                 "",
-                "❌ **No matches found in database.**",
+                "No matches found in database.",
                 "",
-                "🔍 **Try searching manually:**"
+                "Try searching manually:"
             ]
-            
+
             if features.imprint:
                 description_parts.append(
-                    f"   • Search '{features.imprint}' on 1mg.com or pharmeasy.in"
+                    f"   - Search '{features.imprint}' on 1mg.com or pharmeasy.in"
                 )
             else:
                 description_parts.append(
-                    f"   • Search '{features.color or ''} {features.shape or ''} pill India'"
+                    f"   - Search '{features.color or ''} {features.shape or ''} pill India'"
                 )
-            
+
             description_parts.extend([
                 "",
-                "⚠️ **Cannot identify this pill.**",
+                "WARNING: Cannot identify this pill.",
                 "   Please consult a pharmacist."
             ])
             

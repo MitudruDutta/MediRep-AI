@@ -1,16 +1,18 @@
 from fastapi import APIRouter, HTTPException, Depends, Path, Query
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
 import asyncio
 import logging
 
-from models import DrugInfo, DrugSearchResult, InteractionRequest, InteractionResponse, SavedDrug
-from services.drug_service import search_drugs, get_drug_info, find_cheaper_substitutes
+from models import DrugInfo, DrugSearchResult, InteractionRequest, InteractionResponse, SavedDrug, FDAAlertResponse
+from services.drug_service import search_drugs, get_drug_info, find_cheaper_substitutes, get_fda_alerts
 from services.interaction_service import check_interactions
 from services.supabase_service import SupabaseService
 from middleware.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+security = HTTPBearer()
 
 
 @router.get("/search", response_model=List[DrugSearchResult])
@@ -33,12 +35,14 @@ async def find_substitutes(
 
 # FIXED: /saved routes BEFORE /{drug_name} to prevent route shadowing
 @router.post("/saved", response_model=bool)
-async def save_drug(drug: SavedDrug, user = Depends(get_current_user)):
+async def save_drug(
+    drug: SavedDrug, 
+    user = Depends(get_current_user),
+    creds: HTTPAuthorizationCredentials = Depends(security)
+):
     """Save a drug to user's list"""
     try:
-        client = SupabaseService.get_client()
-        if not client:
-            raise HTTPException(status_code=503, detail="Database unavailable")
+        client = SupabaseService.get_auth_client(creds.credentials)
         
         user_id = user.id
         if not user_id:
@@ -81,12 +85,13 @@ async def save_drug(drug: SavedDrug, user = Depends(get_current_user)):
 
 
 @router.get("/saved", response_model=List[SavedDrug])
-async def get_saved_drugs(user = Depends(get_current_user)):
+async def get_saved_drugs(
+    user = Depends(get_current_user),
+    creds: HTTPAuthorizationCredentials = Depends(security)
+):
     """Get user's saved drugs"""
     try:
-        client = SupabaseService.get_client()
-        if not client:
-            raise HTTPException(status_code=503, detail="Database unavailable")
+        client = SupabaseService.get_auth_client(creds.credentials)
         
         user_id = user.id
         if not user_id:
@@ -105,11 +110,11 @@ async def get_saved_drugs(user = Depends(get_current_user)):
 
 @router.post("/interactions", response_model=InteractionResponse)
 async def check_interactions_endpoint(request: InteractionRequest):
-    """Check drug-drug interactions.
+    """Check drug-drug interactions AND drug-patient interactions.
     
-    Validation is handled by Pydantic (min_length=2, max_length=10 on InteractionRequest.drugs).
+    Validation is handled by Pydantic.
     """
-    interactions = await check_interactions(request.drugs)
+    interactions = await check_interactions(request.drugs, request.patient_context)
     return InteractionResponse(interactions=interactions)
 
 
@@ -125,3 +130,12 @@ async def get_drug_info_endpoint(
     if not info:
         raise HTTPException(status_code=404, detail=f"Drug '{drug_name}' not found")
     return info
+
+
+@router.get("/alerts/{drug_name}", response_model=FDAAlertResponse)
+async def get_drug_alerts(
+    drug_name: str = Path(..., min_length=1, description="Drug name")
+):
+    """Get FDA alerts/recalls for a drug."""
+    alerts = await get_fda_alerts(drug_name)
+    return FDAAlertResponse(drug_name=drug_name, alerts=alerts)

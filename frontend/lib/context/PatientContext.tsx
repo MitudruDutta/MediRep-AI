@@ -1,7 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { PatientContext as PatientContextType } from "@/types";
+import { getPatientContext, savePatientContext } from "@/lib/api";
 
 interface PatientContextState {
   patientContext: PatientContextType | null;
@@ -11,11 +12,35 @@ interface PatientContextState {
 
 const PatientContext = createContext<PatientContextState | undefined>(undefined);
 
+
 export function PatientContextProvider({ children }: { children: ReactNode }) {
   const [patientContext, setPatientContextState] = useState<PatientContextType | null>(null);
 
+  // Load from backend on mount
+  useEffect(() => {
+    const loadContext = async () => {
+      try {
+        const saved = await getPatientContext();
+        if (saved) {
+          setPatientContextState(saved);
+        }
+      } catch (error) {
+        console.error("Failed to load patient context", error);
+      }
+    };
+    loadContext();
+  }, []);
+
   const setPatientContext = (context: PatientContextType | null) => {
+    console.log("PatientContext Provider: Setting context", context);
     setPatientContextState(context);
+    // Persist to backend
+    if (context) {
+      console.log("PatientContext Provider: Saving to API...");
+      savePatientContext(context)
+        .then(() => console.log("PatientContext Provider: Save success"))
+        .catch(e => console.error("Failed to save context", e));
+    }
   };
 
   const isActive = patientContext !== null;

@@ -2,7 +2,7 @@ import logging
 import threading
 from typing import Optional
 
-from supabase import create_client, Client
+from supabase import create_client, Client, ClientOptions
 
 from config import SUPABASE_URL, SUPABASE_KEY
 
@@ -50,3 +50,16 @@ class SupabaseService:
             except Exception as e:
                 logger.error("Failed to initialize Supabase: %s", e)
                 return None
+
+    @staticmethod
+    def get_auth_client(token: str) -> Client:
+        """Create a client authenticated with the user's token (Required for RLS)."""
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise ValueError("Supabase credentials missing")
+        
+        # Explicitly set the Authorization header to ensure RLS context is passed
+        return create_client(
+            SUPABASE_URL, 
+            SUPABASE_KEY, 
+            options=ClientOptions(headers={"Authorization": f"Bearer {token}"})
+        )

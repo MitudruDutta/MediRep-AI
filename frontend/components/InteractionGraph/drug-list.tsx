@@ -1,19 +1,39 @@
 "use client";
 
 import * as React from "react";
-import { X, Pill } from "lucide-react";
+import { X, Pill, Star, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
 export interface DrugListProps {
   drugs: string[];
   onRemove: (index: number) => void;
+  onSave?: (drug: string) => void;
   className?: string;
 }
 
-export function DrugList({ drugs, onRemove, className }: DrugListProps) {
+export function DrugList({ drugs, onRemove, onSave, className }: DrugListProps) {
+  const [savedDrugs, setSavedDrugs] = React.useState<Set<string>>(new Set());
+
+  const handleSave = async (drug: string) => {
+    if (onSave) {
+      try {
+        await onSave(drug);
+        setSavedDrugs(prev => new Set(prev).add(drug));
+        setTimeout(() => {
+          setSavedDrugs(prev => {
+            const next = new Set(prev);
+            next.delete(drug);
+            return next;
+          });
+        }, 2000);
+      } catch (e) {
+        console.error("Failed to save", e);
+      }
+    }
+  };
+
   if (drugs.length === 0) {
     return (
       <div className={cn("flex flex-col items-center justify-center py-12 text-center", className)}>
@@ -47,14 +67,33 @@ export function DrugList({ drugs, onRemove, className }: DrugListProps) {
                 <p className="text-xs text-muted-foreground">Drug #{index + 1}</p>
               </div>
             </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={() => onRemove(index)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            
+            <div className="flex items-center gap-1">
+              {onSave && (
+                 <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => handleSave(drug)}
+                  disabled={savedDrugs.has(drug)}
+                  title="Save to favorites"
+                >
+                  {savedDrugs.has(drug) ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Star className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => onRemove(index)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </motion.div>
         ))}
       </AnimatePresence>
