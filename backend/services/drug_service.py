@@ -22,7 +22,6 @@ import google.generativeai as genai
 
 from services import turso_service
 from services import qdrant_service
-from services.supabase_service import SupabaseService
 from models import DrugInfo, DrugSearchResult
 from config import OPENFDA_LABEL_URL, CACHE_TTL_DRUG, API_TIMEOUT, GEMINI_API_KEY, GROQ_API_KEY, GROQ_MODEL
 

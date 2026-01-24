@@ -130,23 +130,35 @@ async def chat_endpoint(
                     for inter in interactions[:3]:
                         msg_context += f"- {inter.drug1} + {inter.drug2}: {inter.severity} - {inter.description}\n"
 
-        # 3. RAG Search using Qdrant + Turso
-        # Always run for additional context, especially if direct DB lookup failed
+        # 3. RAG Search using Qdrant + Turso (Hybrid: drug_embeddings + medical_qa)
         rag_content = None
-        
-        # Heuristic: Skip RAG for short, conversational replies (e.g. "yes", "thanks")
-        # avoiding junk results like "Yes 500mg" from the database.
+
+        # Heuristic: Skip RAG for short, conversational replies
         is_conversational = len(request.message.strip()) < 5 or request.message.lower().strip() in {
             'yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'no', 'nope', 'thanks', 'thank you'
         }
-        
+
         if not is_conversational:
             try:
-                # Semantic search via Qdrant -> Turso
-                rag_content = await rag_service.search_context(request.message, top_k=5)
-                logger.info("RAG context found: %s", bool(rag_content))
+                # Determine intent for hybrid weighting
+                # Symptom keywords boost medical_qa results
+                symptom_keywords = {'symptom', 'symptoms', 'feel', 'feeling', 'pain', 'ache',
+                                   'diagnosis', 'diagnose', 'disease', 'condition', 'treatment'}
+                query_lower = request.message.lower()
+                effective_intent = plan.intent
 
-                # Fallback: If no semantic matches, try direct text search in Turso
+                if any(kw in query_lower for kw in symptom_keywords):
+                    effective_intent = "SYMPTOM"
+
+                # Hybrid search: drug_embeddings + medical_qa with intent-based weighting
+                rag_content = await rag_service.search_hybrid(
+                    query=request.message,
+                    intent=effective_intent,
+                    top_k=5
+                )
+                logger.info("Hybrid RAG context found: %s (intent: %s)", bool(rag_content), effective_intent)
+
+                # Fallback: If no hybrid matches, try direct text search in Turso
                 if not rag_content and (plan.intent == "GENERAL" or not plan.drug_names):
                     desc_results = await rag_service.search_by_description(request.message, limit=3)
                     if desc_results:

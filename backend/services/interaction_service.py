@@ -155,8 +155,6 @@ def _extend_interactions_from_results(
 
 async def _check_interactions_groq(drugs: List[str], context_str: str) -> List[DrugInteraction]:
     """Fallback interaction check using Groq API."""
-    import httpx
-    
     if not GROQ_API_KEY:
         logger.warning("GROQ_API_KEY not set")
         return []
@@ -185,7 +183,7 @@ async def _check_interactions_groq(drugs: List[str], context_str: str) -> List[D
             )
             
             if response.status_code != 200:
-                logger.error(f"Groq error: {response.status_code} - {response.text}")
+                logger.error("Groq error: %s - %s", response.status_code, response.text)
                 return []
                 
             data = response.json()
@@ -220,7 +218,7 @@ async def _check_interactions_groq(drugs: List[str], context_str: str) -> List[D
             return interactions
             
     except Exception as e:
-        logger.error(f"Groq request failed: {e}")
+        logger.error("Groq request failed: %s", e)
         return []
 
 
@@ -303,7 +301,7 @@ async def check_interactions(drugs: List[str], patient_context: Optional[Patient
         logger.warning("Gemini interaction check timed out. Attempting Groq fallback.")
         return await _check_interactions_groq(drugs, context_str)
     except Exception as e:
-        logger.warning(f"Gemini interaction check failed: {e}. Attempting Groq fallback.")
+        logger.warning("Gemini interaction check failed: %s. Attempting Groq fallback.", e)
         return await _check_interactions_groq(drugs, context_str)
 
 

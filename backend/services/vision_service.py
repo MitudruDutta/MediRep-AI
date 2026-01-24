@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import base64
+import threading
 from typing import Optional, List
 from dataclasses import dataclass
 
@@ -27,11 +28,13 @@ from models import PillIdentification
 
 logger = logging.getLogger(__name__)
 
-# Lazy initialization
+# Lazy initialization with thread safety
 _vision_model = None
 _embedding_model = None
 _configured = False
 _init_lock: Optional[asyncio.Lock] = None
+_embedding_lock = threading.Lock()
+_embedding_init_attempted = False
 
 
 class PillIdentificationError(Exception):
@@ -96,11 +99,26 @@ async def _get_vision_model():
 
 
 def _get_embedding_model():
-    """Get the sentence transformer model for vector search."""
-    global _embedding_model
-    if _embedding_model is None:
-        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-    return _embedding_model
+    """Get the sentence transformer model for vector search (thread-safe)."""
+    global _embedding_model, _embedding_init_attempted
+
+    if _embedding_model is not None:
+        return _embedding_model
+
+    with _embedding_lock:
+        if _embedding_model is not None:
+            return _embedding_model
+
+        if _embedding_init_attempted:
+            return None
+
+        try:
+            _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+            return _embedding_model
+        except Exception as e:
+            logger.error("Failed to load embedding model: %s", e)
+            _embedding_init_attempted = True
+            return None
 
 
 # Feature extraction prompt - focused on ACCURATE extraction
@@ -302,14 +320,14 @@ async def query_drugs_by_features(features: PillFeatures) -> List[DrugMatch]:
                                         match_reason="Vector similarity"
                                     ))
                 except Exception as e:
-                    logger.warning(f"Qdrant search failed (graceful fallback): {e}")
+                    logger.warning("Qdrant search failed (graceful fallback): %s", e)
         
         # Sort by score and return top matches
         matches.sort(key=lambda x: x.match_score, reverse=True)
         return matches[:5]
     
     except Exception as e:
-        logger.error(f"Drug lookup failed: {e}")
+        logger.error("Drug lookup failed: %s", e)
         return []
 
 

@@ -18,8 +18,12 @@ from config import QDRANT_URL, QDRANT_API_KEY
 logger = logging.getLogger(__name__)
 
 # Constants
-COLLECTION_NAME = "drug_embeddings"
+COLLECTION_DRUGS = "drug_embeddings"
+COLLECTION_MEDICAL_QA = "medical_qa"
 EMBEDDING_DIM = 384  # all-MiniLM-L6-v2
+
+# Backward compatibility alias
+COLLECTION_NAME = COLLECTION_DRUGS
 
 # Singletons with thread-safe initialization
 _client: Optional[QdrantClient] = None
@@ -209,19 +213,83 @@ def upsert_drug_embedding(drug_id: str, drug_name: str, text_for_embedding: str)
         return False
 
 
-def get_collection_info() -> Optional[Dict[str, Any]]:
-    """Get information about the collection (for debugging)."""
+def search_medical_qa(query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """
+    Search for medical Q&A pairs similar to the query.
+
+    Returns list of {question, answer, question_type, score} for RAG context.
+    """
+    client = get_client()
+    model = get_embedding_model()
+
+    if not client or not model:
+        return []
+
+    try:
+        # Generate query embedding
+        query_embedding = model.encode(query).tolist()
+
+        # Search medical_qa collection
+        try:
+            results = client.query_points(
+                collection_name=COLLECTION_MEDICAL_QA,
+                query=query_embedding,
+                limit=limit
+            )
+            hits = results.points
+        except AttributeError:
+            # Fallback for older qdrant-client versions
+            results = client.search(
+                collection_name=COLLECTION_MEDICAL_QA,
+                query_vector=query_embedding,
+                limit=limit
+            )
+            hits = results
+        except Exception as e:
+            # Collection might not exist yet
+            logger.warning("medical_qa collection search failed: %s", e)
+            return []
+
+        return [
+            {
+                "question": hit.payload.get("question", "") if hit.payload else "",
+                "answer": hit.payload.get("answer", "") if hit.payload else "",
+                "question_type": hit.payload.get("question_type", "") if hit.payload else "",
+                "question_focus": hit.payload.get("question_focus", "") if hit.payload else "",
+                "score": hit.score
+            }
+            for hit in hits
+            if hit.payload
+        ]
+    except Exception as e:
+        logger.warning("Medical QA search failed: %s", e)
+        return []
+
+
+def get_collection_info(collection_name: str = None) -> Optional[Dict[str, Any]]:
+    """Get information about a collection (for debugging)."""
     client = get_client()
     if not client:
         return None
-    
+
+    target = collection_name or COLLECTION_NAME
+
     try:
-        info = client.get_collection(COLLECTION_NAME)
+        info = client.get_collection(target)
         return {
+            "name": target,
             "points_count": info.points_count,
             "vectors_count": info.vectors_count,
             "status": info.status
         }
     except Exception as e:
-        logger.error(f"Failed to get collection info: {e}")
+        logger.error("Failed to get collection info for %s: %s", target, e)
         return None
+
+
+def get_all_collections_info() -> Dict[str, Any]:
+    """Get information about all known collections."""
+    return {
+        "drug_embeddings": get_collection_info(COLLECTION_DRUGS),
+        "medical_qa": get_collection_info(COLLECTION_MEDICAL_QA)
+    }

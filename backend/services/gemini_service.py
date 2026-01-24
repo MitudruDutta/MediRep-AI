@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+import threading
 from typing import List, Optional
 
 import google.generativeai as genai
@@ -16,58 +17,79 @@ logger = logging.getLogger(__name__)
 # Groq API configuration
 GROQ_API_BASE = "https://api.groq.com/openai/v1"
 
-# Lazy initialization
+# Thread-safe lazy initialization
 _model = None
 _configured = False
+_model_lock = threading.Lock()
 
 
 def _get_model():
-    """Lazy initialization of Gemini model."""
+    """Lazy initialization of Gemini model (thread-safe)."""
     global _model, _configured
-    
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY is not configured")
-    
-    if not _configured:
-        genai.configure(api_key=GEMINI_API_KEY)
-        _configured = True
-    
-    if _model is None:
+
+    if _model is not None:
+        return _model
+
+    with _model_lock:
+        if _model is not None:
+            return _model
+
+        if not GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY is not configured")
+
+        if not _configured:
+            genai.configure(api_key=GEMINI_API_KEY)
+            _configured = True
+
         _model = genai.GenerativeModel(GEMINI_MODEL)
-    
+
     return _model
 
 
-SYSTEM_PROMPT = """You are MediRep AI, a conversational medical assistant for healthcare professionals.
+SYSTEM_PROMPT = """You are MediRep AI, a conversational medical assistant for healthcare professionals in India.
 
-You operate in two distinct modes:
+OPERATING MODES:
 
-MODE 1: GENERAL INQUIRY (No [Patient Context] tag provided)
-- Provide standard medical information, guidelines, and drug data suitable for a general audience.
-- Focus on general efficacy, mechanism of action, and standard dosing.
+MODE 1: GENERAL INQUIRY (No [Patient Context])
+- Provide standard medical information for healthcare professionals.
+- Focus on efficacy, mechanism of action, and standard dosing.
 
-MODE 2: PATIENT SPECIFIC (When [Patient Context] tag is present)
-- YOU MUST personalize every answer to the specific patient.
-- Cross-check all drug recommendations against the patient's Age, Sex, Conditions, and Allergies.
-- Explicitly explain compatibility (e.g., "This drug is safe for the patient's hypertension because...").
-- Any follow-up questions must be relevant to the patient's specific context.
+MODE 2: PATIENT SPECIFIC ([Patient Context] present)
+- PERSONALIZE every answer to the patient's Age, Conditions, Allergies.
+- Cross-check drug recommendations against patient profile.
+- Explicitly mention compatibility or risks.
 
-UNIVERSAL RULES (Apply to both modes):
-1. **Hybrid Knowledge**: You will receive [Database Info]. 
-   - If the database info is incomplete (e.g., missing indications), YOU MUST USE YOUR MEDICAL KNOWLEDGE to fill in the missing indications/uses based on the drug's generic composition.
-   - If you don't know the drug at all, do not invent facts.
-2. **RAG/Chat History**: If the user's input is a simple reply (e.g., "yes"), ignore any [Knowledge Base Context] that looks like a keyword match. Rely on the Conversation History.
-3. **Safety**: Prefix critical warnings with "Important:".
+KNOWLEDGE SOURCES (You may receive one or more):
+
+[Drug Database] - Indian drug data from our 250k+ database
+- Contains: drug name, generic name, price, manufacturer, therapeutic class.
+- Use for pricing, brand availability, and Indian market info.
+- Cite as (Source: Database).
+
+[Medical Knowledge (NIH)] - Authoritative Q&A from NIH/MedQuAD
+- Contains: medical questions and expert answers from NIH sources.
+- Use for symptoms, diagnoses, conditions, treatment guidelines.
+- Highly reliable clinical information. Cite as (Source: NIH).
+
+[Database Info for X] - Specific drug lookup result
+- Detailed info for a specific drug query.
+- If incomplete (missing indications/side effects), supplement with your medical knowledge.
+
+RESPONSE RULES:
+1. ANSWER ONLY what was asked - be direct and concise.
+2. If database info is incomplete, USE YOUR MEDICAL KNOWLEDGE to fill gaps.
+3. For symptom queries: explain causes, when to seek care, management.
+4. For drug queries: include dosage, side effects, interactions if relevant.
+5. Cite sources: (Source: Database), (Source: NIH), or (Source: Medical Knowledge).
+6. Prefix critical warnings with "Important:".
+7. For simple replies (yes, thanks), use chat history, ignore keyword-matched context.
 
 CONVERSATION STYLE:
-- Be conversational and natural.
-- Answer ONLY what was asked.
-- CITE SOURCES: (Source: Database) for DB facts, (Source: Medical Knowledge) for your reasoning.
-- End with a relevant follow-up question.
-
-FORMATTING:
-- Plain text only (no markdown symbols).
-- Concise paragraphs.
+- Natural, professional, not robotic.
+- Simple language healthcare workers understand.
+- End with ONE relevant follow-up question.
+- Plain text only, no markdown, no bullet lists.
+- Keep under 250 words unless detail requested.
 """
 
 
@@ -208,13 +230,13 @@ async def _call_groq_api(
             )
 
             if response.status_code != 200:
-                logger.error(f"Groq API error: {response.status_code} - {response.text}")
+                logger.error("Groq API error: %s - %s", response.status_code, response.text)
                 raise Exception(f"Groq API error: {response.status_code}")
 
             data = response.json()
             return data["choices"][0]["message"]["content"]
     except Exception as e:
-        logger.error(f"Groq API call failed: {e}")
+        logger.error("Groq API call failed: %s", e)
         raise
 
 
@@ -315,7 +337,7 @@ async def _generate_response_with_groq(
 
 
 class IntentPlan(BaseModel):
-    intent: str = Field(default="GENERAL", description="One of: INFO, SUBSTITUTE, INTERACTION, GENERAL")
+    intent: str = Field(default="GENERAL", description="One of: INFO, SUBSTITUTE, INTERACTION, SYMPTOM, GENERAL")
     drug_names: List[str] = Field(default_factory=list, description="List of recognized drug names found in the text. e.g. ['Dolo 650', 'Metformin']")
     entities: Optional[List[str]] = Field(default_factory=list, description="Other entities like symptoms or conditions.")
 
@@ -334,26 +356,27 @@ async def plan_intent(message: str, history: List[ChatMessage] = None) -> Intent
                 role = "User" if msg.role == "user" else "Assistant"
                 history_context += f"{role}: {msg.content}\n"
         
-        prompt = f"""
-        Analyze the following medical query and extract the Intent and Entities.
-        Use the conversation history to resolve references (e.g., "it", "that drug").
-        
-        HISTORY:
-        {history_context}
-        
-        CURRENT QUERY: "{message}"
-        
-        Intents:
-        - INFO: Asking for drug details, price, manufacturer, dosage, or general info about a specific drug.
-        - SUBSTITUTE: Asking for cheaper alternatives, substitutes, or generic versions.
-        - INTERACTION: Asking about drug-drug, drug-food, or drug-condition interactions.
-        - GENERAL: General medical questions, guidelines, or greeting.
-        
-        Extract:
-        - drug_names: Specific drug brand names or generics mentioned. If user says "it" or "the drug", look at HISTORY to identify the drug name.
-        
-        Return JSON only.
-        """
+        prompt = f"""Analyze the medical query and extract Intent and Entities.
+Use conversation history to resolve references (e.g., "it", "that drug").
+
+HISTORY:
+{history_context}
+
+CURRENT QUERY: "{message}"
+
+Intents:
+- INFO: Drug details, price, manufacturer, dosage, or general info about a specific drug.
+- SUBSTITUTE: Cheaper alternatives, substitutes, or generic versions.
+- INTERACTION: Drug-drug, drug-food, or drug-condition interactions.
+- SYMPTOM: Questions about symptoms, conditions, diseases, diagnosis, or treatment guidelines (no specific drug mentioned).
+- GENERAL: Greetings, thanks, or unclear queries.
+
+Extract:
+- intent: One of INFO, SUBSTITUTE, INTERACTION, SYMPTOM, GENERAL
+- drug_names: Specific drug brand names or generics. Resolve "it"/"the drug" from HISTORY.
+- entities: Symptoms, conditions, or body parts mentioned.
+
+Return JSON only."""
         
         response = await asyncio.to_thread(
             lambda: model.generate_content(
@@ -373,7 +396,7 @@ async def plan_intent(message: str, history: List[ChatMessage] = None) -> Intent
         return IntentPlan.model_validate_json(text)
         
     except Exception as e:
-        logger.error(f"Intent planning failed: {e}")
+        logger.error("Intent planning failed: %s", e)
         # Fallback to general intent
         return IntentPlan(intent="GENERAL", drug_names=[])
 
@@ -493,10 +516,10 @@ async def generate_response(
                 rag_context=rag_context
             )
         except Exception as groq_error:
-            logger.error(f"Groq fallback also failed: {groq_error}")
+            logger.error("Groq fallback also failed: %s", groq_error)
             raise Exception("Request timed out. Please try again.") from None
     except Exception as e:
-        logger.warning(f"Gemini API error: {e}, attempting Groq fallback")
+        logger.warning("Gemini API error: %s, attempting Groq fallback", e)
         try:
             return await _generate_response_with_groq(
                 message=message,
