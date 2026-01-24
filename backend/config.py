@@ -128,3 +128,43 @@ if GROQ_API_KEY:
 else:
     logger.warning("GROQ_API_KEY not set. Groq fallback will be disabled.")
 
+# ============================================================================
+# MARKETPLACE CONFIGURATION
+# ============================================================================
+
+# Razorpay Configuration
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET")
+
+if not RAZORPAY_KEY_ID or not RAZORPAY_KEY_SECRET:
+    logger.warning("RAZORPAY credentials not set. Payment features will be disabled.")
+if not RAZORPAY_WEBHOOK_SECRET:
+    logger.warning("RAZORPAY_WEBHOOK_SECRET not set. Webhook verification will be disabled (INSECURE).")
+
+# Agora Configuration (Voice Calls)
+AGORA_APP_ID = os.getenv("AGORA_APP_ID")
+AGORA_APP_CERTIFICATE = os.getenv("AGORA_APP_CERTIFICATE")
+
+if not AGORA_APP_ID or not AGORA_APP_CERTIFICATE:
+    logger.warning("AGORA credentials not set. Voice call features will be disabled.")
+
+# Marketplace Business Rules
+PLATFORM_FEE_PERCENT = get_env_int("PLATFORM_FEE_PERCENT", 20)
+if not 0 <= PLATFORM_FEE_PERCENT <= 100:
+    raise ValueError("PLATFORM_FEE_PERCENT must be between 0 and 100")
+
+MIN_CONSULTATION_RATE = get_env_int("MIN_CONSULTATION_RATE", 99)
+MAX_CONSULTATION_RATE = get_env_int("MAX_CONSULTATION_RATE", 9999)
+if MIN_CONSULTATION_RATE > MAX_CONSULTATION_RATE:
+    raise ValueError("MIN_CONSULTATION_RATE cannot be greater than MAX_CONSULTATION_RATE")
+
+MIN_PAYOUT_AMOUNT = get_env_int("MIN_PAYOUT_AMOUNT", 500)
+if MIN_PAYOUT_AMOUNT < 0:
+    raise ValueError("MIN_PAYOUT_AMOUNT cannot be negative")
+
+CONSULTATION_DURATIONS = [15, 30, 45, 60]  # Minutes
+
+# Agora Token Expiry
+AGORA_TOKEN_EXPIRY_SECONDS = get_env_int("AGORA_TOKEN_EXPIRY_SECONDS", 3600)  # 1 hour
+

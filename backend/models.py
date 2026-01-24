@@ -1,5 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Literal
+from pydantic import BaseModel, Field, EmailStr, validator, model_validator
 from datetime import datetime
 
 
@@ -131,3 +130,188 @@ class SavedDrug(BaseModel):
     drug_name: str
     notes: Optional[str] = None
     created_at: Optional[datetime] = None
+
+
+# ============================================================================
+# MARKETPLACE MODELS
+# ============================================================================
+
+class PharmacistRegistration(BaseModel):
+    """Request model for pharmacist registration."""
+    full_name: str = Field(..., min_length=2, max_length=100)
+    phone: str = Field(..., pattern=r"^\+?[0-9]{10,15}$")
+    license_number: str = Field(..., min_length=5, max_length=50)
+    license_image_url: str  # URL from frontend upload
+    license_state: Optional[str] = None
+    specializations: List[str] = Field(default_factory=list)
+    experience_years: int = Field(default=0, ge=0, le=50)
+    languages: List[str] = Field(default=["English", "Hindi"])
+    education: Optional[str] = None
+    bio: Optional[str] = Field(None, max_length=500)
+    rate: int = Field(default=299, ge=99, le=9999)
+    duration_minutes: int = Field(default=15)
+    upi_id: Optional[str] = None
+
+    @field_validator("duration_minutes")
+    @classmethod
+    def validate_duration(cls, v):
+        if v not in [15, 30, 45, 60]:
+            raise ValueError("Duration must be 15, 30, 45, or 60 minutes")
+        return v
+
+
+class PharmacistProfile(BaseModel):
+    """Response model for pharmacist profile."""
+    id: str
+    user_id: str
+    full_name: str
+    bio: Optional[str] = None
+    profile_image_url: Optional[str] = None
+    specializations: List[str] = Field(default_factory=list)
+    experience_years: int = 0
+    languages: List[str] = Field(default_factory=list)
+    education: Optional[str] = None
+    rate: int
+    duration_minutes: int
+    rating_avg: float = 0.0
+    rating_count: int = 0
+    completed_consultations: int = 0
+    is_available: bool = False
+    verification_status: str = "pending"
+
+
+class PharmacistSearchResult(BaseModel):
+    """Simplified pharmacist for search results."""
+    id: str
+    full_name: str
+    bio: Optional[str] = None
+    profile_image_url: Optional[str] = None
+    specializations: List[str] = Field(default_factory=list)
+    experience_years: int = 0
+    languages: List[str] = Field(default_factory=list)
+    rate: int
+    duration_minutes: int
+    rating_avg: float = 0.0
+    rating_count: int = 0
+    is_available: bool = False
+
+
+class PharmacistScheduleSlot(BaseModel):
+    """Single availability slot."""
+    id: Optional[str] = None
+    day_of_week: int = Field(..., ge=0, le=6)  # 0=Sunday
+    start_time: str = Field(..., pattern=r"^\d{2}:\d{2}$")  # HH:MM
+    end_time: str = Field(..., pattern=r"^\d{2}:\d{2}$")
+    is_active: bool = True
+
+    @model_validator(mode='after')
+    def validate_times(self) -> 'PharmacistScheduleSlot':
+        try:
+            start_h, start_m = map(int, self.start_time.split(':'))
+            end_h, end_m = map(int, self.end_time.split(':'))
+        except ValueError:
+            raise ValueError("Time must be in HH:MM format")
+
+        if not (0 <= start_h <= 23 and 0 <= start_m <= 59):
+            raise ValueError("Start time invalid")
+        if not (0 <= end_h <= 23 and 0 <= end_m <= 59):
+            raise ValueError("End time invalid")
+        
+        start_mins = start_h * 60 + start_m
+        end_mins = end_h * 60 + end_m
+        
+        if start_mins >= end_mins:
+            raise ValueError("Start time must be strictly before end time")
+            
+        return self
+
+
+class BookingRequest(BaseModel):
+    """Request to book a consultation."""
+    pharmacist_id: str
+    scheduled_at: datetime
+    patient_concern: Optional[str] = Field(None, max_length=500)
+
+
+class BookingResponse(BaseModel):
+    """Response after creating a booking."""
+    consultation_id: str
+    razorpay_order_id: str
+    amount: int
+    currency: str = "INR"
+    pharmacist_name: str
+    scheduled_at: datetime
+
+
+class ConsultationStatus(BaseModel):
+    """Consultation status for patient/pharmacist."""
+    id: str
+    patient_id: str
+    pharmacist_id: str
+    pharmacist_name: str
+    scheduled_at: datetime
+    duration_minutes: int
+    status: str
+    amount: int
+    payment_status: str
+    patient_concern: Optional[str] = None
+    rating: Optional[int] = None
+    review: Optional[str] = None
+    agora_channel: Optional[str] = None
+    created_at: datetime
+
+
+class JoinCallResponse(BaseModel):
+    """Response with Agora token to join call."""
+    agora_channel: str
+    agora_token: str
+    agora_app_id: str
+    uid: int
+    consultation_id: str
+    expires_at: datetime
+
+
+class ReviewRequest(BaseModel):
+    """Request to submit a review."""
+    consultation_id: str
+    rating: int = Field(..., ge=1, le=5)
+    review: Optional[str] = Field(None, max_length=1000)
+
+
+class PharmacistDashboardStats(BaseModel):
+    """Stats for pharmacist dashboard."""
+    total_earnings: int = 0
+    pending_payout: int = 0
+    completed_consultations: int = 0
+    upcoming_consultations: int = 0
+    rating_avg: float = 0.0
+    rating_count: int = 0
+
+
+class PayoutSummary(BaseModel):
+    """Payout record for pharmacist."""
+    id: str
+    period_start: datetime
+    period_end: datetime
+    gross_amount: int
+    net_amount: int
+    consultation_count: int
+    status: str
+    processed_at: Optional[datetime] = None
+
+
+class RazorpayWebhookPayload(BaseModel):
+    """Razorpay webhook payload (partial, key fields)."""
+    event: str
+    payload: dict
+
+
+class LicenseExtractionResult(BaseModel):
+    """AI-extracted license data."""
+    full_name: Optional[str] = None
+    license_number: Optional[str] = None
+    license_state: Optional[str] = None
+    expiry_date: Optional[str] = None
+    confidence_score: float = 0.0
+    is_valid: bool = False
+    rejection_reason: Optional[str] = None

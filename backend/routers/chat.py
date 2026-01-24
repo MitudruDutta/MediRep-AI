@@ -1,9 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional, List
 import logging
 import asyncio
 import re
 from datetime import datetime, timezone
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from models import ChatRequest, ChatResponse
 from services.gemini_service import generate_response, plan_intent
@@ -15,6 +18,9 @@ from middleware.auth import get_current_user, get_optional_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Local limiter for chat endpoint (separate from global app limiter)
+limiter = Limiter(key_func=get_remote_address)
 
 
 async def _save_chat_history(user_id: str, message: str, response: str, patient_context=None):
@@ -50,8 +56,10 @@ def _detect_substitute_intent(message: str) -> bool:
 
 
 @router.post("/chat", response_model=ChatResponse)
+@limiter.limit("10/minute")
 async def chat_endpoint(
-    request: ChatRequest,
+    request: Request,  # Required for rate limiting
+    chat_request: ChatRequest,
     user: dict = Depends(get_current_user)
 ):
     """
@@ -62,11 +70,11 @@ async def chat_endpoint(
     """
     try:
         # 1. Intent Planning & Entity Extraction (LLM Powered)
-        plan = await plan_intent(request.message, history=request.history)
+        plan = await plan_intent(chat_request.message, history=chat_request.history)
         logger.info("Intent Plan: %s, Drugs: %s", plan.intent, plan.drug_names)
 
         # Keyword-based intent override (fallback when LLM intent fails)
-        is_substitute_query = _detect_substitute_intent(request.message)
+        is_substitute_query = _detect_substitute_intent(chat_request.message)
         if is_substitute_query and plan.intent == "GENERAL":
             plan.intent = "SUBSTITUTE"
             logger.info("Intent overridden to SUBSTITUTE based on keywords")
@@ -76,9 +84,9 @@ async def chat_endpoint(
 
         # Extract drug name from history if not in current message
         drug_from_history = None
-        if not plan.drug_names and request.history:
+        if not plan.drug_names and chat_request.history:
             # Look for drug names in recent history
-            for hist_msg in reversed(request.history[-4:]):
+            for hist_msg in reversed(chat_request.history[-4:]):
                 if hist_msg.role == "assistant" and hist_msg.content:
                     # Simple extraction: look for capitalized words that might be drug names
                     potential = re.findall(r'\b([A-Z][a-z]+(?:\s+\d+)?)\b', hist_msg.content[:200])
@@ -134,7 +142,7 @@ async def chat_endpoint(
         rag_content = None
 
         # Heuristic: Skip RAG for short, conversational replies
-        is_conversational = len(request.message.strip()) < 5 or request.message.lower().strip() in {
+        is_conversational = len(chat_request.message.strip()) < 5 or chat_request.message.lower().strip() in {
             'yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'no', 'nope', 'thanks', 'thank you'
         }
 
@@ -144,7 +152,7 @@ async def chat_endpoint(
                 # Symptom keywords boost medical_qa results
                 symptom_keywords = {'symptom', 'symptoms', 'feel', 'feeling', 'pain', 'ache',
                                    'diagnosis', 'diagnose', 'disease', 'condition', 'treatment'}
-                query_lower = request.message.lower()
+                query_lower = chat_request.message.lower()
                 effective_intent = plan.intent
 
                 if any(kw in query_lower for kw in symptom_keywords):
@@ -152,7 +160,7 @@ async def chat_endpoint(
 
                 # Hybrid search: drug_embeddings + medical_qa with intent-based weighting
                 rag_content = await rag_service.search_hybrid(
-                    query=request.message,
+                    query=chat_request.message,
                     intent=effective_intent,
                     top_k=5
                 )
@@ -160,7 +168,7 @@ async def chat_endpoint(
 
                 # Fallback: If no hybrid matches, try direct text search in Turso
                 if not rag_content and (plan.intent == "GENERAL" or not plan.drug_names):
-                    desc_results = await rag_service.search_by_description(request.message, limit=3)
+                    desc_results = await rag_service.search_by_description(chat_request.message, limit=3)
                     if desc_results:
                         rag_content = desc_results
 
@@ -169,9 +177,9 @@ async def chat_endpoint(
 
         # 4. Generate Response
         gemini_result = await generate_response(
-            message=request.message + msg_context, # Inject structured data
-            patient_context=request.patient_context,
-            history=request.history,
+            message=chat_request.message + msg_context, # Inject structured data
+            patient_context=chat_request.patient_context,
+            history=chat_request.history,
             drug_info=context_data.get('drug_info'), # Still pass object for formatting if needed
             rag_context=rag_content
         )
@@ -191,9 +199,9 @@ async def chat_endpoint(
             # Run in background - don't block the response
             asyncio.create_task(_save_chat_history(
                 user_id=str(user_id),
-                message=request.message,
+                message=chat_request.message,
                 response=response_text,
-                patient_context=request.patient_context
+                patient_context=chat_request.patient_context
             ))
 
         return ChatResponse(

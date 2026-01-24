@@ -6,15 +6,8 @@ import logging
 import time
 import uvicorn
 
-from config import ALLOWED_ORIGINS, PORT
-from routers import chat, drugs, vision, alerts, user
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Rate Limiting
+from limiter import limiter
 
 app = FastAPI(
     title="MediRep AI",
@@ -22,13 +15,32 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS Configuration - production-ready
+# Attach limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Environment detection
+IS_PRODUCTION = os.getenv("ENV", "development").lower() == "production"
+
+# CORS Configuration - environment-aware
+cors_origins = []
+if IS_PRODUCTION:
+    # Production: Only allow the actual frontend URL
+    frontend_url = os.getenv("FRONTEND_URL", "https://medirep.ai")
+    cors_origins = [frontend_url]
+    logger.info("CORS: Production mode - allowing only %s", frontend_url)
+else:
+    # Development: Allow localhost
+    cors_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        os.getenv("FRONTEND_URL", "http://localhost:3000"),
+    ]
+    logger.info("CORS: Development mode - allowing localhost")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        os.getenv("FRONTEND_URL", "https://medirep.ai"),
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
@@ -62,6 +74,11 @@ app.include_router(drugs.router, prefix="/api/drugs", tags=["Drugs"])
 app.include_router(vision.router, prefix="/api/vision", tags=["Vision"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["Alerts"])
 app.include_router(user.router, prefix="/api/user", tags=["User"])
+
+# Marketplace routers
+app.include_router(marketplace.router, prefix="/api/marketplace", tags=["Marketplace"])
+app.include_router(pharmacist.router, prefix="/api/pharmacist", tags=["Pharmacist"])
+app.include_router(consultations.router, prefix="/api/consultations", tags=["Consultations"])
 
 
 @app.exception_handler(Exception)

@@ -18,3 +18,10 @@ libsql-experimental==0.0.47
 
 # Database - Qdrant (Vector Embeddings)
 qdrant-client==1.7.0
+
+# Marketplace
+razorpay==1.4.2
+agora-token-builder==1.0.0
+
+# Security
+slowapi==0.1.9
