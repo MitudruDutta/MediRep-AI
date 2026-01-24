@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -6,7 +7,7 @@ import time
 import uvicorn
 
 from config import ALLOWED_ORIGINS, PORT
-from routers import chat, drugs, vision, alerts
+from routers import chat, drugs, vision, alerts, user
 
 # Configure logging
 logging.basicConfig(
@@ -21,11 +22,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS Configuration - explicit methods and headers
+# CORS Configuration - production-ready
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False, # Wildcard cannot be used with credentials=True
+    allow_origins=[
+        "http://localhost:3000",
+        os.getenv("FRONTEND_URL", "https://medirep.ai"),
+    ],
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
 )
@@ -51,10 +55,6 @@ async def log_requests(request: Request, call_next):
 async def health_check():
     return {"status": "healthy", "service": "MediRep AI"}
 
-
-from routers import chat, drugs, vision, alerts, user
-
-# ...
 
 # Mount routers
 app.include_router(chat.router, prefix="/api", tags=["Chat"])

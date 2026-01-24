@@ -42,7 +42,7 @@ async def get_patient_context(
         return None
         
     except Exception as e:
-        logger.error(f"Failed to get patient context: {e}")
+        logger.error("Failed to get patient context: %s", e)
         # Don't expose internal error, just return None (empty context)
         return None
 
@@ -53,7 +53,7 @@ async def save_patient_context(
     creds: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Save or update patient context."""
-    print(f"DEBUG: Received save_patient_context request for user {user.id}")
+    logger.debug("Save patient context request for user %s", user.id)
     try:
         user_id = user.id
         client = get_auth_client(creds.credentials)
@@ -70,5 +70,5 @@ async def save_patient_context(
         return True
         
     except Exception as e:
-        logger.error(f"Failed to save patient context: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to save context: {str(e)}")
+        logger.error("Failed to save patient context: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to save context")

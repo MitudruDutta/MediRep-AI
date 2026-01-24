@@ -120,9 +120,11 @@ if not QDRANT_URL or not QDRANT_API_KEY:
     )
 
 # Groq Configuration (Fallback for Gemini)
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 if GROQ_API_KEY:
     logger.info("Groq API configured as fallback for Gemini")
+else:
+    logger.warning("GROQ_API_KEY not set. Groq fallback will be disabled.")
 

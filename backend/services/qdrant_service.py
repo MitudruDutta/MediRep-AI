@@ -7,6 +7,7 @@ Architecture:
 - Used for semantic search ("medicine for headache" -> finds relevant drugs)
 """
 import logging
+import threading
 from typing import Optional, List, Dict, Any
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
@@ -20,47 +21,76 @@ logger = logging.getLogger(__name__)
 COLLECTION_NAME = "drug_embeddings"
 EMBEDDING_DIM = 384  # all-MiniLM-L6-v2
 
-# Singletons
+# Singletons with thread-safe initialization
 _client: Optional[QdrantClient] = None
 _embedding_model: Optional[SentenceTransformer] = None
+_client_lock = threading.Lock()
+_model_lock = threading.Lock()
+_client_init_attempted = False
+_model_init_attempted = False
 
 
 def get_client() -> Optional[QdrantClient]:
-    """Get or create Qdrant client."""
-    global _client
-    
+    """Get or create Qdrant client (thread-safe)."""
+    global _client, _client_init_attempted
+
     if _client is not None:
         return _client
-    
-    if not QDRANT_URL or not QDRANT_API_KEY:
-        logger.warning("Qdrant not configured")
+
+    if _client_init_attempted:
         return None
-    
-    try:
-        _client = QdrantClient(
-            url=QDRANT_URL,
-            api_key=QDRANT_API_KEY
-        )
-        logger.info("Connected to Qdrant")
-        return _client
-    except Exception as e:
-        logger.error(f"Failed to connect to Qdrant: {e}")
-        return None
+
+    with _client_lock:
+        if _client is not None:
+            return _client
+
+        if _client_init_attempted:
+            return None
+
+        _client_init_attempted = True
+
+        if not QDRANT_URL or not QDRANT_API_KEY:
+            logger.warning("Qdrant not configured")
+            return None
+
+        try:
+            _client = QdrantClient(
+                url=QDRANT_URL,
+                api_key=QDRANT_API_KEY
+            )
+            logger.info("Connected to Qdrant")
+            return _client
+        except Exception as e:
+            logger.error("Failed to connect to Qdrant: %s", e)
+            return None
 
 
 def get_embedding_model() -> Optional[SentenceTransformer]:
-    """Get or create the embedding model."""
-    global _embedding_model
-    
-    if _embedding_model is None:
+    """Get or create the embedding model (thread-safe)."""
+    global _embedding_model, _model_init_attempted
+
+    if _embedding_model is not None:
+        return _embedding_model
+
+    if _model_init_attempted:
+        return None
+
+    with _model_lock:
+        if _embedding_model is not None:
+            return _embedding_model
+
+        if _model_init_attempted:
+            return None
+
+        _model_init_attempted = True
+
         try:
             _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
             logger.info("Loaded embedding model")
+            return _embedding_model
         except Exception as e:
-            logger.error(f"Failed to load embedding model: {e}")
+            logger.error("Failed to load embedding model: %s", e)
             return None
-    
-    return _embedding_model
 
 
 def init_collection() -> bool:

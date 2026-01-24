@@ -4,8 +4,8 @@ from typing import List
 import asyncio
 import logging
 
-from models import DrugInfo, DrugSearchResult, InteractionRequest, InteractionResponse, SavedDrug, FDAAlertResponse
-from services.drug_service import search_drugs, get_drug_info, find_cheaper_substitutes, get_fda_alerts
+from models import DrugInfo, DrugSearchResult, InteractionRequest, InteractionResponse, SavedDrug
+from services.drug_service import search_drugs, get_drug_info, find_cheaper_substitutes
 from services.interaction_service import check_interactions
 from services.supabase_service import SupabaseService
 from middleware.auth import get_current_user
@@ -128,14 +128,6 @@ async def get_drug_info_endpoint(
     """
     info = await get_drug_info(drug_name)
     if not info:
-        raise HTTPException(status_code=404, detail=f"Drug '{drug_name}' not found")
+        raise HTTPException(status_code=404, detail="Drug not found")
     return info
 
-
-@router.get("/alerts/{drug_name}", response_model=FDAAlertResponse)
-async def get_drug_alerts(
-    drug_name: str = Path(..., min_length=1, description="Drug name")
-):
-    """Get FDA alerts/recalls for a drug."""
-    alerts = await get_fda_alerts(drug_name)
-    return FDAAlertResponse(drug_name=drug_name, alerts=alerts)

@@ -36,9 +36,9 @@ async def _save_chat_history(user_id: str, message: str, response: str, patient_
                 "p_citations": None  # Can fail if column missing, so handle gracefully or update RPC
             }).execute()
         )
-        logger.info(f"Chat history saved for user {user_id[:8]}...")
+        logger.info("Chat history saved for user %s...", user_id[:8])
     except Exception as e:
-        logger.error(f"Chat history save failed: {e}")
+        logger.error("Chat history save failed: %s", e)
 
 
 def _detect_substitute_intent(message: str) -> bool:
@@ -63,7 +63,7 @@ async def chat_endpoint(
     try:
         # 1. Intent Planning & Entity Extraction (LLM Powered)
         plan = await plan_intent(request.message, history=request.history)
-        logger.info(f"Intent Plan: {plan.intent}, Drugs: {plan.drug_names}")
+        logger.info("Intent Plan: %s, Drugs: %s", plan.intent, plan.drug_names)
 
         # Keyword-based intent override (fallback when LLM intent fails)
         is_substitute_query = _detect_substitute_intent(request.message)
@@ -87,7 +87,7 @@ async def chat_endpoint(
                     if drugs:
                         drug_from_history = drugs[0]
                         plan.drug_names = [drug_from_history]
-                        logger.info(f"Drug extracted from history: {drug_from_history}")
+                        logger.info("Drug extracted from history: %s", drug_from_history)
                         break
 
         # 2. Execution based on Intent
@@ -144,7 +144,7 @@ async def chat_endpoint(
             try:
                 # Semantic search via Qdrant -> Turso
                 rag_content = await rag_service.search_context(request.message, top_k=5)
-                logger.info(f"RAG context found: {bool(rag_content)}")
+                logger.info("RAG context found: %s", bool(rag_content))
 
                 # Fallback: If no semantic matches, try direct text search in Turso
                 if not rag_content and (plan.intent == "GENERAL" or not plan.drug_names):
@@ -153,7 +153,7 @@ async def chat_endpoint(
                         rag_content = desc_results
 
             except Exception as e:
-                logger.warning(f"RAG search failed: {e}")
+                logger.warning("RAG search failed: %s", e)
 
         # 4. Generate Response
         gemini_result = await generate_response(

@@ -85,7 +85,7 @@ async def get_current_user(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Auth error: {e}")
+        logger.error("Auth error: %s", e)
         raise HTTPException(
             status_code=401,
             detail="Authentication failed",

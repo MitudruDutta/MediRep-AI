@@ -10,6 +10,8 @@ NO HARDCODED DATA - Everything comes from databases or LLM.
 """
 import logging
 import asyncio
+import json
+import re
 import time
 import threading
 from collections import OrderedDict
@@ -98,7 +100,7 @@ def _get_enrichment_model():
             genai.configure(api_key=GEMINI_API_KEY)
             _enrichment_model = genai.GenerativeModel("gemini-2.5-flash")
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini enrichment model: {e}")
+            logger.error("Failed to initialize Gemini enrichment model: %s", e)
             return None
     
     return _enrichment_model
@@ -158,10 +160,6 @@ Example: {{"indications": ["Pain relief", "Fever reduction"], "side_effects": ["
         if not text:
             return drug_info
         
-        # Extract JSON from response
-        import json
-        import re
-        
         # Find JSON in response
         json_match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
         if json_match:
@@ -180,7 +178,7 @@ Example: {{"indications": ["Pain relief", "Fever reduction"], "side_effects": ["
                 drug_info.interactions = data["interactions"][:3]
                 
     except Exception as e:
-        logger.warning(f"Gemini enrichment failed: {e}")
+        logger.warning("Gemini enrichment failed: %s", e)
     
     return drug_info
 
@@ -232,7 +230,7 @@ async def search_drugs(query: str, limit: int = 10) -> List[DrugSearchResult]:
                             manufacturer=drug.get("manufacturer")
                         ))
     except Exception as e:
-        logger.warning(f"Qdrant search failed: {e}")
+        logger.warning("Qdrant search failed: %s", e)
     
     # 2. TURSO: Text search (if Qdrant didn't find enough)
     if len(results) < limit:
@@ -251,7 +249,7 @@ async def search_drugs(query: str, limit: int = 10) -> List[DrugSearchResult]:
                         manufacturer=drug.get("manufacturer")
                     ))
         except Exception as e:
-            logger.warning(f"Turso text search failed: {e}")
+            logger.warning("Turso text search failed: %s", e)
     
     # 3. openFDA: Backup for international drugs
     if len(results) < limit:
@@ -283,7 +281,7 @@ async def search_drugs(query: str, limit: int = 10) -> List[DrugSearchResult]:
                                 manufacturer=manufacturers[0] if manufacturers else None
                             ))
         except Exception as e:
-            logger.warning(f"openFDA search failed: {e}")
+            logger.warning("openFDA search failed: %s", e)
     
     results = results[:limit]
     cache.set(cache_key, results)
@@ -338,7 +336,7 @@ async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
             return info
             
     except Exception as e:
-        logger.warning(f"Turso drug lookup failed: {e}")
+        logger.warning("Turso drug lookup failed: %s", e)
     
     # 2. openFDA: Fallback for international drugs
     try:
@@ -372,7 +370,7 @@ async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
                     cache.set(cache_key, info)
                     return info
     except Exception as e:
-        logger.warning(f"openFDA lookup failed: {e}")
+        logger.warning("openFDA lookup failed: %s", e)
     
     # 3. LLM-only: Create info from LLM knowledge if not in any database
     try:
@@ -383,7 +381,7 @@ async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
             cache.set(cache_key, info)
             return info
     except Exception as e:
-        logger.warning(f"LLM fallback failed: {e}")
+        logger.warning("LLM fallback failed: %s", e)
     
     return None
 
@@ -420,7 +418,7 @@ async def find_cheaper_substitutes(drug_name: str) -> List[DrugInfo]:
             return results
             
     except Exception as e:
-        logger.warning(f"Turso substitute search failed: {e}")
+        logger.warning("Turso substitute search failed: %s", e)
     
     # If no results, return empty - LLM will handle in chat flow
     return results
@@ -453,48 +451,6 @@ async def search_drug_descriptions(query: str, limit: int = 5) -> str:
                 if descriptions:
                     return "\n".join(descriptions[:limit])
     except Exception as e:
-        logger.warning(f"Description search failed: {e}")
-    
+        logger.warning("Description search failed: %s", e)
+
     return ""
-
-
-async def get_fda_alerts(drug_name: str, limit: int = 5):
-    """Fetch FDA enforcement reports (recalls) for a drug."""
-    from models import FDAAlert
-    from config import OPENFDA_ENFORCEMENT_URL
-    
-    alerts = []
-    try:
-        escaped_name = escape_lucene_special_chars(drug_name)
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                OPENFDA_ENFORCEMENT_URL,
-                params={
-                    "search": f'openfda.brand_name:"{escaped_name}" OR openfda.generic_name:"{escaped_name}"',
-                    "limit": limit
-                }
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                for item in data.get("results", []):
-                    # Map severity logic (Class I = High/Recall, II = Medium/Warning, III = Low/Info)
-                    classification = item.get("classification", "")
-                    severity = "info"
-                    if "Class I" in classification:
-                        severity = "recall"
-                    elif "Class II" in classification:
-                        severity = "warning"
-                        
-                    alerts.append(FDAAlert(
-                        id=item.get("recall_number", "UNKNOWN"),
-                        severity=severity,
-                        title=f"{item.get('product_description', 'Product')[:100]}...",
-                        description=item.get("reason_for_recall", "No reason provided"),
-                        date=item.get("recall_initiation_date"), # YYYYMMDD format usually handled by validator
-                        lot_numbers=[item.get("code_info", "")] if item.get("code_info") else []
-                    ))
-    except Exception as e:
-        logger.warning(f"FDA alert fetch failed for {drug_name}: {e}")
-        
-    return alerts

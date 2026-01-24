@@ -7,7 +7,7 @@ Architecture:
 - No embeddings stored here (those go to Qdrant)
 """
 import logging
-import os
+import threading
 from typing import Optional, List, Dict, Any
 import libsql_experimental as libsql
 
@@ -15,31 +15,45 @@ from config import TURSO_DATABASE_URL, TURSO_AUTH_TOKEN
 
 logger = logging.getLogger(__name__)
 
-# Connection singleton
+# Connection singleton with thread-safe initialization
 _connection = None
+_connection_lock = threading.Lock()
+_init_attempted = False
 
 
 def get_connection():
-    """Get or create Turso database connection."""
-    global _connection
-    
+    """Get or create Turso database connection (thread-safe)."""
+    global _connection, _init_attempted
+
     if _connection is not None:
         return _connection
-    
-    if not TURSO_DATABASE_URL or not TURSO_AUTH_TOKEN:
-        logger.warning("Turso not configured")
+
+    if _init_attempted:
         return None
-    
-    try:
-        _connection = libsql.connect(
-            TURSO_DATABASE_URL,
-            auth_token=TURSO_AUTH_TOKEN
-        )
-        logger.info("Connected to Turso database")
-        return _connection
-    except Exception as e:
-        logger.error(f"Failed to connect to Turso: {e}")
-        return None
+
+    with _connection_lock:
+        if _connection is not None:
+            return _connection
+
+        if _init_attempted:
+            return None
+
+        _init_attempted = True
+
+        if not TURSO_DATABASE_URL or not TURSO_AUTH_TOKEN:
+            logger.warning("Turso not configured")
+            return None
+
+        try:
+            _connection = libsql.connect(
+                TURSO_DATABASE_URL,
+                auth_token=TURSO_AUTH_TOKEN
+            )
+            logger.info("Connected to Turso database")
+            return _connection
+        except Exception as e:
+            logger.error("Failed to connect to Turso: %s", e)
+            return None
 
 
 def init_schema():
@@ -76,7 +90,7 @@ def init_schema():
         logger.info("Turso schema initialized")
         return True
     except Exception as e:
-        logger.error(f"Failed to init Turso schema: {e}")
+        logger.error("Failed to init Turso schema: %s", e)
         return False
 
 
@@ -111,7 +125,7 @@ def search_drugs(query: str, limit: int = 10) -> List[Dict[str, Any]]:
             for row in rows
         ]
     except Exception as e:
-        logger.error(f"Turso search failed: {e}")
+        logger.error("Turso search failed: %s", e)
         return []
 
 
@@ -154,7 +168,7 @@ def get_drug_by_name(name: str) -> Optional[Dict[str, Any]]:
             "substitutes": row[12].split(",") if row[12] else []
         }
     except Exception as e:
-        logger.error(f"Turso get_drug_by_name failed: {e}")
+        logger.error("Turso get_drug_by_name failed: %s", e)
         return None
 
 
@@ -188,7 +202,7 @@ def get_drugs_by_ids(drug_ids: List[str]) -> List[Dict[str, Any]]:
             for row in rows
         ]
     except Exception as e:
-        logger.error(f"Turso get_drugs_by_ids failed: {e}")
+        logger.error("Turso get_drugs_by_ids failed: %s", e)
         return []
 
 
@@ -230,5 +244,5 @@ def find_cheaper_substitutes(drug_name: str) -> List[Dict[str, Any]]:
             for row in rows
         ]
     except Exception as e:
-        logger.error(f"Turso find_cheaper_substitutes failed: {e}")
+        logger.error("Turso find_cheaper_substitutes failed: %s", e)
         return []
