@@ -8,7 +8,7 @@ python-multipart==0.0.9
 
 # AI Services
 google-generativeai==0.8.0
-sentence-transformers==2.2.2
+sentence-transformers==5.2.0
 
 # Database - Supabase (User Data)
 supabase==2.10.0
@@ -25,3 +25,6 @@ agora-token-builder==1.0.0
 
 # Security
 slowapi==0.1.9
+
+
+tf-keras

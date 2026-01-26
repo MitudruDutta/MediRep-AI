@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Message, PatientContext, WebSearchResult } from "@/types";
 import { sendMessage, getSessionMessages } from "@/lib/api";
+import { invalidateSessionsCache } from "@/hooks/useSessions";
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -36,26 +37,26 @@ export function useChat() {
   const send = async (content: string, patientContext?: PatientContext, webSearchMode: boolean = false) => {
     setIsLoading(true);
     setWebSources([]); // Clear previous web sources
-    
+
     // Add user message locally
     const userMessage: Message = {
       role: "user",
       content,
       timestamp: new Date().toISOString(),
     };
-    
+
     setMessages((prev) => [...prev, userMessage]);
 
     try {
       // Send to backend with web search mode
       const response = await sendMessage(content, patientContext, undefined, sessionId || undefined, webSearchMode);
-      
+
       // Handle new session
       if (!sessionId && response.session_id) {
         setSessionId(response.session_id);
         sessionStorage.setItem("current_chat_session_id", response.session_id);
       }
-      
+
       // Add assistant response
       const assistantMessage: Message = {
         role: "assistant",
@@ -64,7 +65,7 @@ export function useChat() {
         timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
-      
+
       if (response.suggestions) {
         setSuggestions(response.suggestions);
       }
@@ -73,6 +74,9 @@ export function useChat() {
       if (response.web_sources && response.web_sources.length > 0) {
         setWebSources(response.web_sources);
       }
+
+      // Invalidate session cache so sidebar updates with new message count/timestamp
+      invalidateSessionsCache();
     } catch (error) {
       console.error("Chat error:", error);
       const errorMessage: Message = {

@@ -1,9 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { getUserSessions } from "@/lib/api";
-import { SessionSummary } from "@/types";
-import { MessageSquare, Plus, Clock, ChevronLeft, ChevronRight, History } from "lucide-react";
+import { useSessions } from "@/hooks/useSessions";
+import { Plus, Clock, ChevronLeft, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -22,33 +20,8 @@ export function ChatSidebar({
     isOpen,
     onToggle
 }: ChatSidebarProps) {
-    const [sessions, setSessions] = useState<SessionSummary[]>([]);
-    const [loading, setLoading] = useState(false);
-
-    useEffect(() => {
-        if (isOpen) {
-            loadSessions();
-        }
-    }, [isOpen]);
-
-    // Reload sessions when current session changes (to pick up new titles/updates)
-    useEffect(() => {
-        if (isOpen) {
-            loadSessions();
-        }
-    }, [currentSessionId]);
-
-    const loadSessions = async () => {
-        try {
-            setLoading(true);
-            const data = await getUserSessions(50); // Fetch last 50
-            setSessions(data);
-        } catch (error) {
-            console.error("Failed to load sessions:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    // SWR-powered session fetching with automatic caching
+    const { sessions, isLoading } = useSessions(50);
 
     return (
         <>
@@ -65,15 +38,10 @@ export function ChatSidebar({
                 className={cn(
                     "fixed inset-y-0 left-0 z-30 w-72 bg-card/95 backdrop-blur-xl border-r border-border/40 transform transition-transform duration-300 ease-in-out flex flex-col h-full overflow-hidden",
                     isOpen ? "translate-x-0" : "-translate-x-full",
-                    "md:translate-x-0 md:relative md:w-72", // Always open on desktop for now, or controllable? 
-                    // Actually, let's make it fully collapsible on desktop based on isOpen logic
-                    // If desktop + !isOpen => width 0 or hidden?
+                    "md:translate-x-0 md:relative md:w-72",
                     !isOpen && "md:w-0 md:border-none"
                 )}
             >
-                {/* Toggle Button (Desktop - floating outside when closed or inside header) */}
-                {/* We generally render the toggle in the main layout header, but let's have one here too */}
-
                 <div className="p-4 border-b border-border/40 flex items-center justify-between">
                     <h2 className="font-semibold text-lg tracking-tight flex items-center gap-2">
                         <History className="w-5 h-5 text-primary" />
@@ -89,7 +57,7 @@ export function ChatSidebar({
                     <Button
                         onClick={() => {
                             onNewChat();
-                            if (window.innerWidth < 768) onToggle(); // Close on mobile
+                            if (window.innerWidth < 768) onToggle();
                         }}
                         className="w-full justify-start gap-2 h-11 shadow-sm bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 border"
                         variant="ghost"
@@ -101,7 +69,7 @@ export function ChatSidebar({
 
                 {/* Sessions List */}
                 <div className="flex-1 overflow-y-auto p-4 pt-2 space-y-1 scrollbar-thin scrollbar-thumb-muted">
-                    {loading ? (
+                    {isLoading && sessions.length === 0 ? (
                         <div className="flex flex-col gap-2 mt-4">
                             {[1, 2, 3].map(i => (
                                 <div key={i} className="h-10 w-full bg-muted/40 animate-pulse rounded-md" />

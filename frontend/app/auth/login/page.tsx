@@ -41,7 +41,7 @@ export default function LoginPage() {
       await signInWithGoogle();
       // Function will redirect on success, so we won't reach here
     } catch {
-      setError("Failed to connect to Google. Please try again.");
+      //setError("Failed to connect to Google. Please try again.");
       setIsGoogleLoading(false);
     }
   }
