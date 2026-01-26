@@ -349,14 +349,17 @@ async def delete_session(
 
     try:
         # Delete with ownership check (RLS)
-        result = client.table("chat_sessions").delete().eq(
+        # explicit count='exact' ensures we know if a row was actually deleted
+        result = client.table("chat_sessions").delete(count="exact").eq(
             "id", session_id
         ).eq("user_id", user_id).execute()
 
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Session not found")
+        # Check count of deleted rows
+        if result.count is None or result.count == 0:
+            logger.warning("Delete failed or no effect: session %s, user %s", session_id, user_id)
+            raise HTTPException(status_code=404, detail="Session not found or already deleted")
 
-        logger.info("Session deleted: %s by user %s", session_id[:8], user_id[:8])
+        logger.info("Session deleted successfully: %s by user %s", session_id, user_id)
         return None
 
     except HTTPException:

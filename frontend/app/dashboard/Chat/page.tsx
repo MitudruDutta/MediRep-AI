@@ -2,7 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@/hooks/useChat";
+
+import { useProfile } from "@/hooks/useProfile";
 import { usePatientContext } from "@/lib/context/PatientContext";
+import { useSearchParams } from "next/navigation";
 import {
   ChatMessages,
   ChatMessage,
@@ -14,15 +17,49 @@ import { ChatSidebar } from "@/components/Chat/ChatSidebar";
 import { PromptInputBox } from "@/components/ai-prompt-box";
 import { MessageSquare, PanelLeftOpen, PanelLeftClose, Globe, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { motion, AnimatePresence } from "framer-motion";
+
+const ALL_SUGGESTIONS = [
+  { label: "Check interactions", prompt: "Check interactions between Aspirin and Warfarin" },
+  { label: "Summarize patient", prompt: "Summarize the current patient's medical history" },
+  { label: "Side effects", prompt: "What are the common side effects of Metformin?" },
+  { label: "Identify pill", prompt: "Help me identify a pill based on its physical appearance" },
+  { label: "Dosage info", prompt: "What is the standard dosage for Amoxicillin?" },
+  { label: "Contraindications", prompt: "List contraindications for Ibuprofen" },
+  { label: "Mechanism of action", prompt: "Explain how Lisinopril works" },
+  { label: "Latest alerts", prompt: "Show recent FDA alerts for cardiac medications" },
+];
 
 export default function ChatPage() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [webSearchMode, setWebSearchMode] = useState(false);
+  const [randomSuggestions, setRandomSuggestions] = useState<typeof ALL_SUGGESTIONS>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    // Randomize suggestions on mount to provide "AI-like" variety
+    const shuffled = [...ALL_SUGGESTIONS].sort(() => 0.5 - Math.random());
+    setRandomSuggestions(shuffled.slice(0, 4));
+  }, []);
+
   const { messages, isLoading, suggestions, webSources, send, resetSession, loadSession, sessionId } = useChat();
+
+  const { profile, loading: profileLoading } = useProfile();
   const { patientContext } = usePatientContext();
+  const searchParams = useSearchParams();
+
+  // Define variables for visual display
+  const initialUserName = profile?.full_name;
+  const initialUserEmail = profile?.email || "User";
+
+  // Load session from URL if present (for sharing)
+  useEffect(() => {
+    const sessionParam = searchParams.get("session");
+    if (sessionParam && sessionParam !== sessionId) {
+      loadSession(sessionParam);
+    }
+  }, [searchParams, loadSession, sessionId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -97,70 +134,103 @@ export default function ChatPage() {
         <div className="flex-1 overflow-hidden relative">
           <div className="h-full flex flex-col max-w-5xl mx-auto px-4 py-6">
 
-            {/* Messages Area */}
-            <ChatMessages className="flex-1 overflow-y-auto px-2 space-y-4 mb-6 scrollbar-hide">
-              {messages.length === 0 && (
-                <ChatEmpty message="Start a conversation about medications..." />
-              )}
-
-              {messages.map((message, index) => (
-                <ChatMessage
-                  key={index}
-                  message={message}
-                  index={index}
-                  copiedIndex={copiedIndex}
-                  onCopy={copyToClipboard}
-                />
-              ))}
-
-              {isLoading && <ChatLoading />}
-
-              {/* Web Sources Display */}
-              {webSources.length > 0 && (
-                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Globe className="w-4 h-4" /> Web Sources
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {webSources.map((source, i) => (
-                      <a
-                        key={i}
-                        href={source.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs bg-background px-2 py-1 rounded-md border hover:border-primary transition-colors"
-                      >
-                        <span className="truncate max-w-[150px]">{source.source}</span>
-                        <ExternalLink className="w-3 h-3 shrink-0" />
-                      </a>
-                    ))}
-                  </div>
+            {/* Messages Area & Input */}
+            {messages.length === 0 && !isLoading ? (
+              <div className="flex-1 flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-500">
+                <div className="text-center space-y-2">
+                  <h1 className="text-4xl font-semibold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+                    Hi there, {initialUserName || initialUserEmail}
+                  </h1>
+                  <h2 className="text-2xl text-muted-foreground">
+                    Where should we start?
+                  </h2>
                 </div>
-              )}
 
-              <div ref={messagesEndRef} />
-            </ChatMessages>
+                <div className="w-full max-w-2xl px-4">
+                  <PromptInputBox
+                    onSend={handleSend}
+                    isLoading={isLoading}
+                    placeholder="Ask about medications, interactions, or side effects..."
+                    onSearchModeChange={setWebSearchMode}
+                    className="shadow-xl border-primary/10"
+                  />
+                </div>
 
-            {/* Input Area */}
-            <div className="space-y-3 px-2">
-              {suggestions.length > 0 && (
-                <ChatSuggestions
-                  suggestions={suggestions}
-                  onSelect={(suggestion) => handleSend(suggestion)}
-                />
-              )}
+                <div className="flex flex-wrap justify-center gap-3 px-4 max-w-3xl">
+                  {randomSuggestions.map((suggestion, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleSend(suggestion.prompt)}
+                      className="px-4 py-2 rounded-full bg-muted/50 hover:bg-muted border border-border/50 text-sm text-muted-foreground hover:text-foreground transition-all duration-200"
+                    >
+                      {suggestion.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                <ChatMessages className="flex-1 overflow-y-auto px-2 space-y-4 mb-6 scrollbar-hide">
+                  {messages.map((message, index) => (
+                    <ChatMessage
+                      key={index}
+                      message={message}
+                      index={index}
+                      copiedIndex={copiedIndex}
+                      onCopy={copyToClipboard}
+                    />
+                  ))}
 
-              <PromptInputBox
-                onSend={handleSend}
-                isLoading={isLoading}
-                placeholder="Ask about medications, interactions, or side effects..."
-                onSearchModeChange={setWebSearchMode}
-              />
-            </div>
+                  {isLoading && <ChatLoading />}
+
+                  {/* Web Sources Display */}
+                  {webSources.length > 0 && (
+                    <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Globe className="w-4 h-4" /> Web Sources
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {webSources.map((source, i) => (
+                          <a
+                            key={i}
+                            href={source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs bg-background px-2 py-1 rounded-md border hover:border-primary transition-colors"
+                          >
+                            <span className="truncate max-w-[150px]">{source.source}</span>
+                            <ExternalLink className="w-3 h-3 shrink-0" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={messagesEndRef} />
+                </ChatMessages>
+
+                {/* Input Area */}
+                <div className="space-y-3 px-2">
+                  {suggestions.length > 0 && (
+                    <ChatSuggestions
+                      suggestions={suggestions}
+                      onSelect={(suggestion) => handleSend(suggestion)}
+                    />
+                  )}
+
+                  <PromptInputBox
+                    onSend={handleSend}
+                    isLoading={isLoading}
+                    placeholder="Ask about medications, interactions, or side effects..."
+                    onSearchModeChange={setWebSearchMode}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 }
 

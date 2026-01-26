@@ -1,7 +1,7 @@
 import { PatientContext, Message, FDAAlertResponse, ChatResponse, SessionSummary } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 /**
  * Get authentication headers with the current user's access token
@@ -47,6 +47,10 @@ async function handleResponse<T>(response: Response): Promise<T> {
     throw new Error(
       errorData.detail || `Request failed: ${response.statusText}`,
     );
+  }
+
+  if (response.status === 204) {
+    return {} as T;
   }
 
   return response.json();
@@ -174,6 +178,19 @@ export async function getSessionMessages(sessionId: string): Promise<Message[]> 
 
 export async function getUserSessions(limit = 20, offset = 0): Promise<SessionSummary[]> {
   return authFetch<SessionSummary[]>(`${API_URL}/api/sessions?limit=${limit}&offset=${offset}`);
+}
+
+export async function deleteSession(sessionId: string) {
+  return authFetch(`${API_URL}/api/sessions/${sessionId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function renameSession(sessionId: string, title: string) {
+  return authFetch(`${API_URL}/api/sessions/${sessionId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
 }
 
 /**

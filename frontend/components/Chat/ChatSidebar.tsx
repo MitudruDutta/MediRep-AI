@@ -1,9 +1,27 @@
 "use client";
 
+import { useState } from "react";
 import { useSessions } from "@/hooks/useSessions";
-import { Plus, Clock, ChevronLeft, History } from "lucide-react";
+import { Plus, Clock, ChevronLeft, History, MoreVertical, Trash, Share2, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ChatSidebarProps {
     currentSessionId: string | null;
@@ -21,7 +39,70 @@ export function ChatSidebar({
     onToggle
 }: ChatSidebarProps) {
     // SWR-powered session fetching with automatic caching
-    const { sessions, isLoading } = useSessions(50);
+    const { sessions, isLoading, deleteSession, renameSession } = useSessions(50);
+
+    // Rename state
+    const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+    const [newTitle, setNewTitle] = useState("");
+    const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+
+    const handleDelete = async (e: React.MouseEvent, sessionId: string) => {
+        e.stopPropagation();
+        // Removed confirm dialog as per user request
+        try {
+            await deleteSession(sessionId);
+            toast.success("Chat deleted");
+            if (currentSessionId === sessionId) {
+                onNewChat();
+            }
+        } catch (error) {
+            toast.error("Failed to delete chat");
+        }
+    };
+
+    const handleShare = async (e: React.MouseEvent, sessionId: string) => {
+        // e.stopPropagation(); // Removed to allow dropdown to close properly
+        const url = `${window.location.origin}/dashboard/Chat?session=${sessionId}`;
+
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(url);
+            } else {
+                const textArea = document.createElement("textarea");
+                textArea.value = url;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+            }
+            toast.success("Link copied to clipboard");
+        } catch (err) {
+            console.error("Share error:", err);
+            toast.error("Failed to copy link");
+        }
+    };
+
+    const openRenameDialog = (e: React.MouseEvent, session: { id: string, title?: string }) => {
+        e.stopPropagation();
+        setEditingSessionId(session.id);
+        setNewTitle(session.title || "");
+        setIsRenameDialogOpen(true);
+    };
+
+    const handleRenameSubmit = async () => {
+        if (!editingSessionId || !newTitle.trim()) return;
+
+        try {
+            await renameSession(editingSessionId, newTitle);
+            toast.success("Chat renamed");
+            setIsRenameDialogOpen(false);
+        } catch (error) {
+            toast.error("Failed to rename chat");
+        }
+    };
 
     return (
         <>
@@ -81,31 +162,94 @@ export function ChatSidebar({
                         </div>
                     ) : (
                         sessions.map((session) => (
-                            <button
+
+                            <div
                                 key={session.id}
-                                onClick={() => {
-                                    onSelectSession(session.id);
-                                    if (window.innerWidth < 768) onToggle();
-                                }}
                                 className={cn(
-                                    "w-full text-left px-3 py-3 rounded-md transition-all duration-200 text-sm flex flex-col gap-1 group",
+                                    "w-full rounded-md transition-all duration-200 text-sm flex items-center group relative pr-1",
                                     currentSessionId === session.id
                                         ? "bg-primary/10 text-primary font-medium border border-primary/10"
                                         : "hover:bg-muted/50 text-muted-foreground hover:text-foreground"
                                 )}
                             >
-                                <span className="truncate w-full block pr-2">
-                                    {session.title || "New Chat"}
-                                </span>
-                                <div className="flex items-center gap-2 text-xs opacity-60">
-                                    <Clock className="w-3 h-3" />
-                                    {new Date(session.last_message_at).toLocaleDateString()}
-                                </div>
-                            </button>
+                                <button
+                                    onClick={() => {
+                                        onSelectSession(session.id);
+                                        if (window.innerWidth < 768) onToggle();
+                                    }}
+                                    className="flex-1 text-left px-3 py-3 overflow-hidden"
+                                >
+                                    <span className="truncate w-full block">
+                                        {session.title || "New Chat"}
+                                    </span>
+                                    <div className="flex items-center gap-2 text-xs opacity-60 mt-1">
+                                        <Clock className="w-3 h-3" />
+                                        {new Date(session.last_message_at).toLocaleDateString()}
+                                    </div>
+                                </button>
+
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={cn(
+                                                "h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 shrink-0",
+                                                currentSessionId === session.id && "opacity-100"
+                                            )}
+                                        >
+                                            <MoreVertical className="w-4 h-4" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-48">
+                                        <DropdownMenuItem onClick={(e) => handleShare(e, session.id)}>
+                                            <Share2 className="mr-2 h-4 w-4" />
+                                            Share conversation
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={(e) => openRenameDialog(e, session)}>
+                                            <Pencil className="mr-2 h-4 w-4" />
+                                            Rename
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                            className="text-destructive focus:text-destructive"
+                                            onClick={(e) => handleDelete(e, session.id)}
+                                        >
+                                            <Trash className="mr-2 h-4 w-4" />
+                                            Delete
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
                         ))
                     )}
                 </div>
             </div>
+
+
+            <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Rename Chat</DialogTitle>
+                        <DialogDescription>
+                            Enter a new title for this conversation.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Input
+                            value={newTitle}
+                            onChange={(e) => setNewTitle(e.target.value)}
+                            placeholder="Chat title"
+                            onKeyDown={(e) => e.key === "Enter" && handleRenameSubmit()}
+                            autoFocus
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsRenameDialogOpen(false)}>Cancel</Button>
+                        <Button onClick={handleRenameSubmit}>Save</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }

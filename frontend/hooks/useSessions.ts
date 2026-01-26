@@ -1,6 +1,6 @@
 import useSWR, { mutate } from "swr";
 import { SessionSummary } from "@/types";
-import { getUserSessions } from "@/lib/api";
+import { getUserSessions, deleteSession, renameSession } from "@/lib/api";
 
 // Cache key for sessions
 const SESSIONS_KEY = "user-sessions";
@@ -29,12 +29,41 @@ export function useSessions(limit: number = 50) {
         }
     );
 
+    const deleteSessionHandler = async (id: string) => {
+        // Optimistic update
+        boundMutate((current) => current?.filter(s => s.id !== id), false);
+        try {
+            await deleteSession(id);
+            boundMutate(); // Revalidate
+        } catch (e) {
+            boundMutate(); // Revert on error
+            throw e;
+        }
+    };
+
+    const renameSessionHandler = async (id: string, newTitle: string) => {
+        // Optimistic update
+        boundMutate(
+            (current) => current?.map(s => s.id === id ? { ...s, title: newTitle } : s),
+            false
+        );
+        try {
+            await renameSession(id, newTitle);
+            boundMutate();
+        } catch (e) {
+            boundMutate();
+            throw e;
+        }
+    };
+
     return {
         sessions: data || [],
         isLoading,
         isValidating, // True when revalidating in background
         error,
         refresh: boundMutate,
+        deleteSession: deleteSessionHandler,
+        renameSession: renameSessionHandler,
     };
 }
 

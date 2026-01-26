@@ -88,7 +88,6 @@ export function AccountSettings({ user }: { user: User | null }) {
         
       }
     } catch (error) {
-      showMessage("Error loading user data!", true);
       console.error("Profile fetch error:", error);
     } finally {
       setLoading(false);

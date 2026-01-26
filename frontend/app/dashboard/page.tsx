@@ -10,6 +10,7 @@ export default async function DashboardPage() {
   return (
     <Dashboard
       initialUserEmail={user?.email}
+      initialUserName={user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0]}
       initialUserAvatar={user?.user_metadata?.avatar_url}
     />
   );
