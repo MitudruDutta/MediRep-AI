@@ -1,6 +1,5 @@
 # Environment files - .env.* catches all variants
 .env
-.env.*
 
 # Python
 __pycache__/
