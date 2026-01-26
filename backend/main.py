@@ -5,9 +5,22 @@ from fastapi.responses import JSONResponse
 import logging
 import time
 import uvicorn
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+
+from config import ALLOWED_ORIGINS, PORT
+from routers import chat, drugs, vision, alerts, user, marketplace, pharmacist, consultations
 
 # Rate Limiting
 from limiter import limiter
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 app = FastAPI(
     title="MediRep AI",
@@ -79,6 +92,10 @@ app.include_router(user.router, prefix="/api/user", tags=["User"])
 app.include_router(marketplace.router, prefix="/api/marketplace", tags=["Marketplace"])
 app.include_router(pharmacist.router, prefix="/api/pharmacist", tags=["Pharmacist"])
 app.include_router(consultations.router, prefix="/api/consultations", tags=["Consultations"])
+
+# Sessions router (chat session management)
+from routers import sessions
+app.include_router(sessions.router, prefix="/api/sessions", tags=["Sessions"])
 
 
 @app.exception_handler(Exception)

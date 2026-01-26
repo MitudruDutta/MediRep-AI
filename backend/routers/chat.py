@@ -8,12 +8,19 @@ from datetime import datetime, timezone
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from models import ChatRequest, ChatResponse
+from models import ChatRequest, ChatResponse, Message
 from services.gemini_service import generate_response, plan_intent
 from services.drug_service import get_drug_info, find_cheaper_substitutes
 from services.rag_service import rag_service
 from services.interaction_service import interaction_service
 from services.supabase_service import SupabaseService
+from services.context_service import (
+    load_session_context,
+    compress_and_update_context,
+    get_or_create_session,
+    save_message_to_session,
+)
+from services.web_search_service import search_medical, format_web_results_for_llm, WebSearchResult
 from middleware.auth import get_current_user, get_optional_user
 
 logger = logging.getLogger(__name__)
@@ -22,29 +29,6 @@ router = APIRouter()
 # Local limiter for chat endpoint (separate from global app limiter)
 limiter = Limiter(key_func=get_remote_address)
 
-
-async def _save_chat_history(user_id: str, message: str, response: str, patient_context=None):
-    """Save chat history to Supabase in background."""
-    try:
-        client = SupabaseService.get_client()
-        if not client:
-            logger.warning("No Supabase client for chat history")
-            return
-
-        patient_ctx = patient_context.model_dump() if patient_context else None
-
-        result = await asyncio.to_thread(
-            lambda: client.rpc("insert_chat_history", {
-                "p_user_id": user_id,
-                "p_message": message,
-                "p_response": response[:2000],
-                "p_patient_context": patient_ctx,
-                "p_citations": None  # Can fail if column missing, so handle gracefully or update RPC
-            }).execute()
-        )
-        logger.info("Chat history saved for user %s...", user_id[:8])
-    except Exception as e:
-        logger.error("Chat history save failed: %s", e)
 
 
 def _detect_substitute_intent(message: str) -> bool:
@@ -60,17 +44,65 @@ def _detect_substitute_intent(message: str) -> bool:
 async def chat_endpoint(
     request: Request,  # Required for rate limiting
     chat_request: ChatRequest,
-    user: dict = Depends(get_current_user)
+    user: object = Depends(get_current_user)  # user is AuthUser object
 ):
     """
     Digital Medical Representative AI - Powered by Gemini with RAG
     
-    Provides healthcare professionals with instant, accurate drug and 
+    Provides healthcare professionals with instant, accurate drug and
     reimbursement information with citations from official sources.
+    
+    Session-based: Conversations persist across requests.
+    Context compression: Efficient memory without sending all messages.
     """
+    # Get user ID and Token
+    user_id = user.id
+    auth_token = user.token
+    
+    # Debug: Log web search mode
+    logger.info("Chat request received. web_search_mode=%s, message=%s", 
+                chat_request.web_search_mode, chat_request.message[:50])
+    
     try:
+        # ============================================================
+        # SESSION & CONTEXT LOADING (new - everything else unchanged)
+        # ============================================================
+
+        # Get or create session
+        try:
+            session = await get_or_create_session(user_id, auth_token, chat_request.session_id)
+            session_id = session["id"]
+            current_summary = session.get("context_summary")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception:
+            raise HTTPException(status_code=503, detail="Session service unavailable")
+
+        # Load compressed context + recent history
+        context_data_loaded = await load_session_context(session_id, auth_token)
+
+        # Build history for LLM: recent exchanges from DB
+        # (replaces client-sent history with server-side history)
+        history_for_llm = []
+
+        # Add context summary as system context if exists
+        if context_data_loaded["summary"]:
+            # Inject summary as first assistant message for context
+            history_for_llm.append(Message(
+                role="assistant",
+                content=f"[Previous conversation context: {context_data_loaded['summary']}]"
+            ))
+
+        # Add recent full exchanges
+        for h in context_data_loaded["recent_history"]:
+            history_for_llm.append(Message(role=h["role"], content=h["content"]))
+
+        # ============================================================
+        # EXISTING WORKFLOW (unchanged from here)
+        # ============================================================
+
         # 1. Intent Planning & Entity Extraction (LLM Powered)
-        plan = await plan_intent(chat_request.message, history=chat_request.history)
+        plan = await plan_intent(chat_request.message, history=history_for_llm)
         logger.info("Intent Plan: %s, Drugs: %s", plan.intent, plan.drug_names)
 
         # Keyword-based intent override (fallback when LLM intent fails)
@@ -84,9 +116,9 @@ async def chat_endpoint(
 
         # Extract drug name from history if not in current message
         drug_from_history = None
-        if not plan.drug_names and chat_request.history:
+        if not plan.drug_names and history_for_llm:
             # Look for drug names in recent history
-            for hist_msg in reversed(chat_request.history[-4:]):
+            for hist_msg in reversed(history_for_llm[-4:]):
                 if hist_msg.role == "assistant" and hist_msg.content:
                     # Simple extraction: look for capitalized words that might be drug names
                     potential = re.findall(r'\b([A-Z][a-z]+(?:\s+\d+)?)\b', hist_msg.content[:200])
@@ -175,12 +207,49 @@ async def chat_endpoint(
             except Exception as e:
                 logger.warning("RAG search failed: %s", e)
 
+        # ============================================================
+        # WEB SEARCH (Explicit mode OR Fallback)
+        # ============================================================
+        web_results = []
+        web_context = ""
+        
+        # Freshness keywords that suggest user wants live data
+        freshness_keywords = {'latest', 'current', 'today', 'now', 'recent', 'price now', 'live'}
+        wants_fresh_data = any(kw in chat_request.message.lower() for kw in freshness_keywords)
+        
+        # Trigger web search if:
+        # 1. Explicit web_search_mode is enabled, OR
+        # 2. No local data found AND user wants fresh info, OR
+        # 3. No local data found AND it's not a simple conversational message
+        needs_web_search = (
+            chat_request.web_search_mode or
+            (not rag_content and not context_data.get('drug_info') and wants_fresh_data) or
+            (not rag_content and not context_data.get('drug_info') and not is_conversational and plan.intent != "SYMPTOM")
+        )
+        
+        if needs_web_search:
+            logger.info("WEB SEARCH TRIGGERED: explicit=%s, rag_content=%s, drug_info=%s, wants_fresh=%s",
+                       chat_request.web_search_mode, bool(rag_content), bool(context_data.get('drug_info')), wants_fresh_data)
+            try:
+                web_results = await search_medical(chat_request.message, num_results=5)
+                if web_results:
+                    web_context = format_web_results_for_llm(web_results)
+                    msg_context += "\n\n" + web_context
+                    logger.info("Web search added %d results for: %s", len(web_results), chat_request.message[:50])
+                else:
+                    logger.warning("Web search returned 0 results")
+            except Exception as e:
+                logger.warning("Web search failed: %s", e)
+        else:
+            logger.info("WEB SEARCH SKIPPED: explicit=%s, rag_content=%s, drug_info=%s",
+                       chat_request.web_search_mode, bool(rag_content), bool(context_data.get('drug_info')))
+
         # 4. Generate Response
         gemini_result = await generate_response(
-            message=chat_request.message + msg_context, # Inject structured data
+            message=chat_request.message + msg_context,  # Inject structured data
             patient_context=chat_request.patient_context,
-            history=chat_request.history,
-            drug_info=context_data.get('drug_info'), # Still pass object for formatting if needed
+            history=history_for_llm,  # Use session history, not client history
+            drug_info=context_data.get('drug_info'),
             rag_context=rag_content
         )
 
@@ -188,26 +257,42 @@ async def chat_endpoint(
         citations = gemini_result.get("citations", [])
         suggestions = gemini_result.get("suggestions", [])
 
-        # 5. Save to chat history (non-blocking, don't fail the request if this fails)
-        user_id = None
-        if hasattr(user, 'id'):
-            user_id = user.id
-        elif isinstance(user, dict):
-            user_id = user.get('id')
-        
-        if user_id:
-            # Run in background - don't block the response
-            asyncio.create_task(_save_chat_history(
-                user_id=str(user_id),
-                message=chat_request.message,
-                response=response_text,
-                patient_context=chat_request.patient_context
-            ))
+        # 5. Save to session & compress context (non-blocking background tasks)
+        patient_ctx = chat_request.patient_context.model_dump() if chat_request.patient_context else None
+        citations_data = [c.model_dump() for c in citations] if citations else None
+
+        # Save message to session
+        asyncio.create_task(save_message_to_session(
+            user_id=user_id,
+            session_id=session_id,
+            message=chat_request.message,
+            response=response_text,
+            auth_token=auth_token,
+            patient_context=patient_ctx,
+            citations=citations_data,
+        ))
+
+        # Compress context for next message (runs in background)
+        asyncio.create_task(compress_and_update_context(
+            session_id=session_id,
+            user_message=chat_request.message,
+            assistant_response=response_text,
+            auth_token=auth_token,
+            current_summary=current_summary,
+        ))
+
+        # Convert web results to response model format
+        web_sources_response = [
+            {"title": r.title, "url": r.url, "snippet": r.snippet, "source": r.source}
+            for r in web_results
+        ] if web_results else []
 
         return ChatResponse(
             response=response_text,
             citations=citations,
-            suggestions=suggestions
+            suggestions=suggestions,
+            session_id=session_id,
+            web_sources=web_sources_response,
         )
 
     except Exception as e:

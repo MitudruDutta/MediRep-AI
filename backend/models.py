@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field, EmailStr, validator, model_validator
+from pydantic import BaseModel, Field, EmailStr, validator, model_validator, field_validator
+from typing import List, Optional, Literal
 from datetime import datetime
 
 
@@ -29,15 +30,75 @@ class Citation(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., min_length=1, max_length=4000)
     patient_context: Optional[PatientContext] = None
     history: List[Message] = Field(default_factory=list)
+    session_id: Optional[str] = Field(None, description="Session ID to continue conversation")
+    web_search_mode: bool = Field(False, description="Force web search for this query")
+
+
+class WebSearchResult(BaseModel):
+    """Web search result from external search API."""
+    title: str
+    url: str
+    snippet: str
+    source: str
 
 
 class ChatResponse(BaseModel):
     response: str
     citations: List[Citation] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
+    session_id: str = Field(..., description="Session ID for this conversation")
+    web_sources: List[WebSearchResult] = Field(default_factory=list, description="Web search results used")
+
+
+# ============================================================================
+# CHAT SESSION MODELS
+# ============================================================================
+
+class SessionCreate(BaseModel):
+    """Request to create a new chat session."""
+    title: Optional[str] = Field(None, max_length=100)
+    patient_context: Optional[PatientContext] = None
+
+
+class SessionUpdate(BaseModel):
+    """Request to update session metadata."""
+    title: Optional[str] = Field(None, min_length=1, max_length=100)
+    is_archived: Optional[bool] = None
+
+
+class SessionSummary(BaseModel):
+    """Session summary for listing."""
+    id: str
+    title: str
+    message_count: int = 0
+    is_archived: bool = False
+    created_at: datetime
+    updated_at: datetime
+    last_message_at: datetime
+
+
+class SessionMessage(BaseModel):
+    """Single message in a session."""
+    id: str
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: datetime
+
+
+class SessionDetail(BaseModel):
+    """Full session with messages."""
+    id: str
+    title: str
+    message_count: int
+    is_archived: bool
+    created_at: datetime
+    updated_at: datetime
+    last_message_at: datetime
+    messages: List[SessionMessage] = Field(default_factory=list)
+    patient_context: Optional[PatientContext] = None
 
 
 class DrugInfo(BaseModel):

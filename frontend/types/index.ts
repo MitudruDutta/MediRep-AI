@@ -63,8 +63,27 @@ export interface FDAAlertResponse {
   alerts: FDAAlert[];
 }
 
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+  source: string;
+}
+
 export interface ChatResponse {
   response: string;
   citations?: Citation[];
   suggestions?: string[];
+  session_id: string;
+  web_sources?: WebSearchResult[];
+}
+
+export interface SessionSummary {
+  id: string;
+  title: string;
+  message_count: number;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string;
 }

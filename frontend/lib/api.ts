@@ -1,4 +1,4 @@
-import { PatientContext, Message, FDAAlertResponse, ChatResponse } from "@/types";
+import { PatientContext, Message, FDAAlertResponse, ChatResponse, SessionSummary } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -76,13 +76,17 @@ export async function sendMessage(
   message: string,
   patientContext?: PatientContext,
   history?: Message[],
+  sessionId?: string,
+  webSearchMode: boolean = false,
 ): Promise<ChatResponse> {
   return authFetch<ChatResponse>(`${API_URL}/api/chat`, {
     method: "POST",
     body: JSON.stringify({
       message,
       patient_context: patientContext,
-      history: history?.map((m) => ({ role: m.role, content: m.content })),
+      history: [], // Backend uses DB history now; sending empty to save bandwidth
+      session_id: sessionId,
+      web_search_mode: webSearchMode,
     }),
   });
 }
@@ -156,6 +160,20 @@ export async function identifyPill(imageFile: File) {
 export async function getFDAAlerts(drugName: string): Promise<FDAAlertResponse> {
   const encodedName = encodeURIComponent(drugName);
   return authFetch<FDAAlertResponse>(`${API_URL}/api/alerts/${encodedName}`);
+}
+
+export async function getSessionMessages(sessionId: string): Promise<Message[]> {
+  const messages = await authFetch<any[]>(`${API_URL}/api/sessions/${sessionId}/messages`);
+  // Transform backend messages to frontend format if needed
+  return messages.map(msg => ({
+    role: msg.role,
+    content: msg.content,
+    timestamp: msg.created_at || new Date().toISOString()
+  }));
+}
+
+export async function getUserSessions(limit = 20, offset = 0): Promise<SessionSummary[]> {
+  return authFetch<SessionSummary[]>(`${API_URL}/api/sessions?limit=${limit}&offset=${offset}`);
 }
 
 /**

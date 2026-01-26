@@ -9,7 +9,7 @@ Architecture:
 import logging
 import threading
 from typing import Optional, List, Dict, Any
-import libsql_experimental as libsql
+import libsql_client as libsql
 
 from config import TURSO_DATABASE_URL, TURSO_AUTH_TOKEN
 
@@ -45,8 +45,13 @@ def get_connection():
             return None
 
         try:
-            _connection = libsql.connect(
-                TURSO_DATABASE_URL,
+            # Force HTTPS instead of WSS/LibSQL to avoid protocol errors (505)
+            url = TURSO_DATABASE_URL.replace("wss://", "https://").replace("libsql://", "https://")
+            
+            logger.info("Initializing Turso client with URL: %s", url)
+
+            _connection = libsql.create_client_sync(
+                url=url,
                 auth_token=TURSO_AUTH_TOKEN
             )
             logger.info("Connected to Turso database")
@@ -86,7 +91,7 @@ def init_schema():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_drugs_name ON drugs(name)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_drugs_generic ON drugs(generic_name)")
         
-        conn.commit()
+        # conn.commit() # Removed as libsql-client works differently
         logger.info("Turso schema initialized")
         return True
     except Exception as e:
@@ -102,7 +107,7 @@ def search_drugs(query: str, limit: int = 10) -> List[Dict[str, Any]]:
     
     try:
         # Use LIKE for text search (SQLite FTS would be better for production)
-        cursor = conn.execute(
+        rs = conn.execute(
             """
             SELECT id, name, generic_name, manufacturer, price_raw, description
             FROM drugs
@@ -112,7 +117,8 @@ def search_drugs(query: str, limit: int = 10) -> List[Dict[str, Any]]:
             (f"%{query}%", f"%{query}%", limit)
         )
         
-        rows = cursor.fetchall()
+        # rs is a ResultSet, rs.rows is a list of Rows
+        rows = rs.rows
         return [
             {
                 "id": row[0],
@@ -136,7 +142,7 @@ def get_drug_by_name(name: str) -> Optional[Dict[str, Any]]:
         return None
     
     try:
-        cursor = conn.execute(
+        rs = conn.execute(
             """
             SELECT id, name, generic_name, manufacturer, price_raw, price,
                    pack_size, is_discontinued, therapeutic_class, action_class,
@@ -148,9 +154,10 @@ def get_drug_by_name(name: str) -> Optional[Dict[str, Any]]:
             (name,)
         )
         
-        row = cursor.fetchone()
-        if not row:
+        if not rs.rows:
             return None
+            
+        row = rs.rows[0]
         
         return {
             "id": row[0],
@@ -180,7 +187,7 @@ def get_drugs_by_ids(drug_ids: List[str]) -> List[Dict[str, Any]]:
     
     try:
         placeholders = ",".join(["?" for _ in drug_ids])
-        cursor = conn.execute(
+        rs = conn.execute(
             f"""
             SELECT id, name, generic_name, manufacturer, price_raw, description
             FROM drugs
@@ -189,7 +196,7 @@ def get_drugs_by_ids(drug_ids: List[str]) -> List[Dict[str, Any]]:
             drug_ids
         )
         
-        rows = cursor.fetchall()
+        rows = rs.rows
         return [
             {
                 "id": row[0],
@@ -218,7 +225,7 @@ def find_cheaper_substitutes(drug_name: str) -> List[Dict[str, Any]]:
         if not current or not current.get("generic_name") or not current.get("price"):
             return []
         
-        cursor = conn.execute(
+        rs = conn.execute(
             """
             SELECT id, name, generic_name, manufacturer, price_raw, price
             FROM drugs
@@ -231,7 +238,7 @@ def find_cheaper_substitutes(drug_name: str) -> List[Dict[str, Any]]:
             (current["generic_name"], current["price"])
         )
         
-        rows = cursor.fetchall()
+        rows = rs.rows
         return [
             {
                 "id": row[0],

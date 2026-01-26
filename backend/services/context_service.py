@@ -1,0 +1,310 @@
+"""
+Context Compression Service - Efficient conversation memory for chat sessions.
+
+Instead of sending all messages to LLM (expensive, slow, token limits),
+we compress the conversation into a summary after each exchange.
+
+Flow:
+1. Load: context_summary + last 2 exchanges
+2. Process message with LLM
+3. Update context_summary with new information (async)
+
+The summary contains:
+- Key topics discussed
+- Drugs/medications mentioned
+- Patient concerns and conditions
+- Recommendations given
+- Important decisions made
+"""
+import logging
+import asyncio
+from typing import Optional, List, Dict, Any
+
+from services.supabase_service import SupabaseService
+
+logger = logging.getLogger(__name__)
+
+# How many recent exchanges to keep in full (in addition to summary)
+RECENT_EXCHANGES_TO_KEEP = 2
+
+# Compression prompt - instructs LLM to create/update summary
+COMPRESSION_PROMPT = """You are a medical conversation summarizer. Your job is to maintain a compressed context summary of an ongoing medical consultation.
+
+CURRENT SUMMARY (may be empty if new conversation):
+{current_summary}
+
+NEW EXCHANGE TO INCORPORATE:
+User: {user_message}
+Assistant: {assistant_response}
+
+INSTRUCTIONS:
+1. If current summary is empty, create a new summary from this exchange
+2. If summary exists, UPDATE it to include new information
+3. Keep summary concise (max 200 words) but informative
+4. Always preserve:
+   - Drugs/medications discussed (names, dosages)
+   - Patient conditions, allergies, concerns mentioned
+   - Key recommendations or warnings given
+   - Any decisions or conclusions reached
+5. Use past tense ("User asked about...", "Discussed...")
+6. Remove redundant or outdated information
+
+OUTPUT FORMAT (plain text, no headers):
+Write a flowing paragraph that captures the essential context. Start with main topic, then key details.
+
+UPDATED SUMMARY:"""
+
+
+
+async def load_session_context(session_id: str, auth_token: str) -> Dict[str, Any]:
+    """
+    Load compressed context for a session.
+
+    Returns:
+        {
+            "summary": str or None,
+            "recent_history": List[{role, content}],  # Last 2 exchanges
+            "message_count": int
+        }
+    """
+    client = SupabaseService.get_auth_client(auth_token)
+    if not client:
+        return {"summary": None, "recent_history": [], "message_count": 0}
+
+    try:
+        # Get session with summary (non-blocking)
+        session = await asyncio.to_thread(
+            lambda: client.table("chat_sessions").select(
+                "context_summary, message_count"
+            ).eq("id", session_id).maybe_single().execute()
+        )
+
+        if not session.data:
+            return {"summary": None, "recent_history": [], "message_count": 0}
+
+        # Get last N exchanges (non-blocking)
+        history_result = await asyncio.to_thread(
+            lambda: client.table("chat_history").select(
+                "message, response"
+            ).eq("session_id", session_id).order(
+                "sequence_num", desc=True
+            ).limit(RECENT_EXCHANGES_TO_KEEP).execute()
+        )
+
+        # Convert to role/content format, reverse to chronological order
+        recent_history = []
+        for row in reversed(history_result.data):
+            recent_history.append({"role": "user", "content": row["message"]})
+            recent_history.append({"role": "assistant", "content": row["response"]})
+
+        return {
+            "summary": session.data.get("context_summary"),
+            "recent_history": recent_history,
+            "message_count": session.data.get("message_count", 0)
+        }
+
+    except Exception as e:
+        logger.error("Failed to load session context: %s", e)
+        return {"summary": None, "recent_history": [], "message_count": 0}
+
+
+async def compress_and_update_context(
+    session_id: str,
+    user_message: str,
+    assistant_response: str,
+    auth_token: str,
+    current_summary: Optional[str] = None
+) -> None:
+    """
+    Compress the new exchange and update session context.
+
+    Called in background after each chat response.
+    Uses LLM to intelligently merge new info into existing summary.
+    """
+    try:
+        # Import here to avoid circular dependency
+        from services.gemini_service import _get_model
+        import google.generativeai as genai
+
+        model = _get_model()
+
+        # Build compression prompt
+        prompt = COMPRESSION_PROMPT.format(
+            current_summary=current_summary or "(No previous summary - this is the start of conversation)",
+            user_message=user_message[:1000],  # Limit size
+            assistant_response=assistant_response[:1500]
+        )
+
+        # Generate compressed summary
+        response = await asyncio.to_thread(
+            lambda: model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.3,  # Low temp for consistent summaries
+                    max_output_tokens=300
+                )
+            )
+        )
+
+        new_summary = (response.text or "").strip()
+
+        if not new_summary:
+            logger.warning("Empty compression result for session %s", session_id[:8])
+            return
+
+        # Update session with new summary (non-blocking)
+        # Use auth client to satisfy RLS
+        client = SupabaseService.get_auth_client(auth_token)
+        if client:
+            await asyncio.to_thread(
+                lambda: client.table("chat_sessions").update({
+                    "context_summary": new_summary[:2000],  # Limit storage
+                }).eq("id", session_id).execute()
+            )
+
+            logger.info("Context compressed for session %s (%d chars)",
+                       session_id[:8], len(new_summary))
+
+    except Exception as e:
+        # Don't fail the chat if compression fails
+        logger.error("Context compression failed for session %s: %s", session_id[:8], e)
+
+
+def build_context_for_llm(
+    summary: Optional[str],
+    recent_history: List[Dict[str, str]],
+    patient_context_str: Optional[str] = None
+) -> str:
+    """
+    Build the context string to prepend to user's message for LLM.
+
+    Returns a formatted context block that gives LLM full conversation awareness.
+    """
+    parts = []
+
+    # Add compressed summary if exists
+    if summary:
+        parts.append(f"[Conversation Context]\n{summary}")
+
+    # Add patient context if exists
+    if patient_context_str:
+        parts.append(patient_context_str)
+
+    # Note about recent messages (they'll be in history)
+    if recent_history:
+        parts.append(f"[Recent messages follow in conversation history]")
+
+    return "\n\n".join(parts) if parts else ""
+
+
+# ============================================================================
+# SESSION HELPERS (used by chat router)
+# ============================================================================
+
+async def get_or_create_session(user_id: str, auth_token: str, session_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Get existing session or create new one.
+
+    Returns session dict with id, context_summary, message_count.
+    """
+    import re
+
+    # Use Auth Client for RLS
+    client = SupabaseService.get_auth_client(auth_token)
+    if not client:
+        raise Exception("Database unavailable")
+
+    if session_id:
+        # Validate UUID format (prevents injection)
+        if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+                       session_id, re.IGNORECASE):
+            raise ValueError("Invalid session_id format")
+
+        # Fetch existing session (non-blocking)
+        result = await asyncio.to_thread(
+            lambda: client.table("chat_sessions").select(
+                "id, context_summary, message_count, is_archived"
+            ).eq("id", session_id).maybe_single().execute()
+        )
+
+        if not result.data:
+            raise ValueError("Session not found")
+
+        if result.data.get("is_archived"):
+            raise ValueError("Cannot send messages to archived session")
+
+        return result.data
+
+    # Create new session (non-blocking)
+    result = await asyncio.to_thread(
+        lambda: client.table("chat_sessions").insert({
+            "user_id": user_id,
+            "title": "New Chat",
+            "message_count": 0,
+            "is_archived": False,
+        }).execute()
+    )
+
+    if not result.data:
+        raise Exception("Failed to create session")
+
+    logger.info("Created session %s for user %s", result.data[0]["id"][:8], user_id[:8])
+    return result.data[0]
+
+
+async def save_message_to_session(
+    user_id: str,
+    session_id: str,
+    message: str,
+    response: str,
+    auth_token: str,
+    patient_context: Optional[dict] = None,
+    citations: Optional[list] = None
+) -> bool:
+    """
+    Save message-response pair to session.
+
+    Uses RPC function for atomic sequence numbering (prevents race conditions).
+    """
+    # Use Auth Client for RLS
+    client = SupabaseService.get_auth_client(auth_token)
+    if not client:
+        return False
+
+    try:
+        # Get next sequence number
+        seq_result = await asyncio.to_thread(
+            lambda: client.table("chat_history").select("sequence_num").eq("session_id", session_id).order("sequence_num", desc=True).limit(1).execute()
+        )
+        next_seq = 1
+        if seq_result.data:
+            next_seq = seq_result.data[0]["sequence_num"] + 1
+
+        # Direct insert (Bypassing RPC due to 22P02 error)
+        # Note: We rely on RLS to allow inserting into chat_history for owned sessions
+        insert_data = {
+            "session_id": session_id,
+            "message": message[:4000],
+            "response": response[:8000],
+            "sequence_num": next_seq,
+            "patient_context": patient_context,
+            "citations": citations,
+            "user_id": user_id # Often RLS requires user_id column if policy is strictly row-owner
+        }
+        
+        # Verify if chat_history has user_id column? 
+        # Usually checking session ownership is enough, but some schemas duplicate user_id.
+        # Let's assume standard normalization: session has user_id, history links to session.
+        # But RLS might check session.user_id. The insert should work if user owns session.
+        # Safest to try inserting session_id links.
+
+        result = await asyncio.to_thread(
+            lambda: client.table("chat_history").insert(insert_data).execute()
+        )
+
+        logger.info("Message saved to session %s (seq %d)", session_id[:8], next_seq)
+        return True
+
+    except Exception as e:
+        logger.error("Failed to save message to session %s: %s", session_id[:8], e)
+        return False

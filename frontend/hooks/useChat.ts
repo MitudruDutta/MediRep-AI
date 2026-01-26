@@ -1,31 +1,62 @@
-import { useState } from "react";
-import { Message, PatientContext } from "@/types";
-import { sendMessage } from "@/lib/api";
+import { useState, useEffect } from "react";
+import { Message, PatientContext, WebSearchResult } from "@/types";
+import { sendMessage, getSessionMessages } from "@/lib/api";
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [webSources, setWebSources] = useState<WebSearchResult[]>([]);
 
-  const send = async (content: string, patientContext?: PatientContext) => {
+  // Load session from storage or props on mount
+  useEffect(() => {
+    const storedSessionId = sessionStorage.getItem("current_chat_session_id");
+    if (storedSessionId) {
+      setSessionId(storedSessionId);
+      loadHistory(storedSessionId);
+    }
+  }, []);
+
+  const loadHistory = async (id: string) => {
+    try {
+      setIsLoading(true);
+      const history = await getSessionMessages(id);
+      setMessages(history);
+    } catch (e) {
+      console.error("Failed to load history:", e);
+      // If session invalid, clear it
+      sessionStorage.removeItem("current_chat_session_id");
+      setSessionId(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const send = async (content: string, patientContext?: PatientContext, webSearchMode: boolean = false) => {
     setIsLoading(true);
+    setWebSources([]); // Clear previous web sources
     
-    // Add user message
+    // Add user message locally
     const userMessage: Message = {
       role: "user",
       content,
       timestamp: new Date().toISOString(),
     };
     
-    // Build new messages array with user message
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
+    setMessages((prev) => [...prev, userMessage]);
 
     try {
-      // Send with updated messages array
-      const response = await sendMessage(content, patientContext, newMessages);
+      // Send to backend with web search mode
+      const response = await sendMessage(content, patientContext, undefined, sessionId || undefined, webSearchMode);
       
-      // Add assistant message
+      // Handle new session
+      if (!sessionId && response.session_id) {
+        setSessionId(response.session_id);
+        sessionStorage.setItem("current_chat_session_id", response.session_id);
+      }
+      
+      // Add assistant response
       const assistantMessage: Message = {
         role: "assistant",
         content: response.response,
@@ -34,9 +65,13 @@ export function useChat() {
       };
       setMessages((prev) => [...prev, assistantMessage]);
       
-      // Update suggestions
       if (response.suggestions) {
         setSuggestions(response.suggestions);
+      }
+
+      // Store web sources if returned
+      if (response.web_sources && response.web_sources.length > 0) {
+        setWebSources(response.web_sources);
       }
     } catch (error) {
       console.error("Chat error:", error);
@@ -51,10 +86,19 @@ export function useChat() {
     }
   };
 
-  const clearMessages = () => {
-    setMessages([]);
-    setSuggestions([]);
+  const loadSession = async (id: string) => {
+    setSessionId(id);
+    sessionStorage.setItem("current_chat_session_id", id);
+    await loadHistory(id);
   };
 
-  return { messages, isLoading, suggestions, send, clearMessages };
+  const resetSession = () => {
+    setMessages([]);
+    setSuggestions([]);
+    setWebSources([]);
+    setSessionId(null);
+    sessionStorage.removeItem("current_chat_session_id");
+  };
+
+  return { messages, isLoading, suggestions, webSources, send, resetSession, loadSession, sessionId };
 }

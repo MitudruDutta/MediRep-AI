@@ -36,6 +36,7 @@ class AuthUser:
     role: str
     app_metadata: dict
     user_metadata: dict
+    token: str
 
 
 async def get_current_user(
@@ -79,7 +80,8 @@ async def get_current_user(
             email=user.email,
             role=user.role or "authenticated",
             app_metadata=user.app_metadata or {},
-            user_metadata=user.user_metadata or {}
+            user_metadata=user.user_metadata or {},
+            token=token
         )
     
     except HTTPException:

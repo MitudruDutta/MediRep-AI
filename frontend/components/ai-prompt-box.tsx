@@ -268,7 +268,7 @@ interface PromptInputContextType {
 const PromptInputContext = React.createContext<PromptInputContextType>({
   isLoading: false,
   value: "",
-  setValue: () => {},
+  setValue: () => { },
   maxHeight: 240,
   onSubmit: undefined,
   disabled: false,
@@ -391,7 +391,7 @@ const PromptInputTextarea: React.FC<PromptInputTextareaProps & React.ComponentPr
   );
 };
 
-interface PromptInputActionsProps extends React.HTMLAttributes<HTMLDivElement> {}
+interface PromptInputActionsProps extends React.HTMLAttributes<HTMLDivElement> { }
 const PromptInputActions: React.FC<PromptInputActionsProps> = ({ children, className, ...props }) => (
   <div className={cn("flex items-center gap-2", className)} {...props}>
     {children}
@@ -438,13 +438,14 @@ const CustomDivider: React.FC = () => (
 
 // Main PromptInputBox Component
 interface PromptInputBoxProps {
-  onSend?: (message: string, files?: File[]) => void;
+  onSend?: (message: string, files?: File[], isSearchMode?: boolean) => void;
   isLoading?: boolean;
   placeholder?: string;
   className?: string;
+  onSearchModeChange?: (isSearchMode: boolean) => void;
 }
 export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref: React.Ref<HTMLDivElement>) => {
-  const { onSend = () => {}, isLoading = false, placeholder = "Type your message here...", className } = props;
+  const { onSend = () => { }, isLoading = false, placeholder = "Type your message here...", className, onSearchModeChange } = props;
   const [input, setInput] = React.useState("");
   const [files, setFiles] = React.useState<File[]>([]);
   const [filePreviews, setFilePreviews] = React.useState<{ [key: string]: string }>({});
@@ -458,11 +459,14 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
 
   const handleToggleChange = (value: string) => {
     if (value === "search") {
-      setShowSearch((prev) => !prev);
+      const newSearchState = !showSearch;
+      setShowSearch(newSearchState);
       setShowThink(false);
+      onSearchModeChange?.(newSearchState);
     } else if (value === "think") {
       setShowThink((prev) => !prev);
       setShowSearch(false);
+      onSearchModeChange?.(false);
     }
   };
 
@@ -533,12 +537,8 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
 
   const handleSubmit = () => {
     if (input.trim() || files.length > 0) {
-      let messagePrefix = "";
-      if (showSearch) messagePrefix = "[Search: ";
-      else if (showThink) messagePrefix = "[Think: ";
-      else if (showCanvas) messagePrefix = "[Canvas: ";
-      const formattedInput = messagePrefix ? `${messagePrefix}${input}]` : input;
-      onSend(formattedInput, files);
+      // Pass raw message and search mode flag - don't add prefixes
+      onSend(input, files, showSearch);
       setInput("");
       setFiles([]);
       setFilePreviews({});
@@ -614,10 +614,10 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
               showSearch
                 ? "Search the web..."
                 : showThink
-                ? "Think deeply..."
-                : showCanvas
-                ? "Create on canvas..."
-                : placeholder
+                  ? "Think deeply..."
+                  : showCanvas
+                    ? "Create on canvas..."
+                    : placeholder
             }
             className="text-base"
           />
@@ -772,10 +772,10 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
               isLoading
                 ? "Stop generation"
                 : isRecording
-                ? "Stop recording"
-                : hasContent
-                ? "Send message"
-                : "Voice message"
+                  ? "Stop recording"
+                  : hasContent
+                    ? "Send message"
+                    : "Voice message"
             }
           >
             <Button
@@ -786,8 +786,8 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
                 isRecording
                   ? "bg-transparent hover:bg-accent text-red-500 hover:text-red-400"
                   : hasContent
-                  ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-                  : "bg-muted hover:bg-muted/80 text-foreground border border-border"
+                    ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                    : "bg-muted hover:bg-muted/80 text-foreground border border-border"
               )}
               onClick={() => {
                 if (isRecording) setIsRecording(false);

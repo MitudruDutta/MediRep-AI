@@ -14,7 +14,7 @@ sentence-transformers==2.2.2
 supabase==2.10.0
 
 # Database - Turso (Drug Data)
-libsql-experimental==0.0.47
+libsql-client
 
 # Database - Qdrant (Vector Embeddings)
 qdrant-client==1.7.0
