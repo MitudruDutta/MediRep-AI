@@ -30,9 +30,16 @@ export async function middleware(request: NextRequest) {
   );
 
   // Refresh session if expired
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+
+  try {
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    user = authUser;
+  } catch (e) {
+    console.error("Middleware auth error:", e);
+  }
 
   // Protected routes - redirect to login if not authenticated
   const protectedPaths = ["/dashboard", "/account"];

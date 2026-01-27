@@ -14,7 +14,10 @@ import {
     MessageSquare,
     MoreVertical,
     XCircle,
-    CheckCircle2
+    CheckCircle2,
+    Mic,
+    MicOff,
+    Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -22,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { marketplaceApi, Consultation, Message } from "@/lib/marketplace-api";
+import { useSpeechToText } from "@/hooks/use-speech-to-text";
 import dynamic from "next/dynamic";
 
 const VoiceCall = dynamic(() => import("@/components/consultation/voice-call").then(mod => mod.VoiceCall), {
@@ -49,6 +53,9 @@ export default function ConsultationDetailPage() {
         token: string;
         uid: number;
     } | null>(null);
+
+    // Speech to Text
+    const { isListening, transcript, startListening, stopListening, hasSupport } = useSpeechToText();
 
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -92,6 +99,17 @@ export default function ConsultationDetailPage() {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages]);
+
+    // Effect to update input with transcript
+    useEffect(() => {
+        if (transcript) {
+            setNewMessage(prev => {
+                // Determine if we need a space (simple heuristic)
+                const needsSpace = prev.length > 0 && !prev.endsWith(' ');
+                return prev + (needsSpace ? ' ' : '') + transcript;
+            });
+        }
+    }, [transcript]);
 
     const handleSendMessage = async (e?: React.FormEvent) => {
         e?.preventDefault();
@@ -229,14 +247,26 @@ export default function ConsultationDetailPage() {
                     {/* Input Area */}
                     <div className="p-4 bg-slate-900 border-t border-slate-800 shrink-0">
                         <form onSubmit={handleSendMessage} className="flex gap-2">
-                            <Input
-                                placeholder={isChatEnabled ? "Type a message..." : "Chat is closed"}
-                                value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
-                                disabled={!isChatEnabled || sending}
-                                className="bg-slate-950 border-slate-800 focus-visible:ring-indigo-500 text-white placeholder:text-slate-400"
-                            />
-                            <Button type="submit" size="icon" disabled={!isChatEnabled || sending || !newMessage.trim()} className="bg-indigo-600 hover:bg-indigo-700">
+                            <div className="relative flex-1">
+                                <Input
+                                    placeholder={isListening ? "Listening..." : (isChatEnabled ? "Type a message..." : "Chat is closed")}
+                                    value={newMessage}
+                                    onChange={(e) => setNewMessage(e.target.value)}
+                                    disabled={!isChatEnabled || sending}
+                                    className={`bg-slate-950 border-slate-800 focus-visible:ring-indigo-500 text-white placeholder:text-slate-400 pr-10 ${isListening ? "ring-2 ring-red-500/50 border-red-500/50" : ""}`}
+                                />
+                                {hasSupport && isChatEnabled && (
+                                    <button
+                                        type="button"
+                                        onClick={isListening ? stopListening : startListening}
+                                        className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full transition-all ${isListening ? "bg-red-500/20 text-red-400 animate-pulse" : "hover:bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+                                        title={isListening ? "Stop Dictation" : "Start Dictation"}
+                                    >
+                                        {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                                    </button>
+                                )}
+                            </div>
+                            <Button type="submit" size="icon" disabled={!isChatEnabled || sending || !newMessage.trim()} className="bg-indigo-600 hover:bg-indigo-700 shrink-0">
                                 <Send className="h-4 w-4" />
                             </Button>
                         </form>

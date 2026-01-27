@@ -80,11 +80,10 @@ export async function GET(request: NextRequest) {
       if (isAdmin) {
         finalRedirect = "/admin/verify";
       } else if (isPharmacist) {
-        finalRedirect = "/pharmacist/dashboard";
-      } else if (next === "/dashboard") {
-        // Default to marketplace for patients if they just hit "Login" not "Book"
-        // If they were redirected deeply (e.g. /book/123), we respect 'next'
         finalRedirect = "/marketplace";
+      } else if (next === "/dashboard") {
+        // Default to dashboard for patients (as per user request)
+        finalRedirect = "/dashboard";
       }
 
       // ----------------------------------------------------------------------

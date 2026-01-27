@@ -38,10 +38,27 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      await signInWithGoogle();
-      // Function will redirect on success, so we won't reach here
-    } catch {
-      //setError("Failed to connect to Google. Please try again.");
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+      // Redirect happens automatically
+    } catch (e: any) {
+      console.error("Google sign in error:", e);
+      setError(e.message || "Failed to connect to Google.");
       setIsGoogleLoading(false);
     }
   }
@@ -201,11 +218,12 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                <form action={handleGoogleSignIn}>
+                <div className="w-full">
                   <Button
-                    type="submit"
+                    type="button"
                     variant="outline"
                     className="w-full h-11"
+                    onClick={handleGoogleSignIn}
                     disabled={isLoading || isGoogleLoading}
                   >
                     {isGoogleLoading ? (
@@ -237,7 +255,7 @@ export default function LoginPage() {
                       </>
                     )}
                   </Button>
-                </form>
+                </div>
               </CardContent>
             </Card>
 

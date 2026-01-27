@@ -28,3 +28,4 @@ slowapi==0.1.9
 
 
 tf-keras
+elevenlabs

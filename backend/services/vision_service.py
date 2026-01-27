@@ -123,40 +123,40 @@ def _get_embedding_model():
 
 
 # Feature extraction prompt - focused on ACCURATE extraction
-125: FEATURE_EXTRACTION_PROMPT = """You are analyzing a pill/tablet/capsule image for a medical database lookup.
-126: 
-127: Extract ONLY what you can SEE. Be extremely precise about imprint text.
-128: 
-129: Extract:
-130: 1. IMPRINT: Any text/numbers printed or embossed on the pill
-131:    - Read EXACTLY (e.g., "DOLO 650", "PAN 40", "AZITHRAL 500", "CROCIN")
-132:    - Indian pills often have brand name + strength
-133:    - If unclear, indicate with [?]
-134:    - If none visible, say "none"
-135: 
-136: 2. COLOR: Primary color (white, off-white, pink, yellow, orange, red, blue, green, purple)
-137: 
-138: 3. SHAPE: round, oval, oblong, capsule, diamond, triangle, rectangle
-139: 
-140: 4. SIZE: small (<8mm), medium (8-12mm), large (>12mm)
-141: 
-142: 5. COATING: film-coated (shiny), sugar-coated (smooth), uncoated (rough/chalky)
-143: 
-144: 6. OCR_CONFIDENCE: How confident are you in the imprint reading? 0.0 to 1.0
-145: 
-146: 7. GENERIC_PREDICTION: Based on the visual imprint (e.g. "DOLO"), what is the likely generic drug name? (e.g. "Paracetamol"). Only provide if confident.
-147: 
-148: Return ONLY valid JSON:
-149: {
-150:   "imprint": "exact text or none",
-151:   "color": "primary color",
-152:   "shape": "shape name",
-153:   "size": "small/medium/large",
-154:   "coating": "coating type",
-155:   "ocr_confidence": 0.0-1.0,
-156:   "generic_prediction": "likely generic name or null",
-157:   "raw_description": "brief description of what you see"
-158: }"""
+FEATURE_EXTRACTION_PROMPT = """You are analyzing a pill/tablet/capsule image for a medical database lookup.
+
+Extract ONLY what you can SEE. Be extremely precise about imprint text.
+
+Extract:
+1. IMPRINT: Any text/numbers printed or embossed on the pill
+   - Read EXACTLY (e.g., "DOLO 650", "PAN 40", "AZITHRAL 500", "CROCIN")
+   - Indian pills often have brand name + strength
+   - If unclear, indicate with [?]
+   - If none visible, say "none"
+
+2. COLOR: Primary color (white, off-white, pink, yellow, orange, red, blue, green, purple)
+
+3. SHAPE: round, oval, oblong, capsule, diamond, triangle, rectangle
+
+4. SIZE: small (<8mm), medium (8-12mm), large (>12mm)
+
+5. COATING: film-coated (shiny), sugar-coated (smooth), uncoated (rough/chalky)
+
+6. OCR_CONFIDENCE: How confident are you in the imprint reading? 0.0 to 1.0
+
+7. GENERIC_PREDICTION: Based on the visual imprint (e.g. "DOLO"), what is the likely generic drug name? (e.g. "Paracetamol"). Only provide if confident.
+
+Return ONLY valid JSON:
+{
+  "imprint": "exact text or none",
+  "color": "primary color",
+  "shape": "shape name",
+  "size": "small/medium/large",
+  "coating": "coating type",
+  "ocr_confidence": 0.0-1.0,
+  "generic_prediction": "likely generic name or null",
+  "raw_description": "brief description of what you see"
+}"""
 
 
 def _safe_float(value, default: float) -> float:
