@@ -80,7 +80,7 @@ export default function ChatPage() {
   const handleSend = async (message: string, files?: File[], isSearchMode?: boolean) => {
     if (!message.trim() && (!files || files.length === 0)) return;
     // Use the search mode from PromptInputBox (passed via callback)
-    await send(message, patientContext || undefined, isSearchMode || false);
+    await send(message, patientContext || undefined, isSearchMode || false, files);
   };
 
   const copyToClipboard = (text: string, index: number) => {

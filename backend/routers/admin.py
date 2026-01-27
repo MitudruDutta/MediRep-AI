@@ -326,8 +326,7 @@ async def get_platform_stats(
             "net_amount"
         ).eq("status", "pending").execute()
         
-            "pending_count": len(payouts.data),
-            "pending_amount": sum(p.get("net_amount") or 0 for p in payouts.data),
+        pending_payout_total = sum(p.get("net_amount") or 0 for p in payouts.data)
 
         return {
             "pharmacists": {

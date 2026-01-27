@@ -406,7 +406,8 @@ async def generate_response(
     patient_context: Optional[PatientContext] = None,
     history: Optional[List[Message]] = None,
     drug_info: Optional[DrugInfo] = None,
-    rag_context: Optional[str] = None
+    rag_context: Optional[str] = None,
+    images: Optional[List[str]] = None
 ) -> dict:
     """Generate a response using Gemini with RAG context."""
     
@@ -478,14 +479,33 @@ async def generate_response(
         chat = model.start_chat(history=formatted_history)
 
         # Build user message with context
-        user_message = message
+        user_message_text = message
         if context_parts:
-            user_message = "".join(context_parts) + "\n\n[Question] " + message
+            user_message_text = "".join(context_parts) + "\n\n[Question] " + message
         
-        # Send with system prompt
+        # Prepare content parts (Text + Images)
+        content_parts = [SYSTEM_PROMPT + "\n\n" + user_message_text]
+        
+        if images:
+            import base64
+            for img_str in images:
+                # Handle data URL format (e.g., "data:image/jpeg;base64,.....")
+                if "base64," in img_str:
+                    img_str = img_str.split("base64,")[1]
+                
+                try:
+                    image_data = base64.b64decode(img_str)
+                    content_parts.append({
+                        "mime_type": "image/jpeg", # Defaulting to jpeg, Gemini auto-detects usually or we can parse header
+                        "data": image_data
+                    })
+                except Exception as e:
+                    logger.error(f"Failed to decode image: {e}")
+
+        # Send with system prompt (as text part of the first message)
         response = await asyncio.wait_for(
             asyncio.to_thread(
-                lambda: chat.send_message(f"{SYSTEM_PROMPT}\n\n{user_message}")
+                lambda: chat.send_message(content_parts)
             ),
             timeout=30.0
         )
@@ -531,3 +551,28 @@ async def generate_response(
         except Exception as groq_error:
             logger.error(f"Groq fallback also failed: {groq_error}", exc_info=True)
             raise Exception("Failed to generate response") from e
+
+
+async def transcribe_audio(audio_bytes: bytes, mime_type: str = "audio/webm") -> str:
+    """Transcribe audio using Gemini."""
+    try:
+        model = _get_model()
+        
+        prompt = "Listen to this audio and provide a verbatim transcription of what is said. Return ONLY the text, no conversational filler or intro."
+        
+        content_parts = [
+            prompt,
+            {
+                "mime_type": mime_type,
+                "data": audio_bytes
+            }
+        ]
+        
+        response = await asyncio.to_thread(
+            lambda: model.generate_content(content_parts)
+        )
+        
+        return response.text.strip()
+    except Exception as e:
+        logger.error("Transcription failed: %s", e)
+        raise Exception("Transcription failed") from e

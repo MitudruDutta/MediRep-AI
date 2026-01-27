@@ -250,7 +250,8 @@ async def chat_endpoint(
             patient_context=chat_request.patient_context,
             history=history_for_llm,  # Use session history, not client history
             drug_info=context_data.get('drug_info'),
-            rag_context=rag_content
+            rag_context=rag_content,
+            images=chat_request.images
         )
 
         response_text = gemini_result.get("response", "")

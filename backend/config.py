@@ -128,6 +128,11 @@ if GROQ_API_KEY:
 else:
     logger.warning("GROQ_API_KEY not set. Groq fallback will be disabled.")
 
+# ElevenLabs Configuration (Speech to Text)
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+if not ELEVENLABS_API_KEY:
+    logger.warning("ELEVENLABS_API_KEY not set. Speech to text will fail.")
+
 # ============================================================================
 # MARKETPLACE CONFIGURATION
 # ============================================================================

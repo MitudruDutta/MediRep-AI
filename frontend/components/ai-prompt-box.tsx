@@ -3,6 +3,7 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ArrowUp, Paperclip, Square, X, StopCircle, Mic, Globe } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { transcribeAudio } from "@/lib/api";
 
 // Utility function for className merging
 const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(" ");
@@ -527,12 +528,62 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     }
   };
 
-  const handleStartRecording = () => console.log("Started recording");
 
-  const handleStopRecording = (duration: number) => {
+
+  // Speech Recognition State (Now MediaRecorder)
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const chunksRef = React.useRef<Blob[]>([]);
+
+  const handleStartRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Let browser choose default supported unix/container (usually webm/opus or mp4/aac)
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const mimeType = mediaRecorder.mimeType || 'audio/webm';
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+
+        // Stop all tracks to release mic
+        stream.getTracks().forEach(track => track.stop());
+
+        try {
+          const result = await transcribeAudio(blob);
+          if (result.text) {
+            setInput((prev) => prev + (prev ? " " : "") + result.text);
+          }
+        } catch (e) {
+          console.error("Transcription failed", e);
+          alert("Failed to transcribe audio. Check console for details.");
+        }
+
+        chunksRef.current = [];
+      };
+
+      mediaRecorder.start();
+      console.log("Started recording");
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      alert("Could not access microphone. Please ensure you have granted permission.");
+      setIsRecording(false);
+    }
+  };
+
+  const handleStopRecording = async (duration: number) => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+      // The onstop handler defined in start() will trigger now
+    }
     console.log(`Stopped recording after ${duration} seconds`);
     setIsRecording(false);
-    onSend(`[Voice message - ${duration} seconds]`, []);
   };
 
   const hasContent = input.trim() !== "" || files.length > 0;
@@ -605,7 +656,9 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
           <VoiceRecorder
             isRecording={isRecording}
             onStartRecording={handleStartRecording}
-            onStopRecording={handleStopRecording}
+            onStopRecording={(duration) => {
+              handleStopRecording(duration);
+            }}
           />
         )}
 

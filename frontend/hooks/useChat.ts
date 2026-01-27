@@ -34,22 +34,42 @@ export function useChat() {
     }
   };
 
-  const send = async (content: string, patientContext?: PatientContext, webSearchMode: boolean = false) => {
+  const send = async (content: string, patientContext?: PatientContext, webSearchMode: boolean = false, files?: File[]) => {
     setIsLoading(true);
     setWebSources([]); // Clear previous web sources
+
+    // Convert files to base64 if present
+    const images: string[] = [];
+    if (files && files.length > 0) {
+      for (const file of files) {
+        if (file.type.startsWith('image/')) {
+          try {
+            const base64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+            images.push(base64);
+          } catch (e) {
+            console.error("Failed to convert image to base64", e);
+          }
+        }
+      }
+    }
 
     // Add user message locally
     const userMessage: Message = {
       role: "user",
-      content,
+      content: content + (files && files.length > 0 ? " [Image Uploaded]" : ""),
       timestamp: new Date().toISOString(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
 
     try {
-      // Send to backend with web search mode
-      const response = await sendMessage(content, patientContext, undefined, sessionId || undefined, webSearchMode);
+      // Send to backend with web search mode and images
+      const response = await sendMessage(content, patientContext, undefined, sessionId || undefined, webSearchMode, images);
 
       // Handle new session
       if (!sessionId && response.session_id) {

@@ -35,6 +35,7 @@ class ChatRequest(BaseModel):
     history: List[Message] = Field(default_factory=list)
     session_id: Optional[str] = Field(None, description="Session ID to continue conversation")
     web_search_mode: bool = Field(False, description="Force web search for this query")
+    images: List[str] = Field(default_factory=list, description="List of base64 encoded images")
 
 
 class WebSearchResult(BaseModel):

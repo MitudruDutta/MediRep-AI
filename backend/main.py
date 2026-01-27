@@ -94,8 +94,9 @@ app.include_router(pharmacist.router, prefix="/api/pharmacist", tags=["Pharmacis
 app.include_router(consultations.router, prefix="/api/consultations", tags=["Consultations"])
 
 # Sessions router (chat session management)
-from routers import sessions
+from routers import sessions, audio
 app.include_router(sessions.router, prefix="/api/sessions", tags=["Sessions"])
+app.include_router(audio.router, prefix="/api/audio", tags=["Audio"])
 
 
 @app.exception_handler(Exception)
