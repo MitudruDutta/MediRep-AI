@@ -38,10 +38,10 @@ export async function GET(request: NextRequest) {
             {
               id: data.user.id,
               display_name: data.user.user_metadata?.full_name ||
-                           data.user.user_metadata?.name ||
-                           data.user.email?.split("@")[0] || null,
+                data.user.user_metadata?.name ||
+                data.user.email?.split("@")[0] || null,
               avatar_url: data.user.user_metadata?.avatar_url ||
-                         data.user.user_metadata?.picture || null,
+                data.user.user_metadata?.picture || null,
               updated_at: new Date().toISOString(),
             },
             {
@@ -57,17 +57,49 @@ export async function GET(request: NextRequest) {
         console.error("Error in profile upsert:", e);
       }
 
+      // ----------------------------------------------------------------------
+      // Smart Redirection Logic
+      // ----------------------------------------------------------------------
+      let finalRedirect = next;
+
+      // 1. Check if Admin
+      const isAdmin = data.user.user_metadata?.role === "admin";
+
+      // 2. Check if Pharmacist
+      let isPharmacist = false;
+      try {
+        const { data: pharma } = await supabase
+          .from("pharmacist_profiles")
+          .select("id")
+          .eq("id", data.user.id)
+          .maybeSingle();
+        if (pharma) isPharmacist = true;
+      } catch (e) { }
+
+      // Decouple redirect logic
+      if (isAdmin) {
+        finalRedirect = "/admin/verify";
+      } else if (isPharmacist) {
+        finalRedirect = "/pharmacist/dashboard";
+      } else if (next === "/dashboard") {
+        // Default to marketplace for patients if they just hit "Login" not "Book"
+        // If they were redirected deeply (e.g. /book/123), we respect 'next'
+        finalRedirect = "/marketplace";
+      }
+
+      // ----------------------------------------------------------------------
+
       // Build redirect URL
       const forwardedHost = request.headers.get("x-forwarded-host");
       const isLocalEnv = process.env.NODE_ENV === "development";
 
       let redirectUrl: string;
       if (isLocalEnv) {
-        redirectUrl = `${origin}${next}`;
+        redirectUrl = `${origin}${finalRedirect}`;
       } else if (forwardedHost) {
-        redirectUrl = `https://${forwardedHost}${next}`;
+        redirectUrl = `https://${forwardedHost}${finalRedirect}`;
       } else {
-        redirectUrl = `${origin}${next}`;
+        redirectUrl = `${origin}${finalRedirect}`;
       }
 
       // Create redirect response and set cookies on it

@@ -49,3 +49,18 @@ async def get_current_user(
         logger.error("Authentication error: %s", e)
         # Return generic message to client
         raise HTTPException(status_code=401, detail="Authentication failed")
+
+
+def get_current_admin(user: dict = Depends(get_current_user)) -> dict:
+    """Verify user has admin role."""
+    app_meta = user.get("app_metadata", {})
+    user_meta = user.get("metadata", {})
+    
+    # Check both app_metadata (preferred) and user_metadata
+    role = app_meta.get("role") or user_meta.get("role")
+    
+    if role != "admin":
+        logger.warning(f"Unauthorized admin access attempt by {user['id']}")
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+        
+    return user

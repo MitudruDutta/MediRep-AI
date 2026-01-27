@@ -1,13 +1,14 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from typing import Optional
+from typing import Optional, List
 import logging
 import asyncio
 from supabase import create_client
 
-from models import PatientContext
+from models import PatientContext, ConsultationStatus
 from config import SUPABASE_URL, SUPABASE_KEY
-from middleware.auth import get_current_user
+from dependencies import get_current_user
+from services.supabase_service import SupabaseService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -21,12 +22,12 @@ def get_auth_client(token: str):
 
 @router.get("/profile/context", response_model=Optional[PatientContext])
 async def get_patient_context(
-    user = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
     creds: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Get saved patient context for the current user."""
     try:
-        user_id = user.id
+        user_id = user["id"]
         client = get_auth_client(creds.credentials)
         
         response = await asyncio.to_thread(
@@ -49,13 +50,13 @@ async def get_patient_context(
 @router.post("/profile/context", response_model=bool)
 async def save_patient_context(
     context: PatientContext, 
-    user = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
     creds: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Save or update patient context."""
-    logger.debug("Save patient context request for user %s", user.id)
+    logger.debug("Save patient context request for user %s", user["id"])
     try:
-        user_id = user.id
+        user_id = user["id"]
         client = get_auth_client(creds.credentials)
         
         # Upsert profile with proper auth context for RLS
@@ -72,3 +73,51 @@ async def save_patient_context(
     except Exception as e:
         logger.error("Failed to save patient context: %s", e)
         raise HTTPException(status_code=500, detail="Failed to save context")
+
+
+@router.get("/consultations", response_model=List[ConsultationStatus])
+async def get_my_consultations(
+    status: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """Get all consultations for the current patient."""
+    client = SupabaseService.get_client()
+    try:
+        user_id = user["id"]
+        
+        query = client.table("consultations").select(
+            "*, pharmacist_profiles(full_name)"
+        ).eq("patient_id", user_id)
+        
+        if status:
+            if status == "upcoming":
+                query = query.in_("status", ["scheduled", "confirmed"])
+            elif status == "past":
+                query = query.in_("status", ["completed", "cancelled"])
+            else:
+                query = query.eq("status", status)
+                
+        # Order by schedule
+        query = query.order("scheduled_at", desc=True)
+        
+        response = query.execute()
+        
+        # Map to model, flattened pharmacist_name
+        result = []
+        for c in response.data:
+            c_dict = dict(c)
+            # pharmacist_profiles might be a dict or list depending on join
+            pharma = c_dict.get("pharmacist_profiles")
+            pharma_name = "Unknown Pharmacist"
+            if pharma and isinstance(pharma, dict):
+                pharma_name = pharma.get("full_name", pharma_name)
+            
+            # Remove nested object to match flat model if needed, or mapping handles it
+            c_dict["pharmacist_name"] = pharma_name
+            result.append(ConsultationStatus(**c_dict))
+            
+        return result
+        
+    except Exception as e:
+        logger.error("Failed to get my consultations: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to fetch consultations")

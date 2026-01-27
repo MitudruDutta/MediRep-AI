@@ -43,6 +43,8 @@
     "@supabase/supabase-js": "^2.91.0",
     "@tailwindcss/typography": "^0.5.19",
     "@types/d3-force": "^3.0.10",
+    "agora-rtc-react": "^2.5.1",
+    "agora-rtc-sdk-ng": "^4.24.2",
     "autoprefixer": "^10.4.23",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

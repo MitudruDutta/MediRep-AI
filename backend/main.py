@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 from config import ALLOWED_ORIGINS, PORT
-from routers import chat, drugs, vision, alerts, user, marketplace, pharmacist, consultations
+from routers import chat, drugs, vision, alerts, user, marketplace, pharmacist, consultations, admin
 
 # Rate Limiting
 from limiter import limiter
@@ -87,6 +87,7 @@ app.include_router(drugs.router, prefix="/api/drugs", tags=["Drugs"])
 app.include_router(vision.router, prefix="/api/vision", tags=["Vision"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["Alerts"])
 app.include_router(user.router, prefix="/api/user", tags=["User"])
+app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 # Marketplace routers
 app.include_router(marketplace.router, prefix="/api/marketplace", tags=["Marketplace"])

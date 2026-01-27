@@ -60,27 +60,11 @@ def get_razorpay_client():
     return _razorpay_client
 
 
+from services.agora_service import AgoraService
+
 def generate_agora_token(channel_name: str, uid: int, expiry_seconds: int = 3600) -> str:
     """Generate Agora RTC token for voice call."""
-    if not AGORA_APP_ID or not AGORA_APP_CERTIFICATE:
-        raise HTTPException(status_code=503, detail="Voice call service not configured")
-
-    try:
-        from agora_token_builder import RtcTokenBuilder, Role_Publisher
-    except ImportError:
-        raise HTTPException(status_code=503, detail="Agora SDK not installed")
-
-    expiration_time = int(datetime.utcnow().timestamp()) + expiry_seconds
-
-    token = RtcTokenBuilder.buildTokenWithUid(
-        AGORA_APP_ID,
-        AGORA_APP_CERTIFICATE,
-        channel_name,
-        uid,
-        Role_Publisher,
-        expiration_time
-    )
-    return token
+    return AgoraService.generate_token(channel_name, uid, 1) # 1 = Broadcaster
 
 
 @router.post("/book", response_model=BookingResponse)

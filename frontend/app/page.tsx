@@ -100,17 +100,27 @@ export default function HomePage() {
                 </Link>
               ) : (
                 <>
-                  <Link href="/auth/signup">
-                    <Button size="lg" className="text-lg px-8">
-                      Start Free Trial
-                      <ArrowRight className="ml-2 h-5 w-5" />
-                    </Button>
-                  </Link>
-                  <Link href="/auth/login">
-                    <Button size="lg" variant="outline" className="text-lg px-8">
-                      Sign In
-                    </Button>
-                  </Link>
+                  <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
+                    <Link href="/auth/signup?role=patient">
+                      <Button size="lg" className="text-lg px-8 w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+                        Get Started as Patient
+                        <ArrowRight className="ml-2 h-5 w-5" />
+                      </Button>
+                    </Link>
+                    <Link href="/pharmacist/register">
+                      <Button size="lg" variant="outline" className="text-lg px-8 w-full sm:w-auto border-indigo-500/50 hover:bg-indigo-500/10 hover:text-indigo-400">
+                        Join as Pharmacist
+                        <ArrowRight className="ml-2 h-5 w-5" />
+                      </Button>
+                    </Link>
+                  </div>
+                  <div className="mt-4">
+                    <Link href="/auth/login">
+                      <Button variant="link" className="text-slate-400 hover:text-white">
+                        Already have an account? Sign In
+                      </Button>
+                    </Link>
+                  </div>
                 </>
               )}
             </div>

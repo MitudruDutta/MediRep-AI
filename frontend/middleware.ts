@@ -59,6 +59,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Admin stealth check - Rewrite non-admins to 404
+  if (request.nextUrl.pathname.startsWith('/admin')) {
+    // If no user, or user doesn't have admin role, rewrite to 404
+    // Note: We check user metadata for 'role' claim
+    const isAdmin = user?.app_metadata?.role === 'admin' || user?.user_metadata?.role === 'admin';
+
+    if (!user || !isAdmin) {
+      console.log("Stealth block: Unauthorized admin access attempt by", user?.id || "anonymous");
+      const url = request.nextUrl.clone();
+      url.pathname = '/404'; // Internal 404 page
+      return NextResponse.rewrite(url);
+    }
+  }
+
   return supabaseResponse;
 }
 
