@@ -3,7 +3,8 @@
 import * as React from "react";
 import { AlertCard, FDAAlert } from "./alert-card";
 import { cn } from "@/lib/utils";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export interface AlertListProps {
   alerts: FDAAlert[];
@@ -14,23 +15,42 @@ export interface AlertListProps {
 export function AlertList({ alerts, className, emptyMessage }: AlertListProps) {
   if (alerts.length === 0) {
     return (
-      <div className={cn("flex flex-col items-center justify-center py-12 text-center", className)}>
-        <div className="rounded-full bg-muted p-6 mb-4">
-          <AlertTriangle className="h-12 w-12 text-muted-foreground" />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3 }}
+        className={cn("flex flex-col items-center justify-center py-12 text-center", className)}
+      >
+        <div className="rounded-full bg-green-500/10 p-6 mb-4">
+          <CheckCircle2 className="h-12 w-12 text-green-500" />
         </div>
         <h3 className="text-lg font-semibold mb-2">No Alerts Found</h3>
         <p className="text-sm text-muted-foreground max-w-sm">
           {emptyMessage || "No FDA alerts or recalls found for this drug. This is good news!"}
         </p>
-      </div>
+      </motion.div>
     );
   }
 
   return (
     <div className={cn("space-y-4", className)}>
-      {alerts.map((alert) => (
-        <AlertCard key={alert.id} alert={alert} />
-      ))}
+      <AnimatePresence mode="popLayout">
+        {alerts.map((alert, index) => (
+          <motion.div
+            key={alert.id}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{
+              duration: 0.3,
+              delay: index * 0.08,
+              ease: "easeOut"
+            }}
+          >
+            <AlertCard alert={alert} />
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   );
 }

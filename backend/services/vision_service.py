@@ -51,6 +51,7 @@ class PillFeatures:
     size: Optional[str] = None
     coating: Optional[str] = None
     ocr_confidence: float = 0.0
+    generic_prediction: Optional[str] = None
     raw_description: str = ""
 
 
@@ -122,37 +123,40 @@ def _get_embedding_model():
 
 
 # Feature extraction prompt - focused on ACCURATE extraction
-FEATURE_EXTRACTION_PROMPT = """You are analyzing a pill/tablet/capsule image for a medical database lookup.
-
-Extract ONLY what you can SEE. Be extremely precise about imprint text.
-
-Extract:
-1. IMPRINT: Any text/numbers printed or embossed on the pill
-   - Read EXACTLY (e.g., "DOLO 650", "PAN 40", "AZITHRAL 500", "CROCIN")
-   - Indian pills often have brand name + strength
-   - If unclear, indicate with [?]
-   - If none visible, say "none"
-
-2. COLOR: Primary color (white, off-white, pink, yellow, orange, red, blue, green, purple)
-
-3. SHAPE: round, oval, oblong, capsule, diamond, triangle, rectangle
-
-4. SIZE: small (<8mm), medium (8-12mm), large (>12mm)
-
-5. COATING: film-coated (shiny), sugar-coated (smooth), uncoated (rough/chalky)
-
-6. OCR_CONFIDENCE: How confident are you in the imprint reading? 0.0 to 1.0
-
-Return ONLY valid JSON:
-{
-  "imprint": "exact text or none",
-  "color": "primary color",
-  "shape": "shape name",
-  "size": "small/medium/large",
-  "coating": "coating type",
-  "ocr_confidence": 0.0-1.0,
-  "raw_description": "brief description of what you see"
-}"""
+125: FEATURE_EXTRACTION_PROMPT = """You are analyzing a pill/tablet/capsule image for a medical database lookup.
+126: 
+127: Extract ONLY what you can SEE. Be extremely precise about imprint text.
+128: 
+129: Extract:
+130: 1. IMPRINT: Any text/numbers printed or embossed on the pill
+131:    - Read EXACTLY (e.g., "DOLO 650", "PAN 40", "AZITHRAL 500", "CROCIN")
+132:    - Indian pills often have brand name + strength
+133:    - If unclear, indicate with [?]
+134:    - If none visible, say "none"
+135: 
+136: 2. COLOR: Primary color (white, off-white, pink, yellow, orange, red, blue, green, purple)
+137: 
+138: 3. SHAPE: round, oval, oblong, capsule, diamond, triangle, rectangle
+139: 
+140: 4. SIZE: small (<8mm), medium (8-12mm), large (>12mm)
+141: 
+142: 5. COATING: film-coated (shiny), sugar-coated (smooth), uncoated (rough/chalky)
+143: 
+144: 6. OCR_CONFIDENCE: How confident are you in the imprint reading? 0.0 to 1.0
+145: 
+146: 7. GENERIC_PREDICTION: Based on the visual imprint (e.g. "DOLO"), what is the likely generic drug name? (e.g. "Paracetamol"). Only provide if confident.
+147: 
+148: Return ONLY valid JSON:
+149: {
+150:   "imprint": "exact text or none",
+151:   "color": "primary color",
+152:   "shape": "shape name",
+153:   "size": "small/medium/large",
+154:   "coating": "coating type",
+155:   "ocr_confidence": 0.0-1.0,
+156:   "generic_prediction": "likely generic name or null",
+157:   "raw_description": "brief description of what you see"
+158: }"""
 
 
 def _safe_float(value, default: float) -> float:
@@ -186,56 +190,89 @@ def extract_balanced_json(text: str) -> Optional[str]:
 async def extract_pill_features(image_bytes: bytes, content_type: str) -> PillFeatures:
     """
     Step 1: Extract visual features from pill image using Gemini Vision.
+    Includes retry logic for rate limiting (429 errors).
     """
-    try:
-        model = await _get_vision_model()
-        
-        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-        image_part = {
-            "mime_type": content_type,
-            "data": image_b64
-        }
-        
-        try:
-            response = await asyncio.wait_for(
-                asyncio.to_thread(model.generate_content, [FEATURE_EXTRACTION_PROMPT, image_part]),
-                timeout=API_TIMEOUT
-            )
-        except asyncio.TimeoutError:
-            logger.error("Feature extraction timed out")
-            return PillFeatures(raw_description="Analysis timed out")
-        
-        try:
-            response_text = (response.text if response.text else "").strip()
-        except ValueError as e:
-            logger.warning("Gemini response blocked: %s", e)
-            return PillFeatures(raw_description="Image blocked by safety filters")
-        
-        if not response_text:
-            return PillFeatures(raw_description="Could not analyze image")
-        
-        json_str = extract_balanced_json(response_text)
-        if not json_str:
-            return PillFeatures(raw_description="Could not parse response")
-        
-        try:
-            result = json.loads(json_str)
-            return PillFeatures(
-                imprint=result.get("imprint") if result.get("imprint") not in ["none", "None", None] else None,
-                color=result.get("color"),
-                shape=result.get("shape"),
-                size=result.get("size"),
-                coating=result.get("coating"),
-                ocr_confidence=_safe_float(result.get("ocr_confidence"), 0.5),
-                raw_description=result.get("raw_description", "")
-            )
-        except (json.JSONDecodeError, TypeError) as e:
-            logger.warning("Failed to parse features: %s", e)
-            return PillFeatures(raw_description="Failed to parse features")
+    max_retries = 3
+    base_delay = 2  # seconds
     
-    except Exception as e:
-        logger.exception("Feature extraction error")
-        return PillFeatures(raw_description=f"Error: {str(e)}")
+    for attempt in range(max_retries):
+        try:
+            model = await _get_vision_model()
+            
+            image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+            image_part = {
+                "mime_type": content_type,
+                "data": image_b64
+            }
+            
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(model.generate_content, [FEATURE_EXTRACTION_PROMPT, image_part]),
+                    timeout=API_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                logger.error("Feature extraction timed out")
+                return PillFeatures(raw_description="Analysis timed out")
+            
+            try:
+                response_text = (response.text if response.text else "").strip()
+            except ValueError as e:
+                logger.warning("Gemini response blocked: %s", e)
+                return PillFeatures(raw_description="Image blocked by safety filters")
+            
+            if not response_text:
+                return PillFeatures(raw_description="Could not analyze image")
+            
+            json_str = extract_balanced_json(response_text)
+            if not json_str:
+                return PillFeatures(raw_description="Could not parse response")
+            
+            try:
+                result = json.loads(json_str)
+                return PillFeatures(
+                    imprint=result.get("imprint") if result.get("imprint") not in ["none", "None", None] else None,
+                    color=result.get("color"),
+                    shape=result.get("shape"),
+                    size=result.get("size"),
+                    coating=result.get("coating"),
+                    ocr_confidence=_safe_float(result.get("ocr_confidence"), 0.5),
+                    generic_prediction=result.get("generic_prediction"),
+                    raw_description=result.get("raw_description", "")
+                )
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning("Failed to parse features: %s", e)
+                return PillFeatures(raw_description="Failed to parse features")
+        
+        except Exception as e:
+            error_str = str(e).lower()
+            
+            # Check for rate limiting errors (429)
+            if "429" in str(e) or "resourceexhausted" in error_str or "quota" in error_str:
+                if attempt < max_retries - 1:
+                    # Exponential backoff with the retry delay from the error if available
+                    delay = base_delay * (2 ** attempt)
+                    
+                    # Try to extract retry delay from error message
+                    import re
+                    retry_match = re.search(r'retry in (\d+(?:\.\d+)?)', error_str)
+                    if retry_match:
+                        suggested_delay = float(retry_match.group(1))
+                        delay = min(suggested_delay + 1, 60)  # Cap at 60 seconds
+                    
+                    logger.warning(f"Rate limited (attempt {attempt + 1}/{max_retries}), retrying in {delay:.1f}s...")
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    logger.error("Rate limit exceeded after all retries")
+                    msg = "API rate limit exceeded. "
+                    if "quota" in error_str:
+                        msg += "Daily free tier quota reached (20 req/day). Please try again tomorrow or upgrade plan."
+                    else:
+                        msg += "Please wait a minute and try again."
+                    return PillFeatures(raw_description=msg)
+            
+            logger.exception("Feature extraction error")
+            return PillFeatures(raw_description=f"Error: {str(e)}")
 
 
 async def query_drugs_by_features(features: PillFeatures) -> List[DrugMatch]:
@@ -281,7 +318,31 @@ async def query_drugs_by_features(features: PillFeatures) -> List[DrugMatch]:
                     match_reason="Text match"
                 ))
         
-        # Strategy 2: Vector similarity search in Qdrant
+        # Strategy 2: Search by predicted generic name if we have few matches
+        if len(matches) < 3 and features.generic_prediction:
+            logger.info("Searching by generic prediction: %s", features.generic_prediction)
+            
+            # Use search_drugs which now handles generic name search too
+            turso_results = await asyncio.to_thread(
+                turso_service.search_drugs, features.generic_prediction, 5
+            )
+            
+            for row in turso_results:
+                # Avoid duplicates
+                if any(m.name == row.get("name") for m in matches):
+                    continue
+                    
+                matches.append(DrugMatch(
+                    name=row.get("name", "Unknown"),
+                    generic_name=row.get("generic_name"),
+                    manufacturer=row.get("manufacturer"),
+                    price_raw=row.get("price_raw"),
+                    description=row.get("description"),
+                    match_score=0.7,  # Slightly lower confidence for generic match
+                    match_reason=f"Predicted generic: {features.generic_prediction}"
+                ))
+
+        # Strategy 3: Vector similarity search in Qdrant
         if features.imprint or features.color or features.shape:
             search_text = " ".join(filter(None, [
                 features.imprint or "",

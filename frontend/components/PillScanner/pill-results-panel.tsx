@@ -32,51 +32,48 @@ export default function PillResultsPanel({
 
   return (
     <div className="space-y-4">
-      {/* Status Alert */}
-      <Alert
-        className={
-          confidence >= 0.8
-            ? "border-green-500/50 bg-green-500/10"
-            : confidence >= 0.5
-            ? "border-yellow-500/50 bg-yellow-500/10"
-            : "border-orange-500/50 bg-orange-500/10"
-        }
-      >
-        <div className="flex items-start gap-3">
-          {confidence >= 0.8 ? (
-            <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
-          ) : confidence >= 0.5 ? (
-            <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
-          ) : (
-            <XCircle className="h-5 w-5 text-orange-600 dark:text-orange-400 mt-0.5" />
-          )}
-          <AlertDescription className="flex-1">
-            {hasMatches ? (
+      {/* Status Alert - Only show if matches found */}
+      {hasMatches ? (
+        <Alert
+          className={
+            confidence >= 0.8
+              ? "border-green-500/50 bg-green-500/10"
+              : confidence >= 0.5
+                ? "border-yellow-500/50 bg-yellow-500/10"
+                : "border-orange-500/50 bg-orange-500/10"
+          }
+        >
+          <div className="flex items-start gap-3">
+            {confidence >= 0.8 ? (
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
+            ) : confidence >= 0.5 ? (
+              <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+            ) : (
+              <XCircle className="h-5 w-5 text-orange-600 dark:text-orange-400 mt-0.5" />
+            )}
+            <AlertDescription className="flex-1">
               <div>
                 <p className="font-semibold mb-1">
                   {confidence >= 0.8
                     ? "High Confidence Match"
                     : confidence >= 0.5
-                    ? "Possible Match Found"
-                    : "Low Confidence Match"}
+                      ? "Possible Match Found"
+                      : "Low Confidence Match"}
                 </p>
                 <p className="text-sm">
                   Found {matches.length} possible match{matches.length > 1 ? "es" : ""} in
-                  the database. Review all matches and verify with a pharmacist.
+                  the database. Review all matches.
                 </p>
               </div>
-            ) : (
-              <div>
-                <p className="font-semibold mb-1">No Matches Found</p>
-                <p className="text-sm">
-                  Could not identify this pill in the database. Please consult a
-                  pharmacist or try searching manually on 1mg.com or pharmeasy.in.
-                </p>
-              </div>
-            )}
-          </AlertDescription>
+            </AlertDescription>
+          </div>
+        </Alert>
+      ) : (
+        <div className="text-center py-6 text-muted-foreground">
+          <p className="font-medium">No matches found in database</p>
+          <p className="text-sm mt-1">Try searching manually on 1mg.com</p>
         </div>
-      </Alert>
+      )}
 
       {/* Best Match Highlight */}
       {hasMatches && bestMatch && (
@@ -100,19 +97,7 @@ export default function PillResultsPanel({
         </div>
       )}
 
-      {/* Safety Warning */}
-      <Alert className="border-red-500/50 bg-red-500/10">
-        <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-        <AlertDescription className="text-sm">
-          <p className="font-semibold mb-1">⚠️ IMPORTANT SAFETY NOTICE</p>
-          <ul className="list-disc list-inside space-y-1 text-xs">
-            <li>This is visual matching only - NOT a medical diagnosis</li>
-            <li>Many pills look similar but contain different medications</li>
-            <li>ALWAYS verify with a licensed pharmacist before use</li>
-            <li>Never take medication based solely on visual identification</li>
-          </ul>
-        </AlertDescription>
-      </Alert>
+      {/* Safety Warning REMOVED */}
 
       {/* Action Buttons */}
       <div className="flex gap-2">

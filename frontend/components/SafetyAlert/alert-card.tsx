@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { FDAAlert } from "@/types";
+import { motion, AnimatePresence } from "framer-motion";
 
 export type { FDAAlert };
 
@@ -92,45 +93,55 @@ export function AlertCard({ alert, className, defaultExpanded = false }: AlertCa
         </div>
       </CardHeader>
 
-      {isExpanded && (
-        <CardContent className="space-y-4 pt-0">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Calendar className="h-4 w-4" />
-            <span>{formatDate(alert.date)}</span>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-semibold mb-2">Reason for Alert</h4>
-            <p className="text-sm text-muted-foreground leading-relaxed">{alert.description}</p>
-          </div>
-
-          {alert.lot_numbers && alert.lot_numbers.length > 0 && (
-            <div>
-              <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                <Package className="h-4 w-4" />
-                Affected Lot Numbers
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {alert.lot_numbers.map((lot, index) => (
-                  <Badge key={index} variant="secondary" className="font-mono text-xs">
-                    {lot}
-                  </Badge>
-                ))}
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeInOut" }}
+            style={{ overflow: "hidden" }}
+          >
+            <CardContent className="space-y-4 pt-0">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                <span>{formatDate(alert.date)}</span>
               </div>
-            </div>
-          )}
 
-          <div className={cn("rounded-lg p-3 text-sm", config.bgColor)}>
-            <p className={cn("font-medium", config.color)}>
-              {alert.severity === "recall"
-                ? "⚠️ This product has been recalled. Do not use and consult your healthcare provider."
-                : alert.severity === "warning"
-                ? "⚠️ Exercise caution. Consult your healthcare provider if you have concerns."
-                : "ℹ️ Stay informed about this product. Monitor for updates."}
-            </p>
-          </div>
-        </CardContent>
-      )}
+              <div>
+                <h4 className="text-sm font-semibold mb-2">Reason for Alert</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">{alert.description}</p>
+              </div>
+
+              {alert.lot_numbers && alert.lot_numbers.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                    <Package className="h-4 w-4" />
+                    Affected Lot Numbers
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {alert.lot_numbers.map((lot, index) => (
+                      <Badge key={index} variant="secondary" className="font-mono text-xs">
+                        {lot}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className={cn("rounded-lg p-3 text-sm", config.bgColor)}>
+                <p className={cn("font-medium", config.color)}>
+                  {alert.severity === "recall"
+                    ? "⚠️ This product has been recalled. Do not use and consult your healthcare provider."
+                    : alert.severity === "warning"
+                      ? "⚠️ Exercise caution. Consult your healthcare provider if you have concerns."
+                      : "ℹ️ Stay informed about this product. Monitor for updates."}
+                </p>
+              </div>
+            </CardContent>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Card>
   );
 }

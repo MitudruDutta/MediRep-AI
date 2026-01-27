@@ -5,6 +5,7 @@ import { Copy, Check, Bot, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Message } from "@/types"
 import Markdown from "react-markdown"
+import { motion } from "framer-motion"
 
 export interface ChatMessageProps {
   message: Message
@@ -15,9 +16,18 @@ export interface ChatMessageProps {
 
 export function ChatMessage({ message, index, copiedIndex, onCopy }: ChatMessageProps) {
   const isUser = message.role === "user"
-  
+
   return (
-    <div className={cn("flex gap-3 group", isUser ? "justify-end" : "justify-start")}>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        duration: 0.3,
+        delay: index * 0.05,
+        ease: "easeOut"
+      }}
+      className={cn("flex gap-3 group", isUser ? "justify-end" : "justify-start")}
+    >
       {/* Avatar - only for assistant */}
       {!isUser && (
         <div className="shrink-0 mt-1">
@@ -49,7 +59,7 @@ export function ChatMessage({ message, index, copiedIndex, onCopy }: ChatMessage
             )}>
               <Markdown>{message.content}</Markdown>
             </div>
-            
+
             {!isUser && (
               <Button
                 variant="ghost"
@@ -65,7 +75,7 @@ export function ChatMessage({ message, index, copiedIndex, onCopy }: ChatMessage
               </Button>
             )}
           </div>
-          
+
           {message.citations && message.citations.length > 0 && (
             <div className="mt-3 pt-3 border-t border-border/30">
               <p className="text-xs font-medium text-muted-foreground mb-2">Sources:</p>
@@ -86,7 +96,7 @@ export function ChatMessage({ message, index, copiedIndex, onCopy }: ChatMessage
             </div>
           )}
         </Card>
-        
+
         {/* Timestamp could go here if needed */}
       </div>
 
@@ -98,6 +108,6 @@ export function ChatMessage({ message, index, copiedIndex, onCopy }: ChatMessage
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }

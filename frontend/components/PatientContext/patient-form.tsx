@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, X } from "lucide-react";
 import { PatientContext } from "@/types";
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface PatientFormProps {
   formData: PatientContext;
@@ -128,15 +129,25 @@ export function PatientForm({ formData, setFormData }: PatientFormProps) {
           </Button>
         </div>
         <div className="flex flex-wrap gap-2 mt-3">
-          {formData.conditions.map((condition, index) => (
-            <Badge key={index} variant="secondary" className="gap-1 px-3 py-1">
-              {condition}
-              <X
-                className="h-3 w-3 cursor-pointer hover:text-destructive"
-                onClick={() => removeItem(index, "conditions")}
-              />
-            </Badge>
-          ))}
+          <AnimatePresence mode="popLayout">
+            {formData.conditions.map((condition, index) => (
+              <motion.div
+                key={condition}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <Badge variant="secondary" className="gap-1 px-3 py-1">
+                  {condition}
+                  <X
+                    className="h-3 w-3 cursor-pointer hover:text-destructive transition-colors"
+                    onClick={() => removeItem(index, "conditions")}
+                  />
+                </Badge>
+              </motion.div>
+            ))}
+          </AnimatePresence>
           {formData.conditions.length === 0 && (
             <p className="text-sm text-muted-foreground italic">No conditions added</p>
           )}
@@ -169,15 +180,25 @@ export function PatientForm({ formData, setFormData }: PatientFormProps) {
           </Button>
         </div>
         <div className="flex flex-wrap gap-2 mt-3">
-          {formData.currentMeds.map((med, index) => (
-            <Badge key={index} variant="default" className="gap-1 px-3 py-1">
-              {med}
-              <X
-                className="h-3 w-3 cursor-pointer hover:text-destructive-foreground"
-                onClick={() => removeItem(index, "currentMeds")}
-              />
-            </Badge>
-          ))}
+          <AnimatePresence mode="popLayout">
+            {formData.currentMeds.map((med, index) => (
+              <motion.div
+                key={med}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <Badge variant="default" className="gap-1 px-3 py-1">
+                  {med}
+                  <X
+                    className="h-3 w-3 cursor-pointer hover:text-destructive-foreground transition-colors"
+                    onClick={() => removeItem(index, "currentMeds")}
+                  />
+                </Badge>
+              </motion.div>
+            ))}
+          </AnimatePresence>
           {formData.currentMeds.length === 0 && (
             <p className="text-sm text-muted-foreground italic">No medications added</p>
           )}
@@ -210,15 +231,25 @@ export function PatientForm({ formData, setFormData }: PatientFormProps) {
           </Button>
         </div>
         <div className="flex flex-wrap gap-2 mt-3">
-          {formData.allergies.map((allergy, index) => (
-            <Badge key={index} variant="destructive" className="gap-1 px-3 py-1">
-              {allergy}
-              <X
-                className="h-3 w-3 cursor-pointer hover:text-white"
-                onClick={() => removeItem(index, "allergies")}
-              />
-            </Badge>
-          ))}
+          <AnimatePresence mode="popLayout">
+            {formData.allergies.map((allergy, index) => (
+              <motion.div
+                key={allergy}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <Badge variant="destructive" className="gap-1 px-3 py-1">
+                  {allergy}
+                  <X
+                    className="h-3 w-3 cursor-pointer hover:text-white transition-colors"
+                    onClick={() => removeItem(index, "allergies")}
+                  />
+                </Badge>
+              </motion.div>
+            ))}
+          </AnimatePresence>
           {formData.allergies.length === 0 && (
             <p className="text-sm text-muted-foreground italic">No allergies added</p>
           )}

@@ -100,13 +100,19 @@ def init_schema():
 
 
 def search_drugs(query: str, limit: int = 10) -> List[Dict[str, Any]]:
-    """Search drugs by name or generic name."""
+    """Search drugs by name or generic name with improved matching."""
     conn = get_connection()
     if not conn:
         return []
     
     try:
-        # Use LIKE for text search (SQLite FTS would be better for production)
+        results = []
+        seen_ids = set()
+        
+        # Clean the query - remove spaces between brand and strength
+        query_clean = query.strip()
+        
+        # Strategy 1: Direct LIKE search
         rs = conn.execute(
             """
             SELECT id, name, generic_name, manufacturer, price_raw, description
@@ -114,22 +120,76 @@ def search_drugs(query: str, limit: int = 10) -> List[Dict[str, Any]]:
             WHERE name LIKE ? OR generic_name LIKE ?
             LIMIT ?
             """,
-            (f"%{query}%", f"%{query}%", limit)
+            (f"%{query_clean}%", f"%{query_clean}%", limit)
         )
         
-        # rs is a ResultSet, rs.rows is a list of Rows
-        rows = rs.rows
-        return [
-            {
-                "id": row[0],
-                "name": row[1],
-                "generic_name": row[2],
-                "manufacturer": row[3],
-                "price_raw": row[4],
-                "description": row[5]
-            }
-            for row in rows
-        ]
+        for row in rs.rows:
+            if row[0] not in seen_ids:
+                seen_ids.add(row[0])
+                results.append({
+                    "id": row[0],
+                    "name": row[1],
+                    "generic_name": row[2],
+                    "manufacturer": row[3],
+                    "price_raw": row[4],
+                    "description": row[5]
+                })
+        
+        # Strategy 2: If query has spaces, search for first word (brand name)
+        if len(results) < limit and ' ' in query_clean:
+            parts = query_clean.split()
+            brand_name = parts[0]  # e.g., "DOLO" from "DOLO 650"
+            
+            rs = conn.execute(
+                """
+                SELECT id, name, generic_name, manufacturer, price_raw, description
+                FROM drugs
+                WHERE name LIKE ?
+                LIMIT ?
+                """,
+                (f"{brand_name}%", limit - len(results))
+            )
+            
+            for row in rs.rows:
+                if row[0] not in seen_ids:
+                    seen_ids.add(row[0])
+                    results.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "generic_name": row[2],
+                        "manufacturer": row[3],
+                        "price_raw": row[4],
+                        "description": row[5]
+                    })
+        
+        # Strategy 3: Search without spaces (e.g., "DOLO650" for "DOLO 650")
+        if len(results) < limit:
+            no_space_query = query_clean.replace(" ", "")
+            rs = conn.execute(
+                """
+                SELECT id, name, generic_name, manufacturer, price_raw, description
+                FROM drugs
+                WHERE REPLACE(LOWER(name), ' ', '') LIKE LOWER(?)
+                LIMIT ?
+                """,
+                (f"%{no_space_query}%", limit - len(results))
+            )
+            
+            for row in rs.rows:
+                if row[0] not in seen_ids:
+                    seen_ids.add(row[0])
+                    results.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "generic_name": row[2],
+                        "manufacturer": row[3],
+                        "price_raw": row[4],
+                        "description": row[5]
+                    })
+        
+        logger.info(f"Search '{query}' returned {len(results)} results")
+        return results[:limit]
+        
     except Exception as e:
         logger.error("Turso search failed: %s", e)
         return []
