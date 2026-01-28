@@ -220,11 +220,11 @@ async def chat_endpoint(
         # Trigger web search if:
         # 1. Explicit web_search_mode is enabled, OR
         # 2. No local data found AND user wants fresh info, OR
-        # 3. No local data found AND it's not a simple conversational message
+        # 3. No local data found AND it's a medical query (not GENERAL intent)
         needs_web_search = (
             chat_request.web_search_mode or
-            (not rag_content and not context_data.get('drug_info') and wants_fresh_data) or
-            (not rag_content and not context_data.get('drug_info') and not is_conversational and plan.intent != "SYMPTOM")
+            (not rag_content and not context_data.get('drug_info') and wants_fresh_data and plan.intent != "GENERAL") or
+            (not rag_content and not context_data.get('drug_info') and not is_conversational and plan.intent not in ("GENERAL", "SYMPTOM"))
         )
         
         if needs_web_search:

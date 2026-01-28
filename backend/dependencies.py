@@ -35,7 +35,10 @@ async def get_current_user(
             "id": user_response.user.id,
             "email": user_response.user.email,
             "metadata": user_response.user.user_metadata,
-            "app_metadata": user_response.user.app_metadata
+            "email": user_response.user.email,
+            "metadata": user_response.user.user_metadata,
+            "app_metadata": user_response.user.app_metadata,
+            "token": token
         }
 
     except asyncio.TimeoutError:

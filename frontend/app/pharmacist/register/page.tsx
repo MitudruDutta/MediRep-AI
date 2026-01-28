@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { toast } from "sonner";
@@ -23,6 +23,26 @@ export default function PharmacistRegistrationPage() {
     const router = useRouter();
     const [currentStep, setCurrentStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [session, setSession] = useState<any>(null);
+
+    // Check authentication on mount
+    useEffect(() => {
+        const checkAuth = async () => {
+            const supabase = createClient();
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (!session) {
+                toast.info("Please create an account or login first");
+                router.push("/auth/login?type=pharmacist&redirect=/pharmacist/register");
+                return;
+            }
+
+            setSession(session);
+            setIsLoading(false);
+        };
+        checkAuth();
+    }, [router]);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -64,47 +84,50 @@ export default function PharmacistRegistrationPage() {
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
+
+            // Validate file size (5MB max)
+            if (file.size > 5 * 1024 * 1024) {
+                toast.error("File too large. Maximum size is 5MB");
+                return;
+            }
+
+            // Validate file type
+            if (!['image/jpeg', 'image/png', 'application/pdf'].includes(file.type)) {
+                toast.error("Invalid file type. Only JPG, PNG, and PDF are allowed");
+                return;
+            }
+
             setLicenseFile(file);
 
-            // Auto upload
-            setIsUploading(true);
-            try {
-                const supabase = createClient();
-                const fileExt = file.name.split('.').pop();
-                const fileName = `${Date.now()}.${fileExt}`;
-                const filePath = `licenses/${fileName}`;
-
-                const { error: uploadError } = await supabase.storage
-                    .from('private_documents') // Assuming a bucket strictly for this
-                    .upload(filePath, file);
-
-                if (uploadError) throw uploadError;
-
-                // Get publicly accessible URL (Warning: Licenses should be private ideally, relying on signed URLs)
-                // For simplicity in this demo, we assume public bucket or signed handling in backend.
-                // Actually, let's just get the public URL for now.
-                const { data: { publicUrl } } = supabase.storage
-                    .from('private_documents')
-                    .getPublicUrl(filePath);
-
-                setFormData(prev => ({ ...prev, license_image_url: publicUrl }));
-                toast.success("License uploaded successfully");
-            } catch (error) {
-                console.error(error);
-                toast.error("Failed to upload license image");
-            } finally {
-                setIsUploading(false);
-            }
+            // Create a local preview URL (no upload yet - will upload during registration)
+            const previewUrl = URL.createObjectURL(file);
+            setFormData(prev => ({ ...prev, license_image_url: previewUrl }));
+            toast.success("License selected. It will be uploaded during registration.");
         }
     };
 
     const handleSubmit = async () => {
+        if (!session) {
+            toast.error("Please login first");
+            router.push("/auth/login?type=pharmacist&redirect=/pharmacist/register");
+            return;
+        }
+
         try {
             setIsSubmitting(true);
 
-            // Prepare payload
-            const payload = {
+            // Build FormData to send file + data to backend
+            const formDataToSend = new FormData();
+
+            // Add license file if exists
+            if (licenseFile) {
+                formDataToSend.append('license_file', licenseFile);
+            }
+
+            // Prepare registration data
+            const registrationData = {
                 ...formData,
+                license_image_url: "", // Backend will set this after upload
                 specializations: formData.specializations.split(',').map(s => s.trim()).filter(Boolean),
                 languages: formData.languages.split(',').map(s => s.trim()).filter(Boolean),
                 experience_years: Number(formData.experience_years),
@@ -112,21 +135,14 @@ export default function PharmacistRegistrationPage() {
                 duration_minutes: Number(formData.duration_minutes)
             };
 
-            const supabase = createClient();
-            const { data: { session } } = await supabase.auth.getSession();
-
-            if (!session) {
-                toast.error("You must be logged in to register");
-                return;
-            }
+            formDataToSend.append('data', JSON.stringify(registrationData));
 
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/pharmacist/register`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${session.access_token}`
                 },
-                body: JSON.stringify(payload)
+                body: formDataToSend
             });
 
             if (!res.ok) {
@@ -134,7 +150,7 @@ export default function PharmacistRegistrationPage() {
                 throw new Error(error.detail || "Registration failed");
             }
 
-            toast.success("Registration submitted successfully!");
+            toast.success("Registration submitted successfully! Your profile is pending verification.");
             router.push("/pharmacist/dashboard");
         } catch (error: any) {
             console.error(error);
@@ -143,6 +159,18 @@ export default function PharmacistRegistrationPage() {
             setIsSubmitting(false);
         }
     };
+
+    // Show loading while checking auth
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="text-center">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-500" />
+                    <p className="mt-4 text-muted-foreground">Checking authentication...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative">

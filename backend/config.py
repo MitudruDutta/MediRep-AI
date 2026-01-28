@@ -48,6 +48,7 @@ GEMINI_MODEL = get_env_str("GEMINI_MODEL", "gemini-2.5-flash")
 # Supabase Configuration (Required for full functionality)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 # Log warning if Supabase not configured
 if not SUPABASE_URL or not SUPABASE_KEY:

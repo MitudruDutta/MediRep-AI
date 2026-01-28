@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import Dashboard from "@/components/dashboard/page";
 import { createClient } from "@/lib/supabase/server";
 
@@ -6,6 +7,10 @@ export default async function DashboardPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (user?.user_metadata?.role === 'pharmacist') {
+    redirect('/pharmacist/dashboard');
+  }
 
   return (
     <Dashboard

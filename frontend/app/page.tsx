@@ -79,7 +79,7 @@ export default function HomePage() {
               {isLoading ? (
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               ) : user ? (
-                <Link href="/dashboard">
+                <Link href={user.user_metadata?.role === 'pharmacist' ? "/pharmacist/dashboard" : "/dashboard"}>
                   <Button size={scrolled ? "sm" : "default"}>
                     Dashboard
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -133,7 +133,7 @@ export default function HomePage() {
 
             <div className="flex gap-6 justify-center items-center flex-wrap pt-8">
               {user ? (
-                <Link href="/dashboard">
+                <Link href={user.user_metadata?.role === 'pharmacist' ? "/pharmacist/dashboard" : "/dashboard"}>
                   <Button size="lg" className="h-14 px-10 text-lg rounded-full bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-white/90 shadow-xl transition-all hover:scale-105 duration-300 font-medium">
                     Go to Dashboard
                   </Button>

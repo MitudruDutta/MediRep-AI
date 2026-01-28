@@ -4,7 +4,7 @@ from typing import Optional
 
 from supabase import create_client, Client, ClientOptions
 
-from config import SUPABASE_URL, SUPABASE_KEY
+from config import SUPABASE_URL, SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -63,3 +63,12 @@ class SupabaseService:
             SUPABASE_KEY, 
             options=ClientOptions(headers={"Authorization": f"Bearer {token}"})
         )
+
+    @staticmethod
+    def get_service_client() -> Optional[Client]:
+        """Create a client with the Service Role Key (Admin privileges)."""
+        if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+            logger.warning("Supabase Service Role Key not configured")
+            return None
+        
+        return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)

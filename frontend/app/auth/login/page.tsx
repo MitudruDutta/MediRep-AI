@@ -10,16 +10,24 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ModeToggle } from "@/components/mode-toggle";
 import { signInWithEmail, signInWithGoogle } from "@/app/auth/actions";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || searchParams.get("next") || "/dashboard";
+
   async function handleEmailSubmit(formData: FormData) {
     setIsLoading(true);
     setError(null);
+
+    // Add redirect to formData
+    formData.append("redirectTo", redirectTo);
 
     try {
       const result = await signInWithEmail(formData);
@@ -38,24 +46,7 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const { createClient } = await import("@/lib/supabase/client");
-      const supabase = createClient();
-
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-      // Redirect happens automatically
+      await signInWithGoogle(redirectTo);
     } catch (e: any) {
       console.error("Google sign in error:", e);
       setError(e.message || "Failed to connect to Google.");
@@ -283,5 +274,17 @@ export default function LoginPage() {
         </footer>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -2,7 +2,18 @@ import random
 import logging
 import asyncio
 from typing import Optional, Dict, List
-from curl_cffi import requests
+
+# Check if curl_cffi is available
+try:
+    from curl_cffi import requests
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    CURL_CFFI_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("curl_cffi not installed. TLS service will use fallback requests")
+    
+    # Fallback to standard requests
+    import requests as fallback_requests
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +53,39 @@ class TLSService:
             if headers:
                 final_headers.update(headers)
 
-            # Perform Request with Chrome 110 Impersonation
-            response = requests.get(
-                url,
-                impersonate="chrome110",
-                headers=final_headers,
-                timeout=30
-            )
+            # Perform Request with appropriate method
+            if CURL_CFFI_AVAILABLE:
+                # Use curl_cffi with Chrome 120 Impersonation (chrome110 not supported)
+                try:
+                    response = requests.get(
+                        url,
+                        impersonate="chrome120",
+                        headers=final_headers,
+                        timeout=30
+                    )
+                except Exception as e:
+                    logger.warning(f"Chrome120 impersonation failed, trying chrome110: {e}")
+                    try:
+                        response = requests.get(
+                            url,
+                            impersonate="chrome110",
+                            headers=final_headers,
+                            timeout=30
+                        )
+                    except Exception as e2:
+                        logger.warning(f"Chrome110 impersonation failed, using standard: {e2}")
+                        response = requests.get(
+                            url,
+                            headers=final_headers,
+                            timeout=30
+                        )
+            else:
+                # Fallback to standard requests
+                response = fallback_requests.get(
+                    url,
+                    headers=final_headers,
+                    timeout=30
+                )
 
             if response.status_code == 200:
                 return response.text

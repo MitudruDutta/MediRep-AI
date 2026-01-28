@@ -51,6 +51,7 @@ async function upsertUserProfile(supabase: Awaited<ReturnType<typeof createClien
 export async function signInWithEmail(formData: FormData): Promise<AuthResult> {
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
+  const redirectTo = formData.get("redirectTo") as string | null;
 
   // Validate inputs
   const emailValidation = validateEmail(email);
@@ -80,13 +81,14 @@ export async function signInWithEmail(formData: FormData): Promise<AuthResult> {
   }
 
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  redirect(redirectTo || "/dashboard");
 }
 
 export async function signUpWithEmail(formData: FormData): Promise<AuthResult> {
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
   const confirmPassword = formData.get("confirmPassword") as string;
+  const redirectTo = formData.get("redirectTo") as string | null;
 
   // Validate email
   const emailValidation = validateEmail(email);
@@ -112,12 +114,17 @@ export async function signUpWithEmail(formData: FormData): Promise<AuthResult> {
   const headersList = await headers();
   const origin = headersList.get("origin") || process.env.NEXT_PUBLIC_SITE_URL;
   const sanitizedEmail = sanitizeEmail(email);
+  
+  const callbackUrl = new URL(`${origin}/auth/callback`);
+  if (redirectTo) {
+    callbackUrl.searchParams.set("next", redirectTo);
+  }
 
   const { error } = await supabase.auth.signUp({
     email: sanitizedEmail,
     password,
     options: {
-      emailRedirectTo: `${origin}/auth/callback`,
+      emailRedirectTo: callbackUrl.toString(),
     },
   });
 
@@ -129,15 +136,20 @@ export async function signUpWithEmail(formData: FormData): Promise<AuthResult> {
   return { success: "Check your email for a confirmation link to complete registration." };
 }
 
-export async function signInWithGoogle(): Promise<void> {
+export async function signInWithGoogle(redirectTo?: string): Promise<void> {
   const supabase = await createClient();
   const headersList = await headers();
   const origin = headersList.get("origin") || process.env.NEXT_PUBLIC_SITE_URL;
 
+  const callbackUrl = new URL(`${origin}/auth/callback`);
+  if (redirectTo) {
+    callbackUrl.searchParams.set("next", redirectTo);
+  }
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${origin}/auth/callback`,
+      redirectTo: callbackUrl.toString(),
       queryParams: {
         access_type: "offline",
         prompt: "consent",

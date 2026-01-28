@@ -2,7 +2,7 @@
 Pharmacist Router - Registration, dashboard, and profile management.
 
 Endpoints:
-- POST /register - Register as pharmacist (requires auth)
+- POST /register - Register as pharmacist (requires auth, supports file upload)
 - GET /profile - Get own pharmacist profile
 - PUT /profile - Update profile
 - GET /dashboard - Get dashboard stats
@@ -11,9 +11,11 @@ Endpoints:
 - GET /consultations - List upcoming/past consultations
 """
 import logging
+import json
+import uuid
 from typing import List, Optional
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form
 
 from dependencies import get_current_user
 from models import (
@@ -31,23 +33,32 @@ router = APIRouter()
 
 @router.post("/register", response_model=PharmacistProfile)
 async def register_pharmacist(
-    registration: PharmacistRegistration,
+    data: str = Form(...),
+    license_file: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user)
 ):
     """
     Register current user as a pharmacist.
 
     Requires authenticated user. Creates pending verification profile.
+    Accepts FormData with JSON data and optional license file.
     """
-    client = SupabaseService.get_client()
-    if not client:
+    # Get authenticated client using the user's token (Required for RLS policies)
+    auth_client = SupabaseService.get_auth_client(current_user["token"])
+    # Get service role client for admin operations (like updating user metadata)
+    service_client = SupabaseService.get_service_client()
+    
+    if not auth_client:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     user_id = current_user["id"]
 
     try:
+        # Parse registration data from JSON string
+        registration_data = json.loads(data)
+
         # Check if already registered
-        existing = client.table("pharmacist_profiles").select("id").eq(
+        existing = auth_client.table("pharmacist_profiles").select("id").eq(
             "user_id", user_id
         ).execute()
 
@@ -57,36 +68,78 @@ async def register_pharmacist(
                 detail="Already registered as pharmacist"
             )
 
+        # Upload license file if provided
+        license_image_url = registration_data.get("license_image_url", "")
+        if license_file:
+            try:
+                # Read file content
+                file_content = await license_file.read()
+                file_ext = license_file.filename.split('.')[-1] if license_file.filename else 'jpg'
+                file_name = f"licenses/{user_id}_{uuid.uuid4().hex[:8]}.{file_ext}"
+
+                # Upload using service role (bypasses RLS)
+                # Actually, can use auth_client if RLS allows authenticated uploads
+                # Assuming private_documents allows user uploads:
+                upload_result = auth_client.storage.from_("private_documents").upload(
+                    file_name,
+                    file_content,
+                    file_options={"content-type": license_file.content_type or "application/octet-stream"}
+                )
+
+                # Get public URL
+                license_image_url = auth_client.storage.from_("private_documents").get_public_url(file_name)
+                logger.info("License uploaded: %s", file_name)
+
+            except Exception as upload_error:
+                logger.error("License upload failed: %s", upload_error)
+                # Continue without license image - admin can request later
+
         # Create pharmacist profile
         profile_data = {
             "user_id": user_id,
-            "full_name": registration.full_name,
-            "phone": registration.phone,
-            "license_number": registration.license_number,
-            "license_image_url": registration.license_image_url,
-            "license_state": registration.license_state,
-            "specializations": registration.specializations,
-            "experience_years": registration.experience_years,
-            "languages": registration.languages,
-            "education": registration.education,
-            "bio": registration.bio,
-            "rate": registration.rate,
-            "duration_minutes": registration.duration_minutes,
-            "upi_id": registration.upi_id,
+            "full_name": registration_data.get("full_name", ""),
+            "phone": registration_data.get("phone", ""),
+            "license_number": registration_data.get("license_number", ""),
+            "license_image_url": license_image_url,
+            "license_state": registration_data.get("license_state", ""),
+            "specializations": registration_data.get("specializations", []),
+            "experience_years": registration_data.get("experience_years", 0),
+            "languages": registration_data.get("languages", ["English"]),
+            "education": registration_data.get("education", ""),
+            "bio": registration_data.get("bio", ""),
+            "rate": registration_data.get("rate", 299),
+            "duration_minutes": registration_data.get("duration_minutes", 15),
+            "upi_id": registration_data.get("upi_id", ""),
             "verification_status": "pending",
             "is_available": False,
         }
 
-        result = client.table("pharmacist_profiles").insert(
+        result = auth_client.table("pharmacist_profiles").insert(
             profile_data
         ).execute()
 
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create profile")
 
+        # Update user metadata role to 'pharmacist' using Service Client (Admin)
+        try:
+            if service_client:
+                service_client.auth.admin.update_user_by_id(
+                    user_id,
+                    {"user_metadata": {"role": "pharmacist"}}
+                )
+                logger.info("Updated user role to pharmacist: %s", user_id)
+            else:
+                 logger.warning("Service client unavailable, skipping role update")
+        except Exception as role_error:
+             # Log error but don't fail registration
+            logger.error("Failed to update user role metadata: %s", role_error)
+
         logger.info("Pharmacist registered: user_id=%s", user_id)
         return PharmacistProfile(**result.data[0])
 
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid registration data format")
     except HTTPException:
         raise
     except Exception as e:

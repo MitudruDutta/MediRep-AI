@@ -24,7 +24,10 @@ import { ModeToggle } from "@/components/mode-toggle";
 import { PasswordStrength } from "@/components/auth/password-strength";
 import { signUpWithEmail, signInWithGoogle } from "@/app/auth/actions";
 
-export default function SignUpPage() {
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+
+function SignUpForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,10 +36,16 @@ export default function SignUpPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [password, setPassword] = useState("");
 
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || searchParams.get("next") || "/dashboard";
+
   async function handleEmailSubmit(formData: FormData) {
     setIsLoading(true);
     setError(null);
     setSuccess(null);
+
+    // Add redirect to formData
+    formData.append("redirectTo", redirectTo);
 
     try {
       const result = await signUpWithEmail(formData);
@@ -58,24 +67,7 @@ export default function SignUpPage() {
     setError(null);
 
     try {
-      const { createClient } = await import("@/lib/supabase/client");
-      const supabase = createClient();
-
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-      // Redirect happens automatically
+      await signInWithGoogle(redirectTo);
     } catch (e: any) {
       console.error("Google sign in error:", e);
       setError(e.message || "Failed to connect to Google.");
@@ -359,5 +351,17 @@ export default function SignUpPage() {
         </footer>
       </div>
     </div>
+  );
+}
+
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    }>
+      <SignUpForm />
+    </Suspense>
   );
 }
