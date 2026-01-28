@@ -95,9 +95,12 @@ app.include_router(pharmacist.router, prefix="/api/pharmacist", tags=["Pharmacis
 app.include_router(consultations.router, prefix="/api/consultations", tags=["Consultations"])
 
 # Sessions router (chat session management)
-from routers import sessions, audio
+from routers import sessions
 app.include_router(sessions.router, prefix="/api/sessions", tags=["Sessions"])
-app.include_router(audio.router, prefix="/api/audio", tags=["Audio"])
+
+# Prices router (medicine price comparison)
+from routers import prices
+app.include_router(prices.router, prefix="/api/prices", tags=["Prices"])
 
 
 @app.exception_handler(Exception)

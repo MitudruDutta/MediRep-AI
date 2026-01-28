@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageSquare, Activity, Pill, AlertTriangle, FileText, User, Sparkles, ArrowRight, Layers, Palette, Zap } from "lucide-react";
+import { MessageSquare, Activity, Pill, AlertTriangle, FileText, User, Sparkles, ArrowRight, Layers, Palette, Zap, Scale } from "lucide-react";
 import { motion, Variants } from "framer-motion";
 import {
   Sidebar,
@@ -123,6 +123,13 @@ const items = [
     url: "/dashboard/ExportSummary",
     icon: <FileText className="size-6" />,
     description: "Export consultation summaries",
+    colSpan: "md:col-span-1",
+  },
+  {
+    title: "Price Compare",
+    url: "/compare",
+    icon: <Scale className="size-6" />,
+    description: "Compare medicine prices across 13+ pharmacies",
     colSpan: "md:col-span-2",
   },
 ];

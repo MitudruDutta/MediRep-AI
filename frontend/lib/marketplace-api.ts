@@ -122,8 +122,10 @@ export const marketplaceApi = {
             : `${API_URL}/api/user/consultations`;
 
         const res = await fetch(url, { headers });
-        // Return empty if endpoint not ready yet to prevent crash
-        if (!res.ok) return [];
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `Failed to fetch consultations (${res.status})`);
+        }
         return res.json();
     },
 
@@ -159,6 +161,48 @@ export const marketplaceApi = {
             body: JSON.stringify({ content })
         });
         if (!res.ok) throw new Error("Failed to send message");
+        return res.json();
+    },
+
+    async cancelConsultation(id: string, reason?: string) {
+        const headers = await this.getAuthHeaders();
+        const res = await fetch(`${API_URL}/api/consultations/${id}/cancel`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ reason: reason || "Cancelled by user" })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || "Failed to cancel consultation");
+        }
+        return res.json();
+    },
+
+    async completeConsultation(id: string, notes?: string) {
+        const headers = await this.getAuthHeaders();
+        const res = await fetch(`${API_URL}/api/consultations/${id}/complete`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ notes })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || "Failed to complete consultation");
+        }
+        return res.json();
+    },
+
+    async submitReview(consultationId: string, rating: number, review?: string) {
+        const headers = await this.getAuthHeaders();
+        const res = await fetch(`${API_URL}/api/consultations/${consultationId}/review`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ consultation_id: consultationId, rating, review })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || "Failed to submit review");
+        }
         return res.json();
     }
 };

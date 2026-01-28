@@ -36,6 +36,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="Session ID to continue conversation")
     web_search_mode: bool = Field(False, description="Force web search for this query")
     images: List[str] = Field(default_factory=list, description="List of base64 encoded images")
+    language: str = Field("auto", description="Language code (en, hi, ta, te, bn, mr, gu, pa, kn, ml, or) or 'auto' for detection")
 
 
 class WebSearchResult(BaseModel):

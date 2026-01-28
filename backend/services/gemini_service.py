@@ -11,6 +11,7 @@ import httpx
 from config import GEMINI_API_KEY, GEMINI_MODEL, MAX_HISTORY_MESSAGES, GROQ_API_KEY, GROQ_MODEL
 from models import PatientContext, Message, Citation, DrugInfo, ChatMessage
 from pydantic import BaseModel, Field
+from services.language_service import detect_language, get_language_instruction, is_language_supported_by_groq
 
 logger = logging.getLogger(__name__)
 
@@ -407,13 +408,19 @@ async def generate_response(
     history: Optional[List[Message]] = None,
     drug_info: Optional[DrugInfo] = None,
     rag_context: Optional[str] = None,
-    images: Optional[List[str]] = None
+    images: Optional[List[str]] = None,
+    language: str = "auto"
 ) -> dict:
     """Generate a response using Gemini with RAG context."""
-    
+
     if history is None:
         history = []
-    
+
+    # Language detection (if auto) and instruction
+    detected_lang = language if language != "auto" else detect_language(message)
+    lang_instruction = get_language_instruction(detected_lang)
+    logger.info("Language: requested=%s, detected=%s", language, detected_lang)
+
     try:
         model = _get_model()
         
@@ -479,9 +486,15 @@ async def generate_response(
         chat = model.start_chat(history=formatted_history)
 
         # Build user message with context
-        user_message_text = message
+        # Language instruction comes FIRST (LLMs pay more attention to start)
+        user_message_text = ""
+        if lang_instruction:
+            user_message_text = lang_instruction + "\n"
+
         if context_parts:
-            user_message_text = "".join(context_parts) + "\n\n[Question] " + message
+            user_message_text += "".join(context_parts) + "\n\n[Question] " + message
+        else:
+            user_message_text += message
         
         # Prepare content parts (Text + Images)
         content_parts = [SYSTEM_PROMPT + "\n\n" + user_message_text]
@@ -527,6 +540,10 @@ async def generate_response(
     
     except asyncio.TimeoutError:
         logger.warning("Gemini API timeout, attempting Groq fallback")
+        # Only use Groq for English - it has poor multi-language support
+        if not is_language_supported_by_groq(detected_lang):
+            logger.warning("Skipping Groq fallback for non-English language: %s", detected_lang)
+            raise Exception("Request timed out. Please try again.") from None
         try:
             return await _generate_response_with_groq(
                 message=message,
@@ -540,6 +557,10 @@ async def generate_response(
             raise Exception("Request timed out. Please try again.") from None
     except Exception as e:
         logger.warning("Gemini API error: %s, attempting Groq fallback", e)
+        # Only use Groq for English - it has poor multi-language support
+        if not is_language_supported_by_groq(detected_lang):
+            logger.warning("Skipping Groq fallback for non-English language: %s", detected_lang)
+            raise Exception("Failed to generate response") from e
         try:
             return await _generate_response_with_groq(
                 message=message,

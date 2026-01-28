@@ -69,5 +69,101 @@ export const pharmacistApi = {
         });
         if (!res.ok) throw new Error("Failed to update schedule");
         return res.json();
+    },
+
+    async getMyConsultations(status?: string): Promise<PharmacistConsultation[]> {
+        const headers = await this.getHeaders();
+        const url = status
+            ? `${API_URL}/api/pharmacist/consultations?status=${status}`
+            : `${API_URL}/api/pharmacist/consultations`;
+
+        const res = await fetch(url, { headers });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `Failed to fetch consultations (${res.status})`);
+        }
+        return res.json();
+    },
+
+    async getConsultation(id: string): Promise<PharmacistConsultation> {
+        const headers = await this.getHeaders();
+        const res = await fetch(`${API_URL}/api/consultations/${id}`, { headers });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || "Failed to load consultation");
+        }
+        return res.json();
+    },
+
+    async joinCall(id: string) {
+        const headers = await this.getHeaders();
+        const res = await fetch(`${API_URL}/api/consultations/${id}/join`, {
+            method: "POST",
+            headers
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || "Failed to join call");
+        }
+        return res.json();
+    },
+
+    async getMessages(id: string) {
+        const headers = await this.getHeaders();
+        const res = await fetch(`${API_URL}/api/consultations/${id}/messages`, { headers });
+        if (!res.ok) throw new Error("Failed to load messages");
+        return res.json();
+    },
+
+    async sendMessage(id: string, content: string) {
+        const headers = await this.getHeaders();
+        const res = await fetch(`${API_URL}/api/consultations/${id}/message`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ content })
+        });
+        if (!res.ok) throw new Error("Failed to send message");
+        return res.json();
+    },
+
+    async completeConsultation(id: string, notes?: string) {
+        const headers = await this.getHeaders();
+        const res = await fetch(`${API_URL}/api/consultations/${id}/complete`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ notes })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || "Failed to complete consultation");
+        }
+        return res.json();
+    },
+
+    async cancelConsultation(id: string, reason?: string) {
+        const headers = await this.getHeaders();
+        const res = await fetch(`${API_URL}/api/consultations/${id}/cancel`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ reason: reason || "Cancelled by pharmacist" })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || "Failed to cancel consultation");
+        }
+        return res.json();
     }
 };
+
+export interface PharmacistConsultation {
+    id: string;
+    patient_id: string;
+    patient_name?: string;
+    patient_concern?: string;
+    scheduled_at: string;
+    status: "pending_payment" | "scheduled" | "confirmed" | "in_progress" | "completed" | "cancelled";
+    amount: number;
+    duration_minutes: number;
+    agora_channel?: string;
+    payment_status: string;
+}

@@ -217,28 +217,5 @@ export async function getAccessToken(): Promise<string | null> {
   return session?.access_token || null;
 }
 
-export async function transcribeAudio(audioBlob: Blob): Promise<{ text: string }> {
-  const settings = await getAuthHeaders();
-  // We need to construct FormData, not JSON, so don't use authFetch helper directly for body
-  // But we need the headers. authFetch isn't flexible enough for FormData body easily 
-  // without modification or a new helper. Let's just use fetch + headers.
-
-  const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-
-  const formData = new FormData();
-  formData.append("file", audioBlob, "recording.webm");
-
-  const headers: HeadersInit = {};
-  if (session?.access_token) {
-    headers["Authorization"] = `Bearer ${session.access_token}`;
-  }
-
-  const response = await fetch(`${API_URL}/api/audio/transcribe`, {
-    method: "POST",
-    headers,
-    body: formData,
-  });
-
-  return handleResponse<{ text: string }>(response);
-}
+// NOTE: Speech-to-text is now handled client-side via Web Speech API
+// See: components/ai-prompt-box.tsx (no server roundtrip needed)

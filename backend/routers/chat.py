@@ -251,7 +251,8 @@ async def chat_endpoint(
             history=history_for_llm,  # Use session history, not client history
             drug_info=context_data.get('drug_info'),
             rag_context=rag_content,
-            images=chat_request.images
+            images=chat_request.images,
+            language=chat_request.language  # Multi-language support
         )
 
         response_text = gemini_result.get("response", "")

@@ -9,6 +9,7 @@ from models import PatientContext, ConsultationStatus
 from config import SUPABASE_URL, SUPABASE_KEY
 from dependencies import get_current_user
 from services.supabase_service import SupabaseService
+from services.language_service import get_supported_languages_list
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -121,3 +122,12 @@ async def get_my_consultations(
     except Exception as e:
         logger.error("Failed to get my consultations: %s", e)
         raise HTTPException(status_code=500, detail="Failed to fetch consultations")
+
+
+@router.get("/languages")
+async def get_supported_languages():
+    """
+    Get list of supported languages for the chat interface.
+    Returns language codes and BCP-47 codes for Web Speech API.
+    """
+    return {"languages": get_supported_languages_list()}

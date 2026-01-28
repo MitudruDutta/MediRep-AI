@@ -3,7 +3,6 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ArrowUp, Paperclip, Square, X, StopCircle, Mic, Globe } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { transcribeAudio } from "@/lib/api";
 
 // Utility function for className merging
 const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(" ");
@@ -428,15 +427,31 @@ const PromptInputAction: React.FC<PromptInputActionProps> = ({
 
 
 // Main PromptInputBox Component
+// Supported Indian languages (BCP-47 codes for Web Speech API)
+export const SUPPORTED_SPEECH_LANGUAGES = {
+  en: "en-IN",
+  hi: "hi-IN",
+  ta: "ta-IN",
+  te: "te-IN",
+  bn: "bn-IN",
+  mr: "mr-IN",
+  gu: "gu-IN",
+  pa: "pa-IN",
+  kn: "kn-IN",
+  ml: "ml-IN",
+  or: "or-IN",
+} as const;
+
 interface PromptInputBoxProps {
   onSend?: (message: string, files?: File[], isSearchMode?: boolean) => void;
   isLoading?: boolean;
   placeholder?: string;
   className?: string;
   onSearchModeChange?: (isSearchMode: boolean) => void;
+  speechLanguage?: keyof typeof SUPPORTED_SPEECH_LANGUAGES;
 }
 export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref: React.Ref<HTMLDivElement>) => {
-  const { onSend = () => { }, isLoading = false, placeholder = "Type your message here...", className, onSearchModeChange } = props;
+  const { onSend = () => { }, isLoading = false, placeholder = "Type your message here...", className, onSearchModeChange, speechLanguage = "en" } = props;
   const [input, setInput] = React.useState("");
   const [files, setFiles] = React.useState<File[]>([]);
   const [filePreviews, setFilePreviews] = React.useState<{ [key: string]: string }>({});
@@ -530,57 +545,73 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
 
 
 
-  // Speech Recognition State (Now MediaRecorder)
-  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
-  const chunksRef = React.useRef<Blob[]>([]);
+  // Web Speech API - Client-side speech recognition (FREE, instant, no server)
+  // Supports Indian languages: Hindi, Tamil, Telugu, Bengali, Marathi, Gujarati, Punjabi, Kannada, Malayalam, Odia
+  const recognitionRef = React.useRef<any>(null);
+  const [speechSupported, setSpeechSupported] = React.useState(true);
 
-  const handleStartRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Let browser choose default supported unix/container (usually webm/opus or mp4/aac)
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        // Use BCP-47 code for the selected language (supports Indian languages)
+        recognition.lang = SUPPORTED_SPEECH_LANGUAGES[speechLanguage] || "en-IN";
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const mimeType = mediaRecorder.mimeType || 'audio/webm';
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-
-        // Stop all tracks to release mic
-        stream.getTracks().forEach(track => track.stop());
-
-        try {
-          const result = await transcribeAudio(blob);
-          if (result.text) {
-            setInput((prev) => prev + (prev ? " " : "") + result.text);
+        recognition.onresult = (event: any) => {
+          let finalTranscript = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            }
           }
-        } catch (e) {
-          console.error("Transcription failed", e);
-          alert("Failed to transcribe audio. Check console for details.");
-        }
+          if (finalTranscript) {
+            setInput((prev) => prev + (prev ? " " : "") + finalTranscript);
+          }
+        };
 
-        chunksRef.current = [];
-      };
+        recognition.onerror = (event: any) => {
+          console.error("Speech recognition error:", event.error);
+          if (event.error === "not-allowed") {
+            alert("Microphone access denied. Please allow microphone access and try again.");
+          }
+          setIsRecording(false);
+        };
 
-      mediaRecorder.start();
-      console.log("Started recording");
-    } catch (err) {
-      console.error("Error accessing microphone:", err);
-      alert("Could not access microphone. Please ensure you have granted permission.");
-      setIsRecording(false);
+        recognition.onend = () => {
+          setIsRecording(false);
+        };
+
+        recognitionRef.current = recognition;
+      } else {
+        setSpeechSupported(false);
+      }
+    }
+  }, [speechLanguage]); // Re-initialize when language changes
+
+  const handleStartRecording = () => {
+    if (!speechSupported) {
+      alert("Speech recognition is not supported in this browser. Please use Chrome or Edge.");
+      return;
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.start();
+      } catch (err) {
+        console.error("Failed to start speech recognition:", err);
+      }
     }
   };
 
-  const handleStopRecording = async (duration: number) => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
-      // The onstop handler defined in start() will trigger now
+  const handleStopRecording = (duration: number) => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.error("Failed to stop speech recognition:", err);
+      }
     }
     console.log(`Stopped recording after ${duration} seconds`);
     setIsRecording(false);
