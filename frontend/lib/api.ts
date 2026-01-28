@@ -219,3 +219,10 @@ export async function getAccessToken(): Promise<string | null> {
 
 // NOTE: Speech-to-text is now handled client-side via Web Speech API
 // See: components/ai-prompt-box.tsx (no server roundtrip needed)
+
+export async function analyzePatientText(text: string): Promise<PatientContext> {
+  return authFetch<PatientContext>(`${API_URL}/api/context/analyze`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+}

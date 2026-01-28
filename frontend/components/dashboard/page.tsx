@@ -130,7 +130,7 @@ const items = [
     url: "/compare",
     icon: <Scale className="size-6" />,
     description: "Compare medicine prices across 13+ pharmacies",
-    colSpan: "md:col-span-2",
+    colSpan: "md:col-span-1",
   },
 ];
 

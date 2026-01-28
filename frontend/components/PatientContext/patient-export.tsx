@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Download, FileJson, FileText } from "lucide-react";
+import { Download, FileText, File } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,33 +9,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PatientContext } from "@/types";
+import { jsPDF } from "jspdf";
 
 interface PatientExportProps {
   patientContext: PatientContext | null;
 }
 
 export function PatientExport({ patientContext }: PatientExportProps) {
-  const exportAsJSON = () => {
-    if (!patientContext) return;
-
-    const data = {
-      patientContext,
-      exportedAt: new Date().toISOString(),
-      version: "1.0",
-    };
-
-    const jsonString = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonString], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `patient-context-${new Date().toISOString().split("T")[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   const exportAsText = () => {
     if (!patientContext) return;
 
@@ -46,6 +26,7 @@ export function PatientExport({ patientContext }: PatientExportProps) {
       "Demographics:",
       `  Age: ${patientContext.age} years`,
       `  Sex: ${patientContext.sex}`,
+      `  Weight: ${patientContext.weight ? patientContext.weight + " kg" : "N/A"}`,
       "",
       "Medical Conditions:",
       patientContext.conditions.length > 0
@@ -78,6 +59,83 @@ export function PatientExport({ patientContext }: PatientExportProps) {
     URL.revokeObjectURL(url);
   };
 
+  const exportAsPDF = () => {
+    if (!patientContext) return;
+
+    const doc = new jsPDF();
+    const dateStr = new Date().toLocaleDateString();
+
+    // Title
+    doc.setFontSize(18);
+    doc.text("Patient Context Summary", 20, 20);
+
+    doc.setFontSize(10);
+    doc.text(`Generated on: ${dateStr}`, 20, 28);
+    doc.line(20, 32, 190, 32);
+
+    // Demographics
+    doc.setFontSize(14);
+    doc.text("Demographics", 20, 45);
+
+    doc.setFontSize(12);
+    doc.text(`Age: ${patientContext.age} years`, 25, 55);
+    doc.text(`Sex: ${patientContext.sex}`, 25, 62);
+    doc.text(`Weight: ${patientContext.weight ? patientContext.weight + " kg" : "N/A"}`, 25, 69);
+
+    // Conditions
+    let yPos = 85;
+    doc.setFontSize(14);
+    doc.text("Medical Conditions", 20, yPos);
+    yPos += 10;
+    doc.setFontSize(12);
+    if (patientContext.conditions.length > 0) {
+      patientContext.conditions.forEach((c) => {
+        doc.text(`• ${c}`, 25, yPos);
+        yPos += 7;
+      });
+    } else {
+      doc.text("None recorded", 25, yPos);
+      yPos += 7;
+    }
+
+    // Meds
+    yPos += 10;
+    doc.setFontSize(14);
+    doc.text("Current Medications", 20, yPos);
+    yPos += 10;
+    doc.setFontSize(12);
+    if (patientContext.currentMeds.length > 0) {
+      patientContext.currentMeds.forEach((m) => {
+        doc.text(`• ${m}`, 25, yPos);
+        yPos += 7;
+      });
+    } else {
+      doc.text("None recorded", 25, yPos);
+      yPos += 7;
+    }
+
+    // Allergies
+    yPos += 10;
+    doc.setFontSize(14);
+    doc.text("Allergies", 20, yPos);
+    yPos += 10;
+    doc.setFontSize(12);
+    if (patientContext.allergies.length > 0) {
+      patientContext.allergies.forEach((a) => {
+        // Simple check for text overflow
+        doc.setTextColor(220, 38, 38); // Red color for allergies
+        doc.text(`• ${a}`, 25, yPos);
+        doc.setTextColor(0, 0, 0); // Reset
+        yPos += 7;
+      });
+    } else {
+      doc.text("None recorded", 25, yPos);
+      yPos += 7;
+    }
+
+    doc.save(`patient-context-${new Date().toISOString().split("T")[0]}.pdf`);
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -87,13 +145,13 @@ export function PatientExport({ patientContext }: PatientExportProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={exportAsJSON}>
-          <FileJson className="h-4 w-4 mr-2" />
-          Export as JSON
-        </DropdownMenuItem>
         <DropdownMenuItem onClick={exportAsText}>
           <FileText className="h-4 w-4 mr-2" />
           Export as Text
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={exportAsPDF}>
+          <File className="h-4 w-4 mr-2" />
+          Export as PDF
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

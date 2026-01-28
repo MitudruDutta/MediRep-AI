@@ -25,7 +25,7 @@ agora-token-builder==1.0.0
 
 # Security
 slowapi==0.1.9
+curl_cffi
 
 
 tf-keras
-elevenlabs

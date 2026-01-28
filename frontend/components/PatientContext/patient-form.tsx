@@ -20,6 +20,8 @@ export function PatientForm({ formData, setFormData }: PatientFormProps) {
   const [medInput, setMedInput] = useState("");
   const [allergyInput, setAllergyInput] = useState("");
 
+
+
   const addItem = (
     value: string,
     field: "conditions" | "currentMeds" | "allergies",
@@ -46,6 +48,7 @@ export function PatientForm({ formData, setFormData }: PatientFormProps) {
 
   return (
     <div className="space-y-6">
+
       {/* Demographics */}
       <div className="grid grid-cols-3 gap-4">
         <div>

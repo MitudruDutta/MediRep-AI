@@ -61,12 +61,12 @@ export default function PillScanner() {
   const parseMatches = (description: string): DrugMatch[] => {
     const matches: DrugMatch[] = [];
     const lines = description.split("\n");
-    
+
     let currentMatch: Partial<DrugMatch> | null = null;
-    
+
     for (const line of lines) {
       const trimmed = line.trim();
-      
+
       // Match drug name (e.g., "1. **Dolo 650**")
       const nameMatch = trimmed.match(/^\d+\.\s+\*\*(.+?)\*\*/);
       if (nameMatch) {
@@ -80,7 +80,7 @@ export default function PillScanner() {
         };
         continue;
       }
-      
+
       if (currentMatch) {
         // Extract generic name
         if (trimmed.startsWith("Generic:")) {
@@ -104,12 +104,12 @@ export default function PillScanner() {
         }
       }
     }
-    
+
     // Add last match
     if (currentMatch && currentMatch.name) {
       matches.push(currentMatch as DrugMatch);
     }
-    
+
     return matches;
   };
 
@@ -122,7 +122,7 @@ export default function PillScanner() {
     try {
       const response = await identifyPill(image) as PillIdentificationResult;
       setResult(response);
-      
+
       // Parse matches from description
       const parsedMatches = parseMatches(response.description);
       setMatches(parsedMatches);
@@ -142,12 +142,12 @@ export default function PillScanner() {
         const stored = localStorage.getItem("pill-scan-history");
         const history = stored ? JSON.parse(stored) : [];
         history.unshift(historyItem);
-        
+
         // Keep only last 50 scans
         if (history.length > 50) {
           history.splice(50);
         }
-        
+
         localStorage.setItem("pill-scan-history", JSON.stringify(history));
       } catch (e) {
         console.error("Failed to save scan history", e);
@@ -244,23 +244,6 @@ export default function PillScanner() {
             confidence={result.confidence}
             onReset={handleReset}
           />
-        )}
-
-        {/* Tips */}
-        {!preview && (
-          <Alert className="bg-blue-500/10 border-blue-500/50">
-            <Lightbulb className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            <AlertDescription>
-              <p className="font-semibold mb-2">Tips for best results:</p>
-              <ul className="list-disc list-inside space-y-1 text-sm">
-                <li>Use good lighting (natural light works best)</li>
-                <li>Place pill on a white or plain background</li>
-                <li>Ensure any text or imprint is clearly visible</li>
-                <li>Take photo from directly above the pill</li>
-                <li>Avoid shadows and reflections</li>
-              </ul>
-            </AlertDescription>
-          </Alert>
         )}
       </div>
     </Card>

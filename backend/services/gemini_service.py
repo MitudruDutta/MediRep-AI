@@ -597,3 +597,69 @@ async def transcribe_audio(audio_bytes: bytes, mime_type: str = "audio/webm") ->
     except Exception as e:
         logger.error("Transcription failed: %s", e)
         raise Exception("Transcription failed") from e
+async def analyze_patient_text(text: str) -> PatientContext:
+    """
+    Extract structured patient context from unstructured clinical text.
+    """
+    try:
+        model = _get_model()
+        
+        prompt = f"""You are a medical data extraction specialist.
+Analyze the following unstructured clinical text/notes and extract structured patient information.
+
+CLINICAL TEXT:
+"{text}"
+
+INSTRUCTIONS:
+1. Extract the following fields:
+   - Age (integer, 0 if unknown)
+   - Sex (male, female, other)
+   - Weight (float in kg, null/None if unknown)
+   - Medical Conditions (list of strings, e.g. "Diabetes", "Hypertension")
+   - Current Medications (list of strings, e.g. "Metformin", "Amlodipine")
+   - Allergies (list of strings, e.g. "Peanuts", "Penicillin")
+
+2. Return JSON ONLY. Format:
+{{
+  "age": int,
+  "sex": "male"|"female"|"other",
+  "weight": float|null,
+  "conditions": ["str"...],
+  "current_meds": ["str"...],
+  "allergies": ["str"...]
+}}
+
+3. If information is missing, use empty lists or 0/null.
+4. Normalize drug names and conditions to standard medical title case.
+"""
+
+        response = await asyncio.to_thread(
+            lambda: model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    response_mime_type="application/json",
+                    temperature=0.0
+                )
+            )
+        )
+        
+        json_text = response.text.strip()
+        # Clean markdown if present
+        if json_text.startswith("```json"):
+            json_text = json_text[7:-3]
+            
+        data = json.loads(json_text)
+        
+        return PatientContext(
+            age=data.get("age", 0),
+            sex=data.get("sex", "male"),
+            weight=data.get("weight"),
+            conditions=data.get("conditions", []),
+            current_meds=data.get("current_meds", []),
+            allergies=data.get("allergies", [])
+        )
+
+    except Exception as e:
+        logger.error("Patient text analysis failed: %s", e)
+        # Return empty context on failure
+        return PatientContext(age=0, sex="male", conditions=[], current_meds=[], allergies=[])

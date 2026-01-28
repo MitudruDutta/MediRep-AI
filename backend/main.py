@@ -102,6 +102,10 @@ app.include_router(sessions.router, prefix="/api/sessions", tags=["Sessions"])
 from routers import prices
 app.include_router(prices.router, prefix="/api/prices", tags=["Prices"])
 
+# Context router (patient context analysis)
+from routers import context
+app.include_router(context.router, prefix="/api/context", tags=["Context"])
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
