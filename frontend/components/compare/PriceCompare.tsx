@@ -400,9 +400,9 @@ export default function PriceCompare() {
                                                     <CardContent className="p-4">
                                                         {/* Header */}
                                                         <div className="flex items-start justify-between gap-2 mb-3">
-                                                            <div className={`flex items-center gap-2 px-2.5 py-1 rounded-lg bg-gradient-to-r ${config.gradient} bg-opacity-10`}>
+                                                            <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-100">
                                                                 <span className="text-sm">{config.icon}</span>
-                                                                <span className={`text-xs font-semibold bg-gradient-to-r ${config.gradient} bg-clip-text text-transparent`}>
+                                                                <span className={`text-xs font-bold bg-gradient-to-r ${config.gradient} bg-clip-text text-transparent`}>
                                                                     {result.source}
                                                                 </span>
                                                             </div>
@@ -459,7 +459,7 @@ export default function PriceCompare() {
                                                                 rel="noopener noreferrer"
                                                                 className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-semibold transition-all ${isLowest
                                                                     ? "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30"
-                                                                    : "bg-slate-100 text-slate-700 hover:bg-slate-200 group-hover:bg-gradient-to-r group-hover:from-cyan-500 group-hover:to-blue-500 group-hover:text-white group-hover:shadow-lg"
+                                                                    : "bg-blue-600 text-white shadow-md shadow-blue-500/20 hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-500/30"
                                                                     }`}
                                                             >
                                                                 <ShoppingCart className="h-4 w-4" />

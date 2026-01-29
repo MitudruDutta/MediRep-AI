@@ -114,6 +114,13 @@ async def register_pharmacist(
             "is_available": False,
         }
 
+        # Validate constraints to avoid DB errors
+        if not (99 <= profile_data["rate"] <= 9999):
+             raise HTTPException(status_code=400, detail="Rate must be between 99 and 9999")
+        
+        if profile_data["duration_minutes"] not in [15, 30, 45, 60]:
+             raise HTTPException(status_code=400, detail="Duration must be 15, 30, 45, or 60")
+
         result = auth_client.table("pharmacist_profiles").insert(
             profile_data
         ).execute()

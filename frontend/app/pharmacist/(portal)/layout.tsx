@@ -56,16 +56,16 @@ export default function PharmacistPortalLayout({
     ];
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-200 flex">
+        <div className="min-h-screen bg-background text-foreground flex">
             {/* Sidebar */}
-            <aside className="w-64 border-r border-slate-800 bg-slate-900 flex flex-col fixed h-full z-10">
-                <div className="p-6 border-b border-slate-800 flex items-center gap-3">
+            <aside className="w-64 border-r border-border bg-card flex flex-col fixed h-full z-10">
+                <div className="p-6 border-b border-border flex items-center gap-3">
                     <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center font-bold text-white">
                         Rx
                     </div>
                     <div>
-                        <h1 className="text-sm font-bold text-slate-100">Pharmacist Portal</h1>
-                        <p className="text-xs text-slate-500">MediRep Partner</p>
+                        <h1 className="text-sm font-bold text-foreground">Pharmacist Portal</h1>
+                        <p className="text-xs text-muted-foreground">MediRep Partner</p>
                     </div>
                 </div>
 
@@ -80,8 +80,8 @@ export default function PharmacistPortalLayout({
                                 <Button
                                     variant="ghost"
                                     className={`w-full justify-start gap-3 ${isActive
-                                            ? "bg-slate-800 text-indigo-400 hover:bg-slate-800 hover:text-indigo-300"
-                                            : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                                        ? "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+                                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
                                         }`}
                                 >
                                     <item.icon className="h-4 w-4" />
@@ -92,8 +92,8 @@ export default function PharmacistPortalLayout({
                     })}
                 </nav>
 
-                <div className="p-4 border-t border-slate-800 space-y-2">
-                    <div className="px-3 py-2 text-xs text-slate-500 flex items-center justify-between">
+                <div className="p-4 border-t border-border space-y-2">
+                    <div className="px-3 py-2 text-xs text-muted-foreground flex items-center justify-between">
                         <span>Status</span>
                         <span className="flex items-center gap-1.5">
                             <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
@@ -102,7 +102,7 @@ export default function PharmacistPortalLayout({
                     </div>
                     <Button
                         variant="ghost"
-                        className="w-full justify-start gap-3 text-slate-400 hover:text-slate-200"
+                        className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
                         onClick={handleLogout}
                     >
                         <LogOut className="h-4 w-4" />
@@ -112,7 +112,7 @@ export default function PharmacistPortalLayout({
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 ml-64 bg-slate-950">
+            <main className="flex-1 ml-64 bg-background">
                 <div className="p-8 max-w-7xl mx-auto">
                     {children}
                 </div>

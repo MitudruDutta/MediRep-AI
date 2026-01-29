@@ -18,6 +18,8 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
     logger.warning("Playwright not installed. Browser scraping unavailable.")
+    Browser = Any
+    Page = Any
 
 # Fallback to requests if Playwright not available
 try:

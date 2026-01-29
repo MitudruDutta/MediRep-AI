@@ -119,10 +119,10 @@ const items = [
     colSpan: "md:col-span-1",
   },
   {
-    title: "Export Summary",
-    url: "/dashboard/ExportSummary",
-    icon: <FileText className="size-6" />,
-    description: "Export consultation summaries",
+    title: "Book Pharmacist",
+    url: "/dashboard/book-pharmacist",
+    icon: <User className="size-6" />,
+    description: "Connect with expert pharmacists",
     colSpan: "md:col-span-1",
   },
   {

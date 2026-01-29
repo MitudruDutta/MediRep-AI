@@ -39,7 +39,8 @@ export default function ScheduleManager() {
             const data = await pharmacistApi.getSchedule();
             setSlots(data.length > 0 ? data : []);
         } catch (error) {
-            toast.error("Failed to load schedule");
+            console.error(error);
+            // Silently fail - no popup
         } finally {
             setLoading(false);
         }
@@ -51,7 +52,8 @@ export default function ScheduleManager() {
             await pharmacistApi.setSchedule(slots);
             toast.success("Schedule updated successfully");
         } catch (error) {
-            toast.error("Failed to save schedule");
+            console.error(error);
+            // Silently fail - no popup
         } finally {
             setSaving(false);
         }
@@ -87,7 +89,7 @@ export default function ScheduleManager() {
     // Easier to just find them or store them flat and filter in render.
 
     if (loading) {
-        return <div className="p-8 text-slate-400">Loading schedule...</div>;
+        return <div className="p-8 text-muted-foreground">Loading schedule...</div>;
     }
 
     return (
@@ -95,10 +97,10 @@ export default function ScheduleManager() {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-3xl font-bold tracking-tight">Availability</h2>
-                    <p className="text-slate-400">Manage your weekly recurring schedule.</p>
+                    <p className="text-muted-foreground">Manage your weekly recurring schedule.</p>
                 </div>
                 <div className="flex gap-3">
-                    <Button variant="outline" onClick={applyTemplate} className="border-slate-800 hover:bg-slate-800">
+                    <Button variant="outline" onClick={applyTemplate}>
                         <RotateCcw className="mr-2 h-4 w-4" /> Load 9-5 Template
                     </Button>
                     <Button onClick={handleSave} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white">
@@ -120,13 +122,13 @@ export default function ScheduleManager() {
                         .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
                     return (
-                        <Card key={dayIndex} className="bg-slate-900 border-slate-800">
-                            <CardHeader className="pb-3 flex flex-row items-center justify-between bg-slate-900/50">
+                        <Card key={dayIndex} className="bg-card border-border">
+                            <CardHeader className="pb-3 flex flex-row items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className={`h-3 w-3 rounded-full ${daySlots.length > 0 ? 'bg-green-500' : 'bg-slate-700'}`} />
+                                    <div className={`h-3 w-3 rounded-full ${daySlots.length > 0 ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
                                     <CardTitle className="text-base font-medium">{dayName}</CardTitle>
                                 </div>
-                                <Button size="sm" variant="ghost" className="h-8 border border-dashed border-slate-700 hover:bg-slate-800" onClick={() => addSlot(dayIndex)}>
+                                <Button size="sm" variant="ghost" className="h-8 border border-dashed border-border hover:bg-muted" onClick={() => addSlot(dayIndex)}>
                                     <Plus className="mr-2 h-3 w-3" /> Add Slot
                                 </Button>
                             </CardHeader>
@@ -134,27 +136,27 @@ export default function ScheduleManager() {
                             {daySlots.length > 0 && (
                                 <CardContent className="pt-3 pb-3 space-y-3">
                                     {daySlots.map((slot) => (
-                                        <div key={slot.originalIndex} className="flex items-center gap-4 bg-slate-950/50 p-2 rounded border border-slate-800">
-                                            <Clock className="h-4 w-4 text-slate-500 ml-2" />
+                                        <div key={slot.originalIndex} className="flex items-center gap-4 bg-muted/50 p-2 rounded border border-border">
+                                            <Clock className="h-4 w-4 text-muted-foreground ml-2" />
 
                                             <div className="flex items-center gap-2">
                                                 <Input
                                                     type="time"
                                                     value={slot.start_time}
                                                     onChange={(e) => updateSlot(slot.originalIndex, 'start_time', e.target.value)}
-                                                    className="w-32 bg-slate-950 border-slate-700 h-8 text-sm"
+                                                    className="w-32 bg-background border-border h-8 text-sm"
                                                 />
-                                                <span className="text-slate-500 text-xs">TO</span>
+                                                <span className="text-muted-foreground text-xs">TO</span>
                                                 <Input
                                                     type="time"
                                                     value={slot.end_time}
                                                     onChange={(e) => updateSlot(slot.originalIndex, 'end_time', e.target.value)}
-                                                    className="w-32 bg-slate-950 border-slate-700 h-8 text-sm"
+                                                    className="w-32 bg-background border-border h-8 text-sm"
                                                 />
                                             </div>
 
                                             <div className="ml-auto">
-                                                <Button size="sm" variant="ghost" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-950/20" onClick={() => removeSlot(slot.originalIndex)}>
+                                                <Button size="sm" variant="ghost" className="h-8 w-8 text-red-500 hover:text-red-400 hover:bg-red-500/10" onClick={() => removeSlot(slot.originalIndex)}>
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </div>

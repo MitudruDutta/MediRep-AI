@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { toast } from "sonner";
-import { Loader2, Upload, Check, ChevronRight, ChevronLeft, Shield } from "lucide-react";
+import { Loader2, Upload, Check, ChevronRight, ChevronLeft, Shield, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -377,13 +377,20 @@ export default function PharmacistRegistrationPage() {
                                     <Label>Upload License Certificate</Label>
                                     <div className="border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors relative">
                                         {formData.license_image_url ? (
-                                            <div className="relative w-full h-48">
-                                                <Image
-                                                    src={formData.license_image_url}
-                                                    alt="License"
-                                                    fill
-                                                    className="object-contain"
-                                                />
+                                            <div className="relative w-full h-48 flex items-center justify-center">
+                                                {licenseFile?.type === "application/pdf" ? (
+                                                    <div className="flex flex-col items-center text-slate-500">
+                                                        <FileText className="h-16 w-16 mb-2" />
+                                                        <span className="text-sm font-medium">{licenseFile.name}</span>
+                                                    </div>
+                                                ) : (
+                                                    <Image
+                                                        src={formData.license_image_url}
+                                                        alt="License"
+                                                        fill
+                                                        className="object-contain"
+                                                    />
+                                                )}
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
@@ -391,6 +398,7 @@ export default function PharmacistRegistrationPage() {
                                                     onClick={(e) => {
                                                         e.preventDefault();
                                                         setFormData(prev => ({ ...prev, license_image_url: "" }));
+                                                        setLicenseFile(null);
                                                     }}
                                                 >
                                                     Change
@@ -403,10 +411,10 @@ export default function PharmacistRegistrationPage() {
                                                     Drag and drop or click to upload<br />
                                                     (JPG, PNG, PDF up to 5MB)
                                                 </p>
-                                                <Input
+                                                <input
                                                     type="file"
-                                                    accept="image/*,application/pdf"
-                                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                                    accept="image/jpeg,image/png,application/pdf"
+                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                                     onChange={handleFileChange}
                                                     disabled={isUploading}
                                                 />

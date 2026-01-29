@@ -18,6 +18,8 @@ import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { pharmacistApi, PharmacistStats, PharmacistConsultation } from "@/lib/pharmacist-api";
 
+import { ModeToggle } from "@/components/mode-toggle";
+
 export default function PharmacistDashboard() {
     const [stats, setStats] = useState<PharmacistStats | null>(null);
     const [consultations, setConsultations] = useState<PharmacistConsultation[]>([]);
@@ -35,7 +37,7 @@ export default function PharmacistDashboard() {
                 setConsultations(consultationsData);
             } catch (error) {
                 console.error(error);
-                toast.error("Failed to load dashboard");
+                // Silently fail - no popup
             } finally {
                 setLoading(false);
             }
@@ -44,144 +46,165 @@ export default function PharmacistDashboard() {
     }, []);
 
     const handleAvailabilityChange = async (checked: boolean) => {
+        // Optimistic update - toggle immediately without API
+        setIsAvailable(checked);
         try {
             await pharmacistApi.toggleAvailability(checked);
-            setIsAvailable(checked);
-            toast.success(checked ? "You are now ONLINE" : "You are now OFFLINE");
         } catch (error) {
-            toast.error("Failed to update status");
+            console.error(error);
+            // Silently fail - no popup
         }
     };
 
     if (loading) {
-        return <div className="p-8 text-slate-400">Loading dashboard...</div>;
+        return <div className="p-8 text-muted-foreground">Loading dashboard...</div>;
     }
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 p-1 px-4 lg:px-8">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-                    <p className="text-slate-400">Welcome back, Dr. Pharmacist</p>
+                    <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">Dashboard</h2>
+                    <p className="text-muted-foreground mt-1">Welcome back, Dr. Pharmacist</p>
                 </div>
-                <div className="flex items-center gap-4 bg-slate-900 border border-slate-800 p-2 rounded-lg">
-                    <span className={`text-sm font-medium ${isAvailable ? "text-green-400" : "text-slate-500"}`}>
-                        {isAvailable ? "Available for Calls" : "Offline"}
-                    </span>
-                    <Switch
-                        checked={isAvailable}
-                        onCheckedChange={handleAvailabilityChange}
-                        className="data-[state=checked]:bg-green-500"
-                    />
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 bg-background/50 border border-border p-3 rounded-xl backdrop-blur-md shadow-sm">
+                        <span className={`text-sm font-medium transition-colors ${isAvailable ? "text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "text-muted-foreground"}`}>
+                            {isAvailable ? "Available for Calls" : "Offline"}
+                        </span>
+                        <Switch
+                            checked={isAvailable}
+                            onCheckedChange={handleAvailabilityChange}
+                            className="data-[state=checked]:bg-emerald-500"
+                        />
+                    </div>
+                    <ModeToggle />
                 </div>
             </div>
 
             {/* Stats Grid */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="bg-slate-900 border-slate-800">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                <Card className="bg-gradient-to-br from-background via-muted/50 to-muted border-border shadow-lg hover:shadow-emerald-500/10 transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-400">Total Revenue</CardTitle>
-                        <Wallet className="h-4 w-4 text-emerald-500" />
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
+                        <div className="p-2 bg-emerald-500/10 rounded-lg">
+                            <Wallet className="h-5 w-5 text-emerald-500" />
+                        </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-emerald-400">₹{stats?.total_earnings || 0}</div>
-                        <p className="text-xs text-slate-500">+20.1% from last month</p>
+                        <div className="text-3xl font-bold text-foreground">₹{stats?.total_earnings || 0}</div>
+                        <p className="text-xs text-emerald-500 mt-1 font-medium">+20.1% from last month</p>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-slate-900 border-slate-800">
+                <Card className="bg-gradient-to-br from-background via-muted/50 to-muted border-border shadow-lg hover:shadow-blue-500/10 transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-400">Consultations</CardTitle>
-                        <Users className="h-4 w-4 text-blue-500" />
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Consultations</CardTitle>
+                        <div className="p-2 bg-blue-500/10 rounded-lg">
+                            <Users className="h-5 w-5 text-blue-500" />
+                        </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-blue-400">{stats?.completed_consultations || 0}</div>
-                        <p className="text-xs text-slate-500">Completed Success</p>
+                        <div className="text-3xl font-bold text-foreground">{stats?.completed_consultations || 0}</div>
+                        <p className="text-xs text-muted-foreground mt-1">Completed successfully</p>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-slate-900 border-slate-800">
+                <Card className="bg-gradient-to-br from-background via-muted/50 to-muted border-border shadow-lg hover:shadow-amber-500/10 transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-400">Rating</CardTitle>
-                        <Star className="h-4 w-4 text-amber-500" />
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Average Rating</CardTitle>
+                        <div className="p-2 bg-amber-500/10 rounded-lg">
+                            <Star className="h-5 w-5 text-amber-500" />
+                        </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-amber-400">{stats?.rating_avg || 0}</div>
-                        <p className="text-xs text-slate-500">Based on {stats?.rating_count || 0} reviews</p>
+                        <div className="text-3xl font-bold text-foreground">{stats?.rating_avg || 0}</div>
+                        <p className="text-xs text-muted-foreground mt-1">Based on {stats?.rating_count || 0} reviews</p>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-slate-900 border-slate-800">
+                <Card className="bg-gradient-to-br from-background via-muted/50 to-muted border-border shadow-lg hover:shadow-purple-500/10 transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-400">Pending Payout</CardTitle>
-                        <CalendarDays className="h-4 w-4 text-purple-500" />
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Pending Payout</CardTitle>
+                        <div className="p-2 bg-purple-500/10 rounded-lg">
+                            <CalendarDays className="h-5 w-5 text-purple-500" />
+                        </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-slate-200">₹{stats?.pending_payout || 0}</div>
-                        <p className="text-xs text-slate-500">Processing on Monday</p>
+                        <div className="text-3xl font-bold text-foreground">₹{stats?.pending_payout || 0}</div>
+                        <p className="text-xs text-muted-foreground mt-1">Processing on Monday</p>
                     </CardContent>
                 </Card>
             </div>
 
             {/* Recent Consultations / Upcoming */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                <Card className="col-span-4 bg-slate-900 border-slate-800">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
+                <Card className="col-span-4 bg-background/50 border-border shadow-xl backdrop-blur-sm">
                     <CardHeader>
-                        <CardTitle>Upcoming Consultations</CardTitle>
-                        <CardDescription>
-                            You have {stats?.upcoming_consultations || 0} consultations scheduled for today.
-                        </CardDescription>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle className="text-xl">Upcoming Consultations</CardTitle>
+                                <CardDescription className="text-muted-foreground">
+                                    You have {stats?.upcoming_consultations || 0} bookings scheduled.
+                                </CardDescription>
+                            </div>
+                            <Button variant="outline" size="sm" className="bg-background hover:bg-muted transition-all">
+                                View All
+                            </Button>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
                             {consultations.length === 0 ? (
-                                <div className="text-center py-8 text-slate-500">
-                                    <CalendarDays className="h-10 w-10 mx-auto mb-3 opacity-50" />
-                                    <p>No upcoming consultations</p>
-                                    <p className="text-xs mt-1">Set your availability to receive bookings</p>
+                                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground bg-muted/30 rounded-xl border border-dashed border-border">
+                                    <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                                        <CalendarDays className="h-8 w-8 text-muted-foreground/50" />
+                                    </div>
+                                    <p className="text-lg font-medium">No upcoming consultations</p>
+                                    <p className="text-sm mt-1 max-w-xs mx-auto">Set your availability to 'Available' to start receiving new bookings from patients.</p>
                                 </div>
                             ) : (
                                 consultations.slice(0, 5).map((consultation) => {
                                     const isJoinable = consultation.status === "confirmed" || consultation.status === "in_progress";
                                     return (
-                                        <div key={consultation.id} className="flex items-center justify-between p-4 bg-slate-950 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors">
+                                        <div key={consultation.id} className="group flex items-center justify-between p-4 bg-card rounded-xl border border-border hover:border-primary/20 hover:bg-muted/50 transition-all duration-200">
                                             <div className="flex items-center gap-4">
-                                                <Avatar className="h-10 w-10 border border-slate-700">
-                                                    <AvatarFallback>
+                                                <Avatar className="h-12 w-12 border-2 border-border shadow-sm">
+                                                    <AvatarFallback className="bg-muted text-foreground font-semibold">
                                                         {consultation.patient_name?.slice(0, 2).toUpperCase() || "PT"}
                                                     </AvatarFallback>
                                                 </Avatar>
                                                 <div>
-                                                    <p className="text-sm font-medium leading-none text-slate-200">
+                                                    <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
                                                         {consultation.patient_name || `Patient #${consultation.patient_id.slice(0, 8)}`}
                                                     </p>
-                                                    <p className="text-xs text-slate-500 mt-1">
-                                                        {format(new Date(consultation.scheduled_at), "PPP p")} • {consultation.duration_minutes} Mins
-                                                    </p>
-                                                    {consultation.patient_concern && (
-                                                        <p className="text-xs text-slate-400 mt-1 line-clamp-1">
-                                                            "{consultation.patient_concern}"
-                                                        </p>
-                                                    )}
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+                                                            {format(new Date(consultation.scheduled_at), "h:mm a")}
+                                                        </span>
+                                                        <span className="text-xs text-muted-foreground">
+                                                            • {consultation.duration_minutes} Mins
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div>
                                                 <Link href={`/pharmacist/consultations/${consultation.id}`}>
                                                     <Button
                                                         size="sm"
-                                                        className={isJoinable
-                                                            ? "bg-green-600 hover:bg-green-700 text-white"
-                                                            : "bg-slate-700 hover:bg-slate-600 text-slate-200"
-                                                        }
+                                                        className={`transition-all duration-300 shadow-lg ${isJoinable
+                                                            ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-500/20"
+                                                            : "bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border"
+                                                            }`}
                                                     >
                                                         {isJoinable ? (
                                                             <>
-                                                                <Phone className="mr-2 h-3 w-3" /> Join
+                                                                <Phone className="mr-2 h-3.5 w-3.5 animate-pulse" /> Join Call
                                                             </>
                                                         ) : (
                                                             <>
-                                                                <Play className="mr-2 h-3 w-3" /> View
+                                                                <Play className="mr-2 h-3.5 w-3.5" /> View
                                                             </>
                                                         )}
                                                     </Button>
@@ -196,32 +219,43 @@ export default function PharmacistDashboard() {
                 </Card>
 
                 {/* Recent Activity / Notifications */}
-                <Card className="col-span-3 bg-slate-900 border-slate-800">
+                <Card className="col-span-3 bg-background/50 border-border shadow-xl backdrop-blur-sm">
                     <CardHeader>
-                        <CardTitle>Recent Activity</CardTitle>
+                        <CardTitle className="text-xl">Recent Activity</CardTitle>
                         <CardDescription>Latest notifications and updates</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-4">
-                            <div className="flex gap-4">
-                                <div className="h-8 w-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
-                                    <Wallet className="h-4 w-4" />
+                        <div className="space-y-6">
+                            <div className="flex gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                                <div className="h-10 w-10 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500 shrink-0 shadow-[0_0_10px_rgba(59,130,246,0.1)]">
+                                    <Wallet className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium text-slate-200">Payout Processed</p>
-                                    <p className="text-xs text-slate-500">Your weekly payout of ₹12,400 has been processed.</p>
-                                    <p className="text-[10px] text-slate-600 mt-1">2 hours ago</p>
+                                    <p className="text-sm font-semibold text-foreground">Payout Processed</p>
+                                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">Your weekly payout of <span className="text-foreground font-medium">₹12,400</span> has been successfully processed to your account.</p>
+                                    <p className="text-[10px] text-muted-foreground mt-2 font-medium">2 hours ago</p>
                                 </div>
                             </div>
 
-                            <div className="flex gap-4">
-                                <div className="h-8 w-8 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
-                                    <Star className="h-4 w-4" />
+                            <div className="flex gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                                <div className="h-10 w-10 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0 shadow-[0_0_10px_rgba(245,158,11,0.1)]">
+                                    <Star className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium text-slate-200">New 5-Star Review</p>
-                                    <p className="text-xs text-slate-500">"Dr. Pharmacist was very helpful explaining the dosage..."</p>
-                                    <p className="text-[10px] text-slate-600 mt-1">Yesterday</p>
+                                    <p className="text-sm font-semibold text-foreground">New 5-Star Review</p>
+                                    <p className="text-xs text-muted-foreground mt-1 italic leading-relaxed">"Dr. Pharmacist was very helpful explaining the dosage..."</p>
+                                    <p className="text-[10px] text-muted-foreground mt-2 font-medium">Yesterday</p>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors opacity-60">
+                                <div className="h-10 w-10 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 shrink-0">
+                                    <Users className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-semibold text-foreground">New Profile Visit</p>
+                                    <p className="text-xs text-muted-foreground mt-1">Your profile was viewed 12 times today.</p>
+                                    <p className="text-[10px] text-muted-foreground mt-2 font-medium">2 days ago</p>
                                 </div>
                             </div>
                         </div>
