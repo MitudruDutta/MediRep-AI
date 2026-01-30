@@ -8,8 +8,25 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (user?.user_metadata?.role === 'pharmacist') {
-    redirect('/pharmacist/dashboard');
+  if (!user) {
+    redirect('/auth/login');
+  }
+
+  // Check if user is a pharmacist by querying the database
+  try {
+    const { data: pharmacistProfile, error } = await supabase
+      .from("pharmacist_profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    console.log("Pharmacist profile check:", { userId: user.id, pharmacistProfile, error });
+
+    if (pharmacistProfile) {
+      redirect('/pharmacist/dashboard');
+    }
+  } catch (e) {
+    console.error("Error checking pharmacist profile:", e);
   }
 
   return (

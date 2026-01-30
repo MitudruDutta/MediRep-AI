@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
     LayoutDashboard,
     Calendar,
     History,
     Settings,
     LogOut,
-    User
+    User,
+    Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -23,12 +25,46 @@ export default function PharmacistPortalLayout({
 }) {
     const pathname = usePathname();
     const router = useRouter();
+    const [isLoading, setIsLoading] = useState(true);
+    const [isPharmacist, setIsPharmacist] = useState(false);
+
+    // Check if user is a registered pharmacist
+    useEffect(() => {
+        async function checkPharmacistStatus() {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (!user) {
+                router.push("/pharmacist/auth/login");
+                return;
+            }
+
+            // Check if user has a pharmacist profile
+            const { data: pharmacistProfile } = await supabase
+                .from("pharmacist_profiles")
+                .select("id, verification_status")
+                .eq("user_id", user.id)
+                .maybeSingle();
+
+            if (!pharmacistProfile) {
+                // Not a registered pharmacist - redirect to registration
+                toast.error("You need to register as a pharmacist first");
+                router.push("/pharmacist/register");
+                return;
+            }
+
+            setIsPharmacist(true);
+            setIsLoading(false);
+        }
+
+        checkPharmacistStatus();
+    }, [router]);
 
     const handleLogout = async () => {
         const supabase = createClient();
         await supabase.auth.signOut();
         toast.success("Logged out");
-        router.push("/auth/login");
+        router.push("/pharmacist/auth/login");
     };
 
     const navItems = [
@@ -54,6 +90,23 @@ export default function PharmacistPortalLayout({
             icon: User
         }
     ];
+
+    // Show loading while checking pharmacist status
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="text-center">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-500" />
+                    <p className="mt-4 text-muted-foreground">Verifying pharmacist access...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Only render portal if user is a pharmacist
+    if (!isPharmacist) {
+        return null;
+    }
 
     return (
         <div className="min-h-screen bg-background text-foreground flex">
@@ -120,3 +173,4 @@ export default function PharmacistPortalLayout({
         </div>
     );
 }
+

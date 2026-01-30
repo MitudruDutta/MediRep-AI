@@ -28,10 +28,10 @@ async function upsertUserProfile(supabase: Awaited<ReturnType<typeof createClien
         {
           id: userId,
           display_name: metadata?.full_name as string ||
-                       metadata?.name as string ||
-                       email?.split("@")[0] || null,
+            metadata?.name as string ||
+            email?.split("@")[0] || null,
           avatar_url: metadata?.avatar_url as string ||
-                     metadata?.picture as string || null,
+            metadata?.picture as string || null,
           updated_at: new Date().toISOString(),
         },
         {
@@ -80,8 +80,34 @@ export async function signInWithEmail(formData: FormData): Promise<AuthResult> {
     await upsertUserProfile(supabase, data.user.id, data.user.email, data.user.user_metadata);
   }
 
+  // Determine redirect based on role
+  let finalRedirect = redirectTo || "/dashboard";
+
+  if (data.user) {
+    // Check if admin
+    const isAdmin = data.user.user_metadata?.role === "admin";
+
+    // Check if pharmacist
+    let isPharmacist = false;
+    try {
+      const { data: pharma } = await supabase
+        .from("pharmacist_profiles")
+        .select("id")
+        .eq("user_id", data.user.id)
+        .maybeSingle();
+      if (pharma) isPharmacist = true;
+    } catch (e) { }
+
+    // Set redirect based on role
+    if (isAdmin) {
+      finalRedirect = "/admin/verify";
+    } else if (isPharmacist) {
+      finalRedirect = "/pharmacist/dashboard";
+    }
+  }
+
   revalidatePath("/", "layout");
-  redirect(redirectTo || "/dashboard");
+  redirect(finalRedirect);
 }
 
 export async function signUpWithEmail(formData: FormData): Promise<AuthResult> {
@@ -114,7 +140,7 @@ export async function signUpWithEmail(formData: FormData): Promise<AuthResult> {
   const headersList = await headers();
   const origin = headersList.get("origin") || process.env.NEXT_PUBLIC_SITE_URL;
   const sanitizedEmail = sanitizeEmail(email);
-  
+
   const callbackUrl = new URL(`${origin}/auth/callback`);
   if (redirectTo) {
     callbackUrl.searchParams.set("next", redirectTo);

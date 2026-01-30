@@ -65,13 +65,13 @@ export async function GET(request: NextRequest) {
       // 1. Check if Admin
       const isAdmin = data.user.user_metadata?.role === "admin";
 
-      // 2. Check if Pharmacist
+      // 2. Check if Pharmacist (query by user_id, not id)
       let isPharmacist = false;
       try {
         const { data: pharma } = await supabase
           .from("pharmacist_profiles")
           .select("id")
-          .eq("id", data.user.id)
+          .eq("user_id", data.user.id)
           .maybeSingle();
         if (pharma) isPharmacist = true;
       } catch (e) { }
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
       if (isAdmin) {
         finalRedirect = "/admin/verify";
       } else if (isPharmacist) {
-        finalRedirect = "/marketplace";
+        finalRedirect = "/pharmacist/dashboard";
       } else if (next === "/dashboard") {
         // Default to dashboard for patients (as per user request)
         finalRedirect = "/dashboard";

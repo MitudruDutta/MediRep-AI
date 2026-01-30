@@ -10,31 +10,37 @@ import {
     Star,
     CalendarDays,
     Play,
-    Phone
+    Phone,
+    BadgeCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { pharmacistApi, PharmacistStats, PharmacistConsultation } from "@/lib/pharmacist-api";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { pharmacistApi, PharmacistStats, PharmacistConsultation, PharmacistProfile } from "@/lib/pharmacist-api";
 
 import { ModeToggle } from "@/components/mode-toggle";
 
 export default function PharmacistDashboard() {
     const [stats, setStats] = useState<PharmacistStats | null>(null);
     const [consultations, setConsultations] = useState<PharmacistConsultation[]>([]);
+    const [profile, setProfile] = useState<PharmacistProfile | null>(null);
     const [isAvailable, setIsAvailable] = useState(false);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         async function fetchData() {
             try {
-                const [statsData, consultationsData] = await Promise.all([
+                const [statsData, consultationsData, profileData] = await Promise.all([
                     pharmacistApi.getDashboardStats(),
-                    pharmacistApi.getMyConsultations("upcoming")
+                    pharmacistApi.getMyConsultations("upcoming"),
+                    pharmacistApi.getProfile()
                 ]);
                 setStats(statsData);
                 setConsultations(consultationsData);
+                setProfile(profileData);
+                // Set availability from database
+                setIsAvailable(profileData.is_available);
             } catch (error) {
                 console.error(error);
                 // Silently fail - no popup
@@ -60,13 +66,41 @@ export default function PharmacistDashboard() {
         return <div className="p-8 text-muted-foreground">Loading dashboard...</div>;
     }
 
+    // Get pharmacist initials for avatar
+    const getInitials = (name: string) => {
+        const parts = name.split(" ");
+        if (parts.length >= 2) {
+            return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+        }
+        return name.slice(0, 2).toUpperCase();
+    };
+
     return (
         <div className="space-y-8 p-1 px-4 lg:px-8">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">Dashboard</h2>
-                    <p className="text-muted-foreground mt-1">Welcome back, Dr. Pharmacist</p>
+                <div className="flex items-center gap-4">
+                    <Avatar className="h-14 w-14 border-2 border-indigo-500/30 shadow-lg">
+                        {profile?.profile_image_url && (
+                            <AvatarImage src={profile.profile_image_url} alt={profile?.full_name} />
+                        )}
+                        <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-lg font-bold">
+                            {profile?.full_name ? getInitials(profile.full_name) : "Ph"}
+                        </AvatarFallback>
+                    </Avatar>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-2xl font-bold tracking-tight">
+                                Welcome, {profile?.full_name || "Pharmacist"}
+                            </h2>
+                            {profile?.verification_status === "approved" && (
+                                <BadgeCheck className="h-5 w-5 text-indigo-500" />
+                            )}
+                        </div>
+                        <p className="text-muted-foreground text-sm">
+                            {profile?.specializations?.join(", ") || "Pharmacist"} • {profile?.experience_years || 0} years experience
+                        </p>
+                    </div>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-4 bg-background/50 border border-border p-3 rounded-xl backdrop-blur-md shadow-sm">

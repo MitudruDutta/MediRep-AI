@@ -33,8 +33,22 @@ export default function PharmacistRegistrationPage() {
             const { data: { session } } = await supabase.auth.getSession();
 
             if (!session) {
-                toast.info("Please create an account or login first");
-                router.push("/auth/login?type=pharmacist&redirect=/pharmacist/register");
+                toast.info("Please create an account first");
+                router.push("/pharmacist/auth/signup?redirect=/pharmacist/register");
+                return;
+            }
+
+            // Check if already a registered pharmacist
+            const { data: pharmacistProfile } = await supabase
+                .from("pharmacist_profiles")
+                .select("id")
+                .eq("user_id", session.user.id)
+                .maybeSingle();
+
+            if (pharmacistProfile) {
+                // Already registered, go to dashboard
+                toast.success("You're already registered as a pharmacist!");
+                router.push("/pharmacist/dashboard");
                 return;
             }
 
@@ -109,7 +123,7 @@ export default function PharmacistRegistrationPage() {
     const handleSubmit = async () => {
         if (!session) {
             toast.error("Please login first");
-            router.push("/auth/login?type=pharmacist&redirect=/pharmacist/register");
+            router.push("/pharmacist/auth/login?redirect=/pharmacist/register");
             return;
         }
 

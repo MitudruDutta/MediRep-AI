@@ -53,6 +53,13 @@ export const pharmacistApi = {
         return res.json();
     },
 
+    async getProfile(): Promise<PharmacistProfile> {
+        const headers = await this.getHeaders();
+        const res = await fetch(`${API_URL}/api/pharmacist/profile`, { headers });
+        if (!res.ok) throw new Error("Failed to fetch profile");
+        return res.json();
+    },
+
     async getSchedule(): Promise<ScheduleSlot[]> {
         const headers = await this.getHeaders();
         const res = await fetch(`${API_URL}/api/pharmacist/schedule`, { headers });
@@ -166,4 +173,23 @@ export interface PharmacistConsultation {
     duration_minutes: number;
     agora_channel?: string;
     payment_status: string;
+}
+
+export interface PharmacistProfile {
+    id: string;
+    user_id: string;
+    full_name: string;
+    bio?: string;
+    profile_image_url?: string;
+    specializations: string[];
+    experience_years: number;
+    languages: string[];
+    education?: string;
+    rate: number;
+    duration_minutes: number;
+    rating_avg: number;
+    rating_count: number;
+    completed_consultations: number;
+    is_available: boolean;
+    verification_status: string;
 }

@@ -16,6 +16,7 @@ import uuid
 from typing import List, Optional
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form
+from pydantic import BaseModel
 
 from dependencies import get_current_user
 from models import (
@@ -157,19 +158,23 @@ async def register_pharmacist(
 @router.get("/profile", response_model=PharmacistProfile)
 async def get_own_profile(current_user: dict = Depends(get_current_user)):
     """Get current user's pharmacist profile."""
-    client = SupabaseService.get_client()
-    if not client:
+    # Use authenticated client so RLS policies can verify auth.uid()
+    try:
+        client = SupabaseService.get_auth_client(current_user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client: %s", e)
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     try:
+        # Use limit(1) instead of maybe_single() to avoid 406 errors
         result = client.table("pharmacist_profiles").select("*").eq(
             "user_id", current_user["id"]
-        ).maybe_single().execute()
+        ).limit(1).execute()
 
-        if not result.data:
+        if not result.data or len(result.data) == 0:
             raise HTTPException(status_code=404, detail="Not registered as pharmacist")
 
-        return PharmacistProfile(**result.data)
+        return PharmacistProfile(**result.data[0])
 
     except HTTPException:
         raise
@@ -178,16 +183,21 @@ async def get_own_profile(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Failed to get profile")
 
 
+class PharmacistProfileUpdate(BaseModel):
+    """Request model for updating pharmacist profile."""
+    bio: Optional[str] = None
+    profile_image_url: Optional[str] = None
+    specializations: Optional[List[str]] = None
+    languages: Optional[List[str]] = None
+    education: Optional[str] = None
+    rate: Optional[int] = None
+    duration_minutes: Optional[int] = None
+    upi_id: Optional[str] = None
+
+
 @router.put("/profile", response_model=PharmacistProfile)
 async def update_profile(
-    bio: Optional[str] = None,
-    profile_image_url: Optional[str] = None,
-    specializations: Optional[List[str]] = None,
-    languages: Optional[List[str]] = None,
-    education: Optional[str] = None,
-    rate: Optional[int] = None,
-    duration_minutes: Optional[int] = None,
-    upi_id: Optional[str] = None,
+    update_data: PharmacistProfileUpdate,
     current_user: dict = Depends(get_current_user)
 ):
     """Update pharmacist profile. Only non-null fields are updated."""
@@ -198,26 +208,26 @@ async def update_profile(
     try:
         # Build update dict with only provided fields
         updates = {}
-        if bio is not None:
-            updates["bio"] = bio
-        if profile_image_url is not None:
-            updates["profile_image_url"] = profile_image_url
-        if specializations is not None:
-            updates["specializations"] = specializations
-        if languages is not None:
-            updates["languages"] = languages
-        if education is not None:
-            updates["education"] = education
-        if rate is not None:
-            if rate < 99 or rate > 9999:
+        if update_data.bio is not None:
+            updates["bio"] = update_data.bio
+        if update_data.profile_image_url is not None:
+            updates["profile_image_url"] = update_data.profile_image_url
+        if update_data.specializations is not None:
+            updates["specializations"] = update_data.specializations
+        if update_data.languages is not None:
+            updates["languages"] = update_data.languages
+        if update_data.education is not None:
+            updates["education"] = update_data.education
+        if update_data.rate is not None:
+            if update_data.rate < 99 or update_data.rate > 9999:
                 raise HTTPException(status_code=400, detail="Rate must be between 99 and 9999")
-            updates["rate"] = rate
-        if duration_minutes is not None:
-            if duration_minutes not in [15, 30, 45, 60]:
+            updates["rate"] = update_data.rate
+        if update_data.duration_minutes is not None:
+            if update_data.duration_minutes not in [15, 30, 45, 60]:
                 raise HTTPException(status_code=400, detail="Duration must be 15, 30, 45, or 60")
-            updates["duration_minutes"] = duration_minutes
-        if upi_id is not None:
-            updates["upi_id"] = upi_id
+            updates["duration_minutes"] = update_data.duration_minutes
+        if update_data.upi_id is not None:
+            updates["upi_id"] = update_data.upi_id
 
         if not updates:
             raise HTTPException(status_code=400, detail="No fields to update")
@@ -243,20 +253,23 @@ async def update_profile(
 @router.get("/dashboard", response_model=PharmacistDashboardStats)
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     """Get pharmacist dashboard statistics."""
-    client = SupabaseService.get_client()
-    if not client:
+    # Use authenticated client for RLS
+    try:
+        client = SupabaseService.get_auth_client(current_user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client: %s", e)
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     try:
         # Get pharmacist profile first
         profile = client.table("pharmacist_profiles").select(
             "id, rating_avg, rating_count, completed_consultations"
-        ).eq("user_id", current_user["id"]).maybe_single().execute()
+        ).eq("user_id", current_user["id"]).limit(1).execute()
 
-        if not profile.data:
+        if not profile.data or len(profile.data) == 0:
             raise HTTPException(status_code=404, detail="Not registered as pharmacist")
 
-        pharmacist_id = profile.data["id"]
+        pharmacist_id = profile.data[0]["id"]
 
         # Get earnings from completed consultations
         earnings_result = client.table("consultations").select(
@@ -285,10 +298,10 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         return PharmacistDashboardStats(
             total_earnings=total_earnings,
             pending_payout=pending_payout,
-            completed_consultations=profile.data["completed_consultations"],
+            completed_consultations=profile.data[0]["completed_consultations"],
             upcoming_consultations=upcoming_result.count or 0,
-            rating_avg=profile.data["rating_avg"],
-            rating_count=profile.data["rating_count"],
+            rating_avg=profile.data[0]["rating_avg"],
+            rating_count=profile.data[0]["rating_count"],
         )
 
     except HTTPException:
@@ -304,20 +317,23 @@ async def toggle_availability(
     current_user: dict = Depends(get_current_user)
 ):
     """Toggle pharmacist availability status."""
-    client = SupabaseService.get_client()
-    if not client:
+    # Use authenticated client for RLS
+    try:
+        client = SupabaseService.get_auth_client(current_user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client: %s", e)
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     try:
         # Only approved pharmacists can go available
         profile = client.table("pharmacist_profiles").select(
             "id, verification_status"
-        ).eq("user_id", current_user["id"]).maybe_single().execute()
+        ).eq("user_id", current_user["id"]).limit(1).execute()
 
-        if not profile.data:
+        if not profile.data or len(profile.data) == 0:
             raise HTTPException(status_code=404, detail="Not registered as pharmacist")
 
-        if is_available and profile.data["verification_status"] != "approved":
+        if is_available and profile.data[0]["verification_status"] != "approved":
             raise HTTPException(
                 status_code=400,
                 detail="Cannot go available until verification is approved"
@@ -420,13 +436,13 @@ async def get_schedule(current_user: dict = Depends(get_current_user)):
     try:
         profile = client.table("pharmacist_profiles").select("id").eq(
             "user_id", current_user["id"]
-        ).maybe_single().execute()
+        ).limit(1).execute()
 
-        if not profile.data:
+        if not profile.data or len(profile.data) == 0:
             raise HTTPException(status_code=404, detail="Not registered as pharmacist")
 
         result = client.table("pharmacist_schedules").select("*").eq(
-            "pharmacist_id", profile.data["id"]
+            "pharmacist_id", profile.data[0]["id"]
         ).order("day_of_week").order("start_time").execute()
 
         return [PharmacistScheduleSlot(**s) for s in result.data]
@@ -453,13 +469,13 @@ async def get_pharmacist_consultations(
     try:
         profile = client.table("pharmacist_profiles").select("id, full_name").eq(
             "user_id", current_user["id"]
-        ).maybe_single().execute()
+        ).limit(1).execute()
 
-        if not profile.data:
+        if not profile.data or len(profile.data) == 0:
             raise HTTPException(status_code=404, detail="Not registered as pharmacist")
 
-        pharmacist_id = profile.data["id"]
-        pharmacist_name = profile.data["full_name"]
+        pharmacist_id = profile.data[0]["id"]
+        pharmacist_name = profile.data[0]["full_name"]
 
         query = client.table("consultations").select("*").eq(
             "pharmacist_id", pharmacist_id

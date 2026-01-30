@@ -55,7 +55,11 @@ function SignUpForm() {
       } else if (result?.success) {
         setSuccess(result.success);
       }
-    } catch {
+    } catch (e: unknown) {
+      // Re-throw NEXT_REDIRECT errors - they're expected behavior
+      if (e && typeof e === 'object' && 'digest' in e && typeof (e as { digest?: string }).digest === 'string' && (e as { digest: string }).digest.includes('NEXT_REDIRECT')) {
+        throw e;
+      }
       setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
@@ -68,9 +72,14 @@ function SignUpForm() {
 
     try {
       await signInWithGoogle(redirectTo);
-    } catch (e: any) {
+    } catch (e: unknown) {
+      // Re-throw NEXT_REDIRECT errors - they're expected behavior
+      if (e && typeof e === 'object' && 'digest' in e && typeof (e as { digest?: string }).digest === 'string' && (e as { digest: string }).digest.includes('NEXT_REDIRECT')) {
+        throw e;
+      }
       console.error("Google sign in error:", e);
-      setError(e.message || "Failed to connect to Google.");
+      const message = e instanceof Error ? e.message : "Failed to connect to Google.";
+      setError(message);
       setIsGoogleLoading(false);
     }
   }

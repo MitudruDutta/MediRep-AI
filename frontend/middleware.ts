@@ -42,27 +42,57 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected routes - redirect to login if not authenticated
+  // But exclude pharmacist auth routes (they should be public)
   const protectedPaths = ["/dashboard", "/account", "/pharmacist"];
+  const publicPharmacistPaths = ["/pharmacist/auth"];
+
   const isProtectedPath = protectedPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   );
+  const isPublicPharmacistPath = publicPharmacistPaths.some((path) =>
+    request.nextUrl.pathname.startsWith(path)
+  );
 
-  if (isProtectedPath && !user) {
+  if (isProtectedPath && !isPublicPharmacistPath && !user) {
     const url = request.nextUrl.clone();
-    url.pathname = "/auth/login";
-    url.searchParams.set("next", request.nextUrl.pathname);
+    // Redirect to appropriate auth page based on the path
+    if (request.nextUrl.pathname === "/pharmacist/register") {
+      // Registration page - send to signup first
+      url.pathname = "/pharmacist/auth/signup";
+    } else if (request.nextUrl.pathname.startsWith("/pharmacist")) {
+      // Other pharmacist pages - send to login
+      url.pathname = "/pharmacist/auth/login";
+    } else {
+      url.pathname = "/auth/login";
+    }
+    url.searchParams.set("redirect", request.nextUrl.pathname);
     return NextResponse.redirect(url);
   }
 
   // Auth routes - redirect to dashboard if already authenticated
+  // Include both user auth and pharmacist auth paths
   const authPaths = ["/auth/login", "/auth/signup", "/auth/forgot-password"];
-  const isAuthPath = authPaths.some(
+  const pharmacistAuthPaths = ["/pharmacist/auth/login", "/pharmacist/auth/signup"];
+
+  const isUserAuthPath = authPaths.some(
+    (path) => request.nextUrl.pathname === path
+  );
+  const isPharmacistAuthPath = pharmacistAuthPaths.some(
     (path) => request.nextUrl.pathname === path
   );
 
-  if (isAuthPath && user) {
+  // Only redirect if user is already logged in and on an auth page
+  if (isUserAuthPath && user) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  // For pharmacist auth paths, redirect to registration if already logged in
+  // (The registration page will check if they're already a pharmacist and redirect to dashboard)
+  if (isPharmacistAuthPath && user) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/pharmacist/register";
     return NextResponse.redirect(url);
   }
 
