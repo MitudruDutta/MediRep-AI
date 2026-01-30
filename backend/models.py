@@ -211,7 +211,7 @@ class PharmacistRegistration(BaseModel):
     languages: List[str] = Field(default=["English", "Hindi"])
     education: Optional[str] = None
     bio: Optional[str] = Field(None, max_length=500)
-    rate: int = Field(default=299, ge=99, le=9999)
+    rate: int = Field(default=299, ge=1, le=100000)
     duration_minutes: int = Field(default=15)
     upi_id: Optional[str] = None
 

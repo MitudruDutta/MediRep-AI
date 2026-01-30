@@ -84,8 +84,8 @@ export default function PharmacistList({ onSelect }: PharmacistListProps) {
                         <button
                             onClick={() => setSelectedSpec(null)}
                             className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${!selectedSpec
-                                    ? "bg-primary text-primary-foreground"
-                                    : "bg-secondary text-secondary-foreground border border-border hover:bg-accent hover:text-accent-foreground"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-secondary text-secondary-foreground border border-border hover:bg-accent hover:text-accent-foreground"
                                 }`}
                         >
                             All
@@ -95,8 +95,8 @@ export default function PharmacistList({ onSelect }: PharmacistListProps) {
                                 key={spec}
                                 onClick={() => setSelectedSpec(spec === selectedSpec ? null : spec)}
                                 className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${spec === selectedSpec
-                                        ? "bg-primary text-primary-foreground"
-                                        : "bg-secondary text-secondary-foreground border border-border hover:bg-accent hover:text-accent-foreground"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "bg-secondary text-secondary-foreground border border-border hover:bg-accent hover:text-accent-foreground"
                                     }`}
                             >
                                 {spec}

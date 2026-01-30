@@ -52,13 +52,16 @@ export default function PharmacistDashboard() {
     }, []);
 
     const handleAvailabilityChange = async (checked: boolean) => {
-        // Optimistic update - toggle immediately without API
+        const previousValue = isAvailable;
+        // Optimistic update
         setIsAvailable(checked);
         try {
             await pharmacistApi.toggleAvailability(checked);
-        } catch (error) {
-            console.error(error);
-            // Silently fail - no popup
+        } catch (error: any) {
+            console.error("Availability toggle error:", error);
+            // Revert on error
+            setIsAvailable(previousValue);
+            toast.error(error.message || "Failed to update availability");
         }
     };
 

@@ -28,9 +28,11 @@ export interface PharmacistConsultation {
     scheduled_at: string;
     status: "pending_payment" | "confirmed" | "in_progress" | "completed" | "cancelled" | "refunded" | "no_show";
     amount: number;
+    pharmacist_earning: number;
     duration_minutes: number;
     agora_channel?: string;
-    payment_status: string;
+    payment_status?: string;
+    razorpay_order_id?: string;
 }
 
 export interface PharmacistProfile {

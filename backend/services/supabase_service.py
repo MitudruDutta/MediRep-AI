@@ -58,11 +58,15 @@ class SupabaseService:
             raise ValueError("Supabase credentials missing")
         
         # Explicitly set the Authorization header to ensure RLS context is passed
-        return create_client(
+        # Explicitly set the Authorization header to ensure RLS context is passed
+        client = create_client(
             SUPABASE_URL, 
             SUPABASE_KEY, 
             options=ClientOptions(headers={"Authorization": f"Bearer {token}"})
         )
+        # Redundant safety: ensure postgrest library has the token
+        client.postgrest.auth(token)
+        return client
 
     @staticmethod
     def get_service_client() -> Optional[Client]:

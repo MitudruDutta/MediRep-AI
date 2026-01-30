@@ -12,6 +12,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Force reload hook
+
 
 
 from config import ALLOWED_ORIGINS, PORT

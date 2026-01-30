@@ -230,6 +230,7 @@ async def update_profile(
 ):
     """Update pharmacist profile. Only non-null fields are updated."""
     try:
+        logger.info(f"Update profile request: {update_data}")
         client = SupabaseService.get_auth_client(current_user["token"])
     except Exception as e:
         logger.error("Failed to create auth client: %s", e)
@@ -249,8 +250,8 @@ async def update_profile(
         if update_data.education is not None:
             updates["education"] = update_data.education
         if update_data.rate is not None:
-            if update_data.rate < 99 or update_data.rate > 9999:
-                raise HTTPException(status_code=400, detail="Rate must be between 99 and 9999")
+            if update_data.rate < 1 or update_data.rate > 100000:
+                raise HTTPException(status_code=400, detail="Rate must be between 1 and 100000")
             updates["rate"] = update_data.rate
         if update_data.duration_minutes is not None:
             if update_data.duration_minutes not in [15, 30, 45, 60]:
@@ -374,6 +375,10 @@ async def toggle_availability(
             "updated_at": datetime.utcnow().isoformat()
         }).eq("user_id", current_user["id"]).execute()
 
+        if not result.data:
+            logger.error(f"Availability update failed for user {current_user.get('id')}. Potential RLS mismatch.")
+            raise HTTPException(status_code=500, detail="Failed to persist availability status")
+
         return {"is_available": is_available}
 
     except HTTPException:
@@ -489,6 +494,7 @@ async def get_schedule(current_user: dict = Depends(get_current_pharmacist)):
 class PharmacistConsultationSummary(BaseModel):
     id: str
     patient_id: str
+    patient_name: Optional[str] = None
     scheduled_at: datetime
     duration_minutes: int
     status: str
@@ -506,7 +512,7 @@ async def get_pharmacist_consultations(
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_pharmacist)
 ):
-    """Get pharmacist's consultations."""
+    """Get pharmacist's consultations with patient names."""
     try:
         client = SupabaseService.get_auth_client(current_user["token"])
     except Exception as e:
@@ -523,6 +529,8 @@ async def get_pharmacist_consultations(
 
         pharmacist_id = profile.data[0]["id"]
 
+        # Query consultations (no join)
+        logger.info(f"Fetching consultations for pharmacist {pharmacist_id}, filter={status_filter}")
         query = client.table("consultations").select(
             "id, patient_id, scheduled_at, duration_minutes, status, amount, pharmacist_earning, payment_status, razorpay_order_id, patient_concern"
         ).eq("pharmacist_id", pharmacist_id)
@@ -534,12 +542,56 @@ async def get_pharmacist_consultations(
             query = query.in_("status", ["completed", "cancelled", "refunded", "no_show"]).lt("scheduled_at", now)
 
         query = query.order("scheduled_at", desc=True).range(offset, offset + limit - 1)
+        
+        start_time = datetime.utcnow()
         result = query.execute()
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        logger.info(f"Consultations fetch took {duration}s. Found {len(result.data) if result.data else 0} records")
 
-        return [PharmacistConsultationSummary(**c) for c in result.data]
+        if not result.data:
+            return []
+
+        # Manually fetch patient names
+        patient_ids = list(set([c["patient_id"] for c in result.data if c.get("patient_id")]))
+        
+        patient_map = {}
+        if patient_ids:
+            try:
+                # Fetch user profiles
+                logger.info(f"Fetching {len(patient_ids)} user profiles")
+                profiles = client.table("user_profiles").select("id, display_name").in_("id", patient_ids).execute()
+                patient_map = {p["id"]: p.get("display_name", "Unknown Patient") for p in profiles.data}
+            except Exception as e:
+                logger.error("Failed to fetch patient names: %s", e)
+
+        # Transform data
+        consultations = []
+        try:
+            for i, c in enumerate(result.data):
+                patient_name = patient_map.get(c["patient_id"], "Unknown Patient")
+                
+                consultations.append(PharmacistConsultationSummary(
+                    id=c["id"],
+                    patient_id=c["patient_id"],
+                    patient_name=patient_name,
+                    scheduled_at=c["scheduled_at"],
+                    duration_minutes=c["duration_minutes"],
+                    status=c["status"],
+                    amount=c["amount"],
+                    pharmacist_earning=c.get("pharmacist_earning", 0),
+                    payment_status=c.get("payment_status"),
+                    razorpay_order_id=c.get("razorpay_order_id"),
+                    patient_concern=c.get("patient_concern")
+                ))
+        except Exception as e:
+            logger.error(f"Data transformation failed at index {i}: {e}. Data: {c}")
+            raise HTTPException(status_code=500, detail=f"Data processing error: {str(e)}")
+
+        return consultations
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Failed to get consultations: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to get consultations")
+        logger.error("Failed to get consultations (Unhandled): %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to load consultations")
+

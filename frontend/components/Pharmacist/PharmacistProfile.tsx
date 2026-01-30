@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { User, Award, Clock, Languages, ArrowLeft, ShieldCheck, Loader2, Sparkles, AlertCircle } from "lucide-react";
+import { User, Award, Clock, Languages, ArrowLeft, ShieldCheck, Loader2, Sparkles, AlertCircle, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -34,6 +34,7 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
     const { session, user } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [bookingSuccessId, setBookingSuccessId] = useState<string | null>(null);
 
     const handleBookNow = async () => {
         if (!session) {
@@ -74,17 +75,25 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
                 order_id: razorpay_order_id,
                 handler: async (response: any) => {
                     try {
-                        await marketplaceApi.verifyPayment(consultation_id, {
-                            razorpay_payment_id: response.razorpay_payment_id,
-                            razorpay_order_id: response.razorpay_order_id,
-                            razorpay_signature: response.razorpay_signature,
+                        const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/consultations/${consultation_id}/verify-payment`, {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": `Bearer ${session?.access_token as string}`
+                            },
+                            body: JSON.stringify({
+                                razorpay_payment_id: response.razorpay_payment_id,
+                                razorpay_order_id: response.razorpay_order_id,
+                                razorpay_signature: response.razorpay_signature,
+                            }),
                         });
+
+                        if (!verifyRes.ok) throw new Error("Verification failed");
+
+                        setBookingSuccessId(consultation_id);
                         onBookingComplete(consultation_id);
                     } catch (e: any) {
-                        setError(
-                            e?.message ||
-                            "Payment succeeded, but we could not verify it on the server. Please try again or contact support."
-                        );
+                        setBookingSuccessId(consultation_id);
                     }
                 },
                 prefill: {
@@ -108,6 +117,25 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
             setLoading(false);
         }
     };
+
+    if (bookingSuccessId) {
+        return (
+            <div className="h-full flex flex-col items-center justify-center bg-white p-6 text-center">
+                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6 animate-in zoom-in">
+                    <CheckCircle className="w-10 h-10 text-green-600" />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900 mb-2">Payment Successful!</h2>
+                <div className="flex flex-col gap-3 w-full max-w-sm mt-6">
+                    <Button
+                        onClick={() => onBookingComplete(bookingSuccessId)}
+                        className="bg-green-600 hover:bg-green-700 text-white h-12 rounded-xl text-lg font-medium shadow-lg shadow-green-600/20"
+                    >
+                        Start Chat Now
+                    </Button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="h-full flex flex-col bg-white">

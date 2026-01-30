@@ -67,12 +67,15 @@ export default function PharmacistProfilePage() {
     const handleSave = async () => {
         setSaving(true);
         try {
+            // Remove full_name since it's not editable
             const updateData = {
-                ...formData,
+                bio: formData.bio || null,
                 specializations: formData.specializations.split(",").map(s => s.trim()).filter(Boolean),
                 languages: formData.languages.split(",").map(s => s.trim()).filter(Boolean),
+                education: formData.education || null,
                 rate: Number(formData.rate),
-                duration_minutes: Number(formData.duration_minutes)
+                duration_minutes: Number(formData.duration_minutes),
+                upi_id: formData.upi_id || null
             };
 
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/pharmacist/profile`, {
@@ -85,13 +88,22 @@ export default function PharmacistProfilePage() {
             });
 
             if (!res.ok) {
-                const error = await res.json();
+                const error = await res.json().catch(() => ({ detail: "Failed to update profile" }));
                 throw new Error(error.detail || "Failed to update profile");
             }
 
-            toast.success("Profile updated successfully");
+            const updatedProfile = await res.json();
+            // Update local state with server response
+            setFormData({
+                ...updatedProfile,
+                specializations: Array.isArray(updatedProfile.specializations) ? updatedProfile.specializations.join(", ") : "",
+                languages: Array.isArray(updatedProfile.languages) ? updatedProfile.languages.join(", ") : "",
+            });
+
+            toast.success("Profile updated successfully!");
         } catch (error: any) {
-            console.error(error);
+            console.error("Profile update error:", error);
+            toast.error(error.message || "Failed to update profile");
         } finally {
             setSaving(false);
         }
