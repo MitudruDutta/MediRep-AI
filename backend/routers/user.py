@@ -16,10 +16,8 @@ router = APIRouter()
 security = HTTPBearer()
 
 def get_auth_client(token: str):
-    """Create a Supabase client authenticated as the user."""
-    client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    client.postgrest.auth(token)
-    return client
+    """Create a Supabase client authenticated as the user (for RLS)."""
+    return SupabaseService.get_auth_client(token)
 
 @router.get("/profile/context", response_model=Optional[PatientContext])
 async def get_patient_context(
@@ -82,7 +80,7 @@ async def get_my_consultations(
     user: dict = Depends(get_current_patient)
 ):
     """Get all consultations for the current patient."""
-    client = SupabaseService.get_client()
+    client = get_auth_client(user["token"])
     try:
         user_id = user["id"]
         
@@ -92,9 +90,9 @@ async def get_my_consultations(
         
         if status:
             if status == "upcoming":
-                query = query.in_("status", ["scheduled", "confirmed"])
+                query = query.in_("status", ["pending_payment", "confirmed", "in_progress"])
             elif status == "past":
-                query = query.in_("status", ["completed", "cancelled"])
+                query = query.in_("status", ["completed", "cancelled", "refunded", "no_show"])
             else:
                 query = query.eq("status", status)
                 

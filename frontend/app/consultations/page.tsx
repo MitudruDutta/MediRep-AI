@@ -30,8 +30,8 @@ export default function ConsultationsPage() {
         load();
     }, []);
 
-    const upcoming = consultations.filter(c => ["scheduled", "confirmed", "in_progress"].includes(c.status));
-    const past = consultations.filter(c => ["completed", "cancelled", "payment_failed"].includes(c.status));
+    const upcoming = consultations.filter(c => ["pending_payment", "confirmed", "in_progress"].includes(c.status));
+    const past = consultations.filter(c => ["completed", "cancelled", "refunded", "no_show"].includes(c.status));
 
     const ConsultationCard = ({ consultation }: { consultation: Consultation }) => {
         const isJoinable = consultation.status === "in_progress" || consultation.status === "confirmed";
@@ -130,17 +130,17 @@ export default function ConsultationsPage() {
 
 function StatusBadge({ status }: { status: string }) {
     const styles = {
-        scheduled: "bg-blue-500/10 text-blue-400 border-blue-500/20",
         confirmed: "bg-green-500/10 text-green-400 border-green-500/20",
         in_progress: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20 animate-pulse",
         completed: "bg-slate-500/10 text-slate-400 border-slate-500/20",
         cancelled: "bg-red-500/10 text-red-400 border-red-500/20",
         pending_payment: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
-        payment_failed: "bg-red-500/10 text-red-400 border-red-500/20"
+        refunded: "bg-amber-500/10 text-amber-300 border-amber-500/20",
+        no_show: "bg-orange-500/10 text-orange-300 border-orange-500/20",
     };
 
     return (
-        <Badge variant="outline" className={`${(styles as any)[status] || styles.scheduled} capitalize`}>
+        <Badge variant="outline" className={`${(styles as any)[status] || styles.pending_payment} capitalize`}>
             {status.replace("_", " ")}
         </Badge>
     );

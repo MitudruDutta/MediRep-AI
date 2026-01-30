@@ -1,4 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
+"use client";
+
+import { createClient } from "@/lib/supabase/client";
 
 // We need to use the backend API URL
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -38,15 +40,19 @@ export const adminApi = {
      * Get authentication headers
      */
     async getHeaders() {
-        // We need to get the session token from Supabase
-        const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        );
+        const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
-            throw new Error("Not authenticated");
+            // Try to refresh the session
+            const { data: { session: refreshedSession } } = await supabase.auth.refreshSession();
+            if (!refreshedSession) {
+                throw new Error("Not authenticated");
+            }
+            return {
+                "Authorization": `Bearer ${refreshedSession.access_token}`,
+                "Content-Type": "application/json",
+            };
         }
 
         return {
@@ -60,9 +66,14 @@ export const adminApi = {
      */
     async getStats(): Promise<AdminStats> {
         const headers = await this.getHeaders();
+        console.log("Fetching admin stats from:", `${API_URL}/api/admin/stats`);
         const res = await fetch(`${API_URL}/api/admin/stats`, { headers });
 
-        if (!res.ok) throw new Error("Failed to fetch stats");
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            console.error("Admin stats error:", res.status, errData);
+            throw new Error(errData.detail || "Failed to fetch stats");
+        }
         return res.json();
     },
 
@@ -73,7 +84,11 @@ export const adminApi = {
         const headers = await this.getHeaders();
         const res = await fetch(`${API_URL}/api/admin/pharmacists/pending`, { headers });
 
-        if (!res.ok) throw new Error("Failed to fetch pending applications");
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            console.error("Admin API error:", res.status, errData);
+            throw new Error(errData.detail || "Failed to fetch pending applications");
+        }
         return res.json();
     },
 

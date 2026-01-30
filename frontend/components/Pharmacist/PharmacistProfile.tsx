@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import Script from "next/script";
 import { useAuth } from "@/lib/context/AuthContext";
+import { marketplaceApi } from "@/lib/marketplace-api";
 
 interface Pharmacist {
     id: string;
@@ -61,18 +62,30 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
             if (!res.ok) throw new Error(data.detail || "Booking failed");
 
             const { razorpay_order_id, amount, currency, consultation_id } = data;
+            const razorpayKeyId = await marketplaceApi.getRazorpayKeyId();
 
             // 2. Open Razorpay
             const options = {
-                key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                key: razorpayKeyId,
                 amount: amount * 100,
                 currency: currency,
                 name: "MediRep AI",
                 description: `Consultation with ${pharmacist.full_name}`,
                 order_id: razorpay_order_id,
-                handler: async function (response: any) {
-                    // Success!
-                    onBookingComplete(consultation_id);
+                handler: async (response: any) => {
+                    try {
+                        await marketplaceApi.verifyPayment(consultation_id, {
+                            razorpay_payment_id: response.razorpay_payment_id,
+                            razorpay_order_id: response.razorpay_order_id,
+                            razorpay_signature: response.razorpay_signature,
+                        });
+                        onBookingComplete(consultation_id);
+                    } catch (e: any) {
+                        setError(
+                            e?.message ||
+                            "Payment succeeded, but we could not verify it on the server. Please try again or contact support."
+                        );
+                    }
                 },
                 prefill: {
                     name: user?.user_metadata?.full_name || "User",

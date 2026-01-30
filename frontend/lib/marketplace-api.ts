@@ -33,6 +33,21 @@ export interface ScheduleSlot {
 }
 
 export const marketplaceApi = {
+    async getPaymentConfig(): Promise<{ enabled: boolean; razorpay_key_id: string | null }> {
+        const res = await fetch(`${API_URL}/api/consultations/payment/config`);
+        if (!res.ok) return { enabled: false, razorpay_key_id: null };
+        return res.json();
+    },
+
+    async getRazorpayKeyId(): Promise<string> {
+        const fromEnv = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+        if (fromEnv) return fromEnv;
+
+        const cfg = await this.getPaymentConfig();
+        if (cfg.enabled && cfg.razorpay_key_id) return cfg.razorpay_key_id;
+        throw new Error("Razorpay is not configured (missing key id)");
+    },
+
     async searchPharmacists(filters: SearchFilters = {}): Promise<PharmacistPreview[]> {
         const params = new URLSearchParams();
         if (filters.specialization) params.append("specialization", filters.specialization);
@@ -86,6 +101,23 @@ export const marketplaceApi = {
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || "Booking failed");
+        }
+        return res.json();
+    },
+
+    async verifyPayment(
+        consultationId: string,
+        payload: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }
+    ) {
+        const headers = await this.getAuthHeaders();
+        const res = await fetch(`${API_URL}/api/consultations/${consultationId}/verify-payment`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || "Payment verification failed");
         }
         return res.json();
     },
@@ -212,7 +244,7 @@ export interface Consultation {
     pharmacist_name: string;
     pharmacist_id: string;
     scheduled_at: string;
-    status: "pending_payment" | "scheduled" | "confirmed" | "in_progress" | "completed" | "cancelled";
+    status: "pending_payment" | "confirmed" | "in_progress" | "completed" | "cancelled" | "refunded" | "no_show";
     amount: number;
     duration_minutes: number;
     agora_channel?: string;

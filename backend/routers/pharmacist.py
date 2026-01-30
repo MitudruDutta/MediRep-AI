@@ -13,6 +13,8 @@ Endpoints:
 import logging
 import json
 import uuid
+import re
+from urllib.parse import urlsplit, urlunsplit
 from typing import List, Optional
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form
@@ -27,9 +29,21 @@ from models import (
     ConsultationStatus,
 )
 from services.supabase_service import SupabaseService
+from services.email_service import EmailService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+def _normalize_public_url(url: str) -> str:
+    """Normalize stored public URLs to avoid accidental double-slash paths."""
+    if not url:
+        return url
+    try:
+        parts = urlsplit(url)
+        path = re.sub(r"/{2,}", "/", parts.path)
+        return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
+    except Exception:
+        return url
 
 
 @router.post("/register", response_model=PharmacistProfile)
@@ -70,7 +84,7 @@ async def register_pharmacist(
             )
 
         # Upload license file if provided
-        license_image_url = registration_data.get("license_image_url", "")
+        license_image_url = _normalize_public_url(registration_data.get("license_image_url", ""))
         if license_file:
             try:
                 # Read file content
@@ -88,7 +102,9 @@ async def register_pharmacist(
                 )
 
                 # Get public URL
-                license_image_url = auth_client.storage.from_("private_documents").get_public_url(file_name)
+                license_image_url = _normalize_public_url(
+                    auth_client.storage.from_("private_documents").get_public_url(file_name)
+                )
                 logger.info("License uploaded: %s", file_name)
 
             except Exception as upload_error:
@@ -144,6 +160,18 @@ async def register_pharmacist(
             logger.error("Failed to update user role metadata: %s", role_error)
 
         logger.info("Pharmacist registered: user_id=%s", user_id)
+
+        # Send email notification to admins
+        try:
+            await EmailService.notify_admins_new_pharmacist(
+                pharmacist_name=profile_data["full_name"],
+                license_number=profile_data["license_number"],
+                email=current_user.get("email")
+            )
+        except Exception as email_error:
+            # Don't fail registration if email fails
+            logger.error("Failed to send admin notification email: %s", email_error)
+
         return PharmacistProfile(**result.data[0])
 
     except json.JSONDecodeError:
@@ -201,8 +229,10 @@ async def update_profile(
     current_user: dict = Depends(get_current_pharmacist)
 ):
     """Update pharmacist profile. Only non-null fields are updated."""
-    client = SupabaseService.get_client()
-    if not client:
+    try:
+        client = SupabaseService.get_auth_client(current_user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client: %s", e)
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     try:
@@ -292,7 +322,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_pharmacis
         upcoming_result = client.table("consultations").select(
             "id", count="exact"
         ).eq("pharmacist_id", pharmacist_id).in_(
-            "status", ["scheduled", "confirmed"]
+            "status", ["confirmed", "in_progress"]
         ).gte("scheduled_at", now).execute()
 
         return PharmacistDashboardStats(
@@ -429,8 +459,10 @@ async def set_schedule(
 @router.get("/schedule", response_model=List[PharmacistScheduleSlot])
 async def get_schedule(current_user: dict = Depends(get_current_pharmacist)):
     """Get own availability schedule."""
-    client = SupabaseService.get_client()
-    if not client:
+    try:
+        client = SupabaseService.get_auth_client(current_user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client: %s", e)
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     try:
@@ -454,7 +486,20 @@ async def get_schedule(current_user: dict = Depends(get_current_pharmacist)):
         raise HTTPException(status_code=500, detail="Failed to get schedule")
 
 
-@router.get("/consultations", response_model=List[ConsultationStatus])
+class PharmacistConsultationSummary(BaseModel):
+    id: str
+    patient_id: str
+    scheduled_at: datetime
+    duration_minutes: int
+    status: str
+    amount: int
+    pharmacist_earning: int
+    payment_status: Optional[str] = None
+    razorpay_order_id: Optional[str] = None
+    patient_concern: Optional[str] = None
+
+
+@router.get("/consultations", response_model=List[PharmacistConsultationSummary])
 async def get_pharmacist_consultations(
     status_filter: Optional[str] = Query(None, description="Filter: upcoming, past, all"),
     limit: int = Query(20, ge=1, le=100),
@@ -462,12 +507,14 @@ async def get_pharmacist_consultations(
     current_user: dict = Depends(get_current_pharmacist)
 ):
     """Get pharmacist's consultations."""
-    client = SupabaseService.get_client()
-    if not client:
+    try:
+        client = SupabaseService.get_auth_client(current_user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client: %s", e)
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     try:
-        profile = client.table("pharmacist_profiles").select("id, full_name").eq(
+        profile = client.table("pharmacist_profiles").select("id").eq(
             "user_id", current_user["id"]
         ).limit(1).execute()
 
@@ -475,28 +522,21 @@ async def get_pharmacist_consultations(
             raise HTTPException(status_code=404, detail="Not registered as pharmacist")
 
         pharmacist_id = profile.data[0]["id"]
-        pharmacist_name = profile.data[0]["full_name"]
 
-        query = client.table("consultations").select("*").eq(
-            "pharmacist_id", pharmacist_id
-        )
+        query = client.table("consultations").select(
+            "id, patient_id, scheduled_at, duration_minutes, status, amount, pharmacist_earning, payment_status, razorpay_order_id, patient_concern"
+        ).eq("pharmacist_id", pharmacist_id)
 
         now = datetime.utcnow().isoformat()
         if status_filter == "upcoming":
-            query = query.in_("status", ["scheduled", "confirmed"]).gte("scheduled_at", now)
+            query = query.in_("status", ["confirmed", "in_progress"]).gte("scheduled_at", now)
         elif status_filter == "past":
-            query = query.in_("status", ["completed", "cancelled"]).lt("scheduled_at", now)
+            query = query.in_("status", ["completed", "cancelled", "refunded", "no_show"]).lt("scheduled_at", now)
 
         query = query.order("scheduled_at", desc=True).range(offset, offset + limit - 1)
         result = query.execute()
 
-        return [
-            ConsultationStatus(
-                pharmacist_name=pharmacist_name,
-                **c
-            )
-            for c in result.data
-        ]
+        return [PharmacistConsultationSummary(**c) for c in result.data]
 
     except HTTPException:
         raise

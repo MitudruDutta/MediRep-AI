@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, MapPin, Star, Clock, Filter, User } from "lucide-react";
+import { Search, MapPin, Star, Clock, User } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 interface Pharmacist {
     id: string;
@@ -62,20 +60,20 @@ export default function PharmacistList({ onSelect }: PharmacistListProps) {
     return (
         <div className="h-full flex flex-col">
             {/* Header / Search */}
-            <div className="p-6 border-b border-slate-100 bg-white/50 backdrop-blur-sm sticky top-0 z-10">
+            <div className="p-6 border-b border-border bg-background/70 backdrop-blur-sm sticky top-0 z-10">
                 <div className="mb-6">
-                    <h2 className="text-2xl font-bold text-slate-900">Find a Pharmacist</h2>
-                    <p className="text-slate-500">Connect with verified experts for medicine consultations</p>
+                    <h2 className="text-2xl font-bold text-foreground">Find a Pharmacist</h2>
+                    <p className="text-muted-foreground">Connect with verified experts for medicine consultations</p>
                 </div>
 
                 <div className="flex gap-3">
                     <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Search by name or specialization..."
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            className="pl-9 bg-white border-slate-200 focus-visible:ring-cyan-500"
+                            className="pl-9 bg-background border-input focus-visible:ring-ring"
                         />
                     </div>
                 </div>
@@ -86,8 +84,8 @@ export default function PharmacistList({ onSelect }: PharmacistListProps) {
                         <button
                             onClick={() => setSelectedSpec(null)}
                             className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${!selectedSpec
-                                    ? "bg-cyan-600 text-white"
-                                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "bg-secondary text-secondary-foreground border border-border hover:bg-accent hover:text-accent-foreground"
                                 }`}
                         >
                             All
@@ -97,8 +95,8 @@ export default function PharmacistList({ onSelect }: PharmacistListProps) {
                                 key={spec}
                                 onClick={() => setSelectedSpec(spec === selectedSpec ? null : spec)}
                                 className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${spec === selectedSpec
-                                        ? "bg-cyan-600 text-white"
-                                        : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                        ? "bg-primary text-primary-foreground"
+                                        : "bg-secondary text-secondary-foreground border border-border hover:bg-accent hover:text-accent-foreground"
                                     }`}
                             >
                                 {spec}
@@ -109,14 +107,14 @@ export default function PharmacistList({ onSelect }: PharmacistListProps) {
             </div>
 
             {/* List */}
-            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+            <div className="flex-1 overflow-y-auto p-6 bg-muted/20">
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center h-40 gap-3 text-slate-400">
-                        <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+                    <div className="flex flex-col items-center justify-center h-40 gap-3 text-muted-foreground">
+                        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                         <p className="text-sm">Loading experts...</p>
                     </div>
                 ) : filteredPharmacists.length === 0 ? (
-                    <div className="text-center py-10 text-slate-400">
+                    <div className="text-center py-10 text-muted-foreground">
                         <p>No pharmacists found matching your criteria.</p>
                     </div>
                 ) : (
@@ -129,11 +127,11 @@ export default function PharmacistList({ onSelect }: PharmacistListProps) {
                                 animate={{ opacity: 1, y: 0 }}
                                 onClick={() => onSelect(pharmacist)}
                             >
-                                <Card className="cursor-pointer hover:shadow-lg hover:border-cyan-200 transition-all group">
+                                <Card className="group relative cursor-pointer overflow-hidden py-0 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/10 hover:border-primary/30">
                                     <CardContent className="p-4 flex gap-4">
                                         {/* Avatar */}
                                         <div className="relative shrink-0">
-                                            <div className="w-16 h-16 rounded-xl overflow-hidden bg-slate-100 ring-2 ring-white shadow-sm">
+                                            <div className="w-16 h-16 rounded-xl overflow-hidden bg-muted ring-2 ring-background shadow-sm">
                                                 {pharmacist.profile_image_url ? (
                                                     <img
                                                         src={pharmacist.profile_image_url}
@@ -141,13 +139,13 @@ export default function PharmacistList({ onSelect }: PharmacistListProps) {
                                                         className="w-full h-full object-cover"
                                                     />
                                                 ) : (
-                                                    <div className="w-full h-full flex items-center justify-center bg-cyan-50 text-cyan-600">
+                                                    <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary">
                                                         <User className="h-8 w-8" />
                                                     </div>
                                                 )}
                                             </div>
                                             {pharmacist.is_available && (
-                                                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full" title="Online" />
+                                                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-background rounded-full" title="Online" />
                                             )}
                                         </div>
 
@@ -155,25 +153,25 @@ export default function PharmacistList({ onSelect }: PharmacistListProps) {
                                         <div className="flex-1 min-w-0">
                                             <div className="flex justify-between items-start gap-2">
                                                 <div>
-                                                    <h3 className="font-semibold text-slate-900 group-hover:text-cyan-700 transition-colors">
+                                                    <h3 className="font-semibold text-card-foreground group-hover:text-primary transition-colors">
                                                         {pharmacist.full_name}
                                                     </h3>
-                                                    <p className="text-xs text-slate-500 line-clamp-1">
+                                                    <p className="text-xs text-muted-foreground line-clamp-1">
                                                         {pharmacist.specializations.join(", ")}
                                                     </p>
                                                 </div>
-                                                <div className="flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 text-xs font-bold">
+                                                <div className="flex items-center gap-1 bg-amber-500/15 px-1.5 py-0.5 rounded text-amber-600 dark:text-amber-400 text-xs font-bold">
                                                     <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
                                                     {pharmacist.rating_avg.toFixed(1)}
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-3 mt-3 text-xs text-slate-500">
+                                            <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
                                                 <div className="flex items-center gap-1">
                                                     <Clock className="h-3.5 w-3.5" />
                                                     {pharmacist.experience_years}y exp
                                                 </div>
-                                                <div className="w-1 h-1 rounded-full bg-slate-300" />
+                                                <div className="w-1 h-1 rounded-full bg-muted-foreground/30" />
                                                 <div className="flex items-center gap-1">
                                                     <MapPin className="h-3.5 w-3.5" />
                                                     {pharmacist.languages[0]}
@@ -182,9 +180,9 @@ export default function PharmacistList({ onSelect }: PharmacistListProps) {
                                         </div>
 
                                         {/* Price */}
-                                        <div className="flex flex-col justify-center items-end pl-4 border-l border-slate-100">
-                                            <span className="text-lg font-bold text-slate-900">₹{pharmacist.rate}</span>
-                                            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">per session</span>
+                                        <div className="flex flex-col justify-center items-end pl-4 border-l border-border">
+                                            <span className="text-lg font-bold text-card-foreground">₹{pharmacist.rate}</span>
+                                            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">per session</span>
                                         </div>
                                     </CardContent>
                                 </Card>

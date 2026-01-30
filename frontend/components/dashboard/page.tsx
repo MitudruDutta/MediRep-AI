@@ -120,7 +120,7 @@ const items = [
   },
   {
     title: "Book Pharmacist",
-    url: "/dashboard/book-pharmacist",
+    url: "/dashboard/BookPharmacist",
     icon: <User className="size-6" />,
     description: "Connect with expert pharmacists",
     colSpan: "md:col-span-1",

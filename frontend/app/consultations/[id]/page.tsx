@@ -303,7 +303,7 @@ export default function ConsultationDetailPage() {
                             Issues joining? Try refreshing or check your internet connection.
                         </p>
                         <div className="space-y-2">
-                            {consultation.status === "scheduled" && (
+                            {["pending_payment", "confirmed"].includes(consultation.status) && (
                                 <Button variant="outline" className="w-full border-red-900/50 text-red-500 hover:bg-red-950/20 hover:text-red-400">
                                     <XCircle className="mr-2 h-4 w-4" /> Cancel Booking
                                 </Button>
@@ -323,17 +323,17 @@ export default function ConsultationDetailPage() {
 
 function StatusBadge({ status }: { status: string }) {
     const styles = {
-        scheduled: "bg-blue-500/10 text-blue-400",
         confirmed: "bg-green-500/10 text-green-400",
         in_progress: "bg-indigo-500/10 text-indigo-400 animate-pulse",
         completed: "bg-slate-500/10 text-slate-400",
         cancelled: "bg-red-500/10 text-red-400",
         pending_payment: "bg-yellow-500/10 text-yellow-400",
-        payment_failed: "bg-red-500/10 text-red-400"
+        refunded: "bg-amber-500/10 text-amber-300",
+        no_show: "bg-orange-500/10 text-orange-300",
     };
 
     return (
-        <span className={`px-2 py-0.5 rounded text-[10px] font-medium uppercase track-wider ${(styles as any)[status] || styles.scheduled}`}>
+        <span className={`px-2 py-0.5 rounded text-[10px] font-medium uppercase track-wider ${(styles as any)[status] || styles.pending_payment}`}>
             {status.replace("_", " ")}
         </span>
     );

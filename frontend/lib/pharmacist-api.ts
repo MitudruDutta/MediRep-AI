@@ -26,7 +26,7 @@ export interface PharmacistConsultation {
     patient_name?: string;
     patient_concern?: string;
     scheduled_at: string;
-    status: "pending_payment" | "scheduled" | "confirmed" | "in_progress" | "completed" | "cancelled";
+    status: "pending_payment" | "confirmed" | "in_progress" | "completed" | "cancelled" | "refunded" | "no_show";
     amount: number;
     duration_minutes: number;
     agora_channel?: string;

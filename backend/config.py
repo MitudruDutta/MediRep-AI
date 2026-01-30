@@ -171,3 +171,17 @@ CONSULTATION_DURATIONS = [15, 30, 45, 60]  # Minutes
 # Agora Token Expiry
 AGORA_TOKEN_EXPIRY_SECONDS = get_env_int("AGORA_TOKEN_EXPIRY_SECONDS", 3600)  # 1 hour
 
+# ============================================================================
+# EMAIL CONFIGURATION
+# ============================================================================
+
+# Resend Configuration (Email Notifications)
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+EMAIL_FROM = os.getenv("EMAIL_FROM", "MediRep AI <notifications@medirep.ai>")
+ADMIN_EMAILS = [e.strip() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()]
+
+if not RESEND_API_KEY:
+    logger.warning("RESEND_API_KEY not set. Email notifications will be disabled.")
+if not ADMIN_EMAILS:
+    logger.warning("ADMIN_EMAILS not set. Admin notifications will be disabled.")
+

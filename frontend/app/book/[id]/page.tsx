@@ -73,18 +73,28 @@ export default function BookingPage() {
             const scheduledAt = set(selectedDate, { hours, minutes }).toISOString();
 
             const data = await marketplaceApi.bookConsultation(pharmacistId, scheduledAt, concern);
+            const razorpayKeyId = await marketplaceApi.getRazorpayKeyId();
 
             // Initialize Razorpay
             const options = {
-                key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                key: razorpayKeyId,
                 amount: data.amount * 100,
                 currency: data.currency,
                 name: "MediRep AI",
                 description: `Consultation with ${data.pharmacist_name}`,
                 order_id: data.razorpay_order_id,
-                handler: function (response: any) {
-                    toast.success("Booking Confirmed!");
-                    router.push(`/consultations/${data.consultation_id}`);
+                handler: async function (response: any) {
+                    try {
+                        await marketplaceApi.verifyPayment(data.consultation_id, {
+                            razorpay_payment_id: response.razorpay_payment_id,
+                            razorpay_order_id: response.razorpay_order_id,
+                            razorpay_signature: response.razorpay_signature,
+                        });
+                        toast.success("Booking Confirmed!");
+                        router.push(`/consultations/${data.consultation_id}`);
+                    } catch (e: any) {
+                        toast.error(e?.message || "Payment verification failed");
+                    }
                 },
                 prefill: {
                     name: "Patient", // Ideally fetch from user profile

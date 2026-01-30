@@ -1,21 +1,53 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Dict, Any
 from datetime import datetime
+import logging
+import re
+from urllib.parse import urlsplit, urlunsplit
 
 from dependencies import get_current_admin
 from services.supabase_service import SupabaseService
+from services.email_service import EmailService
 from models import PharmacistProfile
 
-router = APIRouter(
-    prefix="/admin",
-    tags=["Admin"],
-    dependencies=[Depends(get_current_admin)]
-)
+logger = logging.getLogger(__name__)
+
+# Admin endpoints must bypass RLS to see pending/rejected profiles (RLS only exposes
+# approved profiles publicly and "own profile" to the owner). Use the service-role
+# key server-side for admin operations.
+def _get_admin_db_client():
+    client = SupabaseService.get_service_client()
+    if not client:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin database client unavailable (missing SUPABASE_SERVICE_ROLE_KEY)"
+        )
+    return client
+
+def _normalize_public_url(url: str) -> str:
+    """
+    Normalize stored public URLs to avoid double-slash path issues like:
+      https://<ref>.supabase.co//storage/v1/object/public/...
+    """
+    if not url:
+        return url
+    try:
+        parts = urlsplit(url)
+        # Collapse repeated slashes in the path only (keep scheme:// intact).
+        path = re.sub(r"/{2,}", "/", parts.path)
+        return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
+    except Exception:
+        return url
+
+# NOTE: Do NOT set a router-level prefix here.
+# `backend/main.py` mounts this router at `/api/admin`, so adding `prefix="/admin"`
+# would create `/api/admin/admin/...` and break the frontend.
+router = APIRouter(tags=["Admin"], dependencies=[Depends(get_current_admin)])
 
 @router.get("/stats")
 async def get_admin_stats():
     """Get system-wide statistics for the admin dashboard."""
-    client = SupabaseService.get_client()
+    client = _get_admin_db_client()
     
     try:
         # We can run parallel queries or separate ones. 
@@ -55,7 +87,7 @@ async def get_admin_stats():
 @router.get("/pharmacists/pending")
 async def get_pending_pharmacists():
     """Get list of pharmacists waiting for verification."""
-    client = SupabaseService.get_client()
+    client = _get_admin_db_client()
     
     try:
         # Fetch profiles with pending status
@@ -71,8 +103,12 @@ async def get_pending_pharmacists():
             .eq("verification_status", "pending")\
             .order("created_at", desc=True)\
             .execute()
-            
-        return response.data
+
+        data = response.data or []
+        for row in data:
+            if isinstance(row, dict) and "license_image_url" in row:
+                row["license_image_url"] = _normalize_public_url(row.get("license_image_url") or "")
+        return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -93,7 +129,7 @@ async def verify_pharmacist(
     if status_val not in ["approved", "rejected"]:
         raise HTTPException(status_code=400, detail="Invalid status")
         
-    client = SupabaseService.get_client()
+    client = _get_admin_db_client()
     
     try:
         update_data = {
@@ -115,9 +151,30 @@ async def verify_pharmacist(
             
         if not response.data:
             raise HTTPException(status_code=404, detail="Pharmacist not found")
-            
-        # TODO: Send email notification to pharmacist
-        
-        return {"success": True, "data": response.data[0]}
+
+        pharmacist_data = response.data[0]
+
+        # Get pharmacist's email from auth.users via user_id
+        try:
+            user_id = pharmacist_data.get("user_id")
+            if user_id:
+                # Use service client to get user email
+                user_response = client.auth.admin.get_user_by_id(user_id)
+                if user_response and user_response.user:
+                    pharmacist_email = user_response.user.email
+                    pharmacist_name = pharmacist_data.get("full_name", "Pharmacist")
+
+                    # Send email notification to pharmacist
+                    await EmailService.notify_pharmacist_verification(
+                        email=pharmacist_email,
+                        name=pharmacist_name,
+                        status=status_val,
+                        notes=notes
+                    )
+        except Exception as email_error:
+            # Don't fail verification if email fails
+            logger.error("Failed to send pharmacist notification email: %s", email_error)
+
+        return {"success": True, "data": pharmacist_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

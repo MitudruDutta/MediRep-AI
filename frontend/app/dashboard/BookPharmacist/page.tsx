@@ -50,15 +50,15 @@ export default function BookPharmacistPage() {
     };
 
     return (
-        <div className="h-[calc(100vh-4rem)] flex gap-6 p-6 overflow-hidden bg-slate-50/50">
+        <div className="h-[calc(100vh-4rem)] flex gap-6 p-6 overflow-hidden bg-background">
             {/* Left Panel: List (Always visible on large screens, or main view) */}
-            <div className={`w-full lg:w-1/3 min-w-[320px] bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-300 ${view !== "LIST" ? "hidden lg:flex" : "flex"
+            <div className={`w-full lg:w-1/3 min-w-[320px] bg-card rounded-3xl border border-border shadow-sm overflow-hidden flex flex-col transition-all duration-300 ${view !== "LIST" ? "hidden lg:flex" : "flex"
                 }`}>
                 <PharmacistList onSelect={handleSelectPharmacist} />
             </div>
 
             {/* Right Panel: Content (Profile or Chat) */}
-            <div className={`flex-1 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden relative transition-all duration-300 ${view === "LIST" ? "hidden lg:flex lg:items-center lg:justify-center" : "flex"
+            <div className={`flex-1 bg-card rounded-3xl border border-border shadow-sm overflow-hidden relative transition-all duration-300 ${view === "LIST" ? "hidden lg:flex lg:items-center lg:justify-center" : "flex"
                 }`}>
                 <AnimatePresence mode="wait">
                     {view === "LIST" && (
@@ -69,11 +69,11 @@ export default function BookPharmacistPage() {
                             exit={{ opacity: 0 }}
                             className="text-center p-8 max-w-md"
                         >
-                            <div className="w-20 h-20 bg-cyan-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
                                 <span className="text-4xl">👨‍⚕️</span>
                             </div>
-                            <h3 className="text-xl font-bold text-slate-900 mb-2">Select a Pharmacist</h3>
-                            <p className="text-slate-500">
+                            <h3 className="text-xl font-bold text-foreground mb-2">Select a Pharmacist</h3>
+                            <p className="text-muted-foreground">
                                 Browse the list on the left to view profiles, check availability, and book a consultation instantly.
                             </p>
                         </motion.div>

@@ -45,6 +45,28 @@ from config import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# We use the service-role client for consultation/payment state transitions.
+# RLS (as defined in `backend/sql/marketplace_schema.sql`) does NOT allow patients
+# to update consultation rows (payment fields, cancellation, etc.), so attempting
+# to do this with an anon/auth client will fail.
+def _get_db():
+    client = SupabaseService.get_service_client()
+    if not client:
+        raise HTTPException(
+            status_code=503,
+            detail="Database unavailable (missing SUPABASE_SERVICE_ROLE_KEY)"
+        )
+    return client
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+def _as_aware_utc(dt: datetime) -> datetime:
+    # Pydantic may give aware datetimes; if it's naive, we treat it as UTC.
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
 # Lazy import razorpay to avoid startup errors if not configured
 _razorpay_client = None
 
@@ -67,6 +89,18 @@ def generate_agora_token(channel_name: str, uid: int, expiry_seconds: int = 3600
     return AgoraService.generate_token(channel_name, uid, 1) # 1 = Broadcaster
 
 
+@router.get("/payment/config")
+async def get_payment_config():
+    """
+    Public config endpoint used by the frontend Razorpay checkout.
+
+    Brutal truth: the frontend MUST have the Razorpay Key ID to open checkout.
+    Key ID is not secret; Key Secret stays server-side in `backend/.env`.
+    """
+    if not RAZORPAY_KEY_ID:
+        return {"enabled": False, "razorpay_key_id": None}
+    return {"enabled": True, "razorpay_key_id": RAZORPAY_KEY_ID}
+
 @router.post("/book", response_model=BookingResponse)
 @limiter.limit("5/minute")
 async def book_consultation(
@@ -79,9 +113,7 @@ async def book_consultation(
 
     Creates a pending consultation and Razorpay order.
     """
-    client = SupabaseService.get_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    client = _get_db()
 
     razorpay = get_razorpay_client()
     patient_id = current_user["id"]
@@ -105,8 +137,9 @@ async def book_consultation(
         if pharmacist.data["user_id"] == patient_id:
             raise HTTPException(status_code=400, detail="Cannot book consultation with yourself")
 
-        # Check scheduled time is in future
-        if booking.scheduled_at <= datetime.utcnow():
+        # Check scheduled time is in future (UTC)
+        scheduled_at = _as_aware_utc(booking.scheduled_at)
+        if scheduled_at <= _now_utc():
             raise HTTPException(status_code=400, detail="Scheduled time must be in the future")
 
         amount = pharmacist.data["rate"]
@@ -123,7 +156,7 @@ async def book_consultation(
         consultation_data = {
             "patient_id": patient_id,
             "pharmacist_id": booking.pharmacist_id,
-            "scheduled_at": booking.scheduled_at.isoformat(),
+            "scheduled_at": scheduled_at.isoformat(),
             "duration_minutes": pharmacist.data["duration_minutes"],
             "amount": amount,
             "platform_fee": platform_fee,
@@ -183,7 +216,7 @@ async def book_consultation(
             amount=amount,
             currency="INR",
             pharmacist_name=pharmacist.data["full_name"],
-            scheduled_at=booking.scheduled_at,
+            scheduled_at=scheduled_at,
         )
 
     except HTTPException:
@@ -219,9 +252,7 @@ async def razorpay_webhook(
         logger.warning("Invalid Razorpay webhook signature")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    client = SupabaseService.get_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    client = _get_db()
 
     try:
         import json
@@ -245,8 +276,9 @@ async def razorpay_webhook(
                 update_result = client.table("consultations").update({
                     "payment_status": "captured",
                     "razorpay_payment_id": payment_id,
-                    "status": "scheduled",
-                    "updated_at": datetime.utcnow().isoformat(),
+                    # Schema truth: payment success moves consultation to `confirmed`.
+                    "status": "confirmed",
+                    "updated_at": _now_utc().isoformat(),
                 }).eq("razorpay_order_id", order_id).execute()
 
                 if not update_result.data:
@@ -264,8 +296,9 @@ async def razorpay_webhook(
             if order_id:
                 client.table("consultations").update({
                     "payment_status": "failed",
-                    "status": "payment_failed",
-                    "updated_at": datetime.utcnow().isoformat(),
+                    # Keep `pending_payment` so the patient can retry payment.
+                    "status": "pending_payment",
+                    "updated_at": _now_utc().isoformat(),
                 }).eq("razorpay_order_id", order_id).execute()
 
                 logger.info("Payment failed for order: %s", order_id)
@@ -277,15 +310,105 @@ async def razorpay_webhook(
         raise HTTPException(status_code=500, detail="Webhook processing failed")
 
 
+class VerifyPaymentRequest(BaseModel):
+    razorpay_payment_id: str = Field(..., min_length=5)
+    razorpay_order_id: str = Field(..., min_length=5)
+    razorpay_signature: str = Field(..., min_length=5)
+
+
+@router.post("/{consultation_id}/verify-payment")
+async def verify_payment(
+    consultation_id: str,
+    body: VerifyPaymentRequest,
+    current_user: dict = Depends(get_current_patient),
+):
+    """
+    Verify a Razorpay payment after Checkout success and finalize the booking.
+
+    Why this exists:
+    - Webhooks are great in prod, but local/dev (and even hackathon demos) often don't have a
+      reachable public URL for Razorpay to hit.
+    - Without this, the frontend can "think" payment succeeded while the DB still shows
+      `pending_payment`, and chat/call won't work.
+    """
+    if not RAZORPAY_KEY_SECRET:
+        raise HTTPException(status_code=503, detail="Payment service not configured")
+
+    client = _get_db()
+    razorpay = get_razorpay_client()
+
+    # 1) Load consultation and enforce ownership
+    consultation = client.table("consultations").select(
+        "id, patient_id, razorpay_order_id, amount, status, payment_status"
+    ).eq("id", consultation_id).single().execute()
+
+    if not consultation.data:
+        raise HTTPException(status_code=404, detail="Consultation not found")
+
+    data = consultation.data
+    if data["patient_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    if not data.get("razorpay_order_id"):
+        raise HTTPException(status_code=400, detail="Missing Razorpay order for this consultation")
+
+    if data["razorpay_order_id"] != body.razorpay_order_id:
+        raise HTTPException(status_code=400, detail="Order ID mismatch")
+
+    # 2) Verify signature (server-side, using Key Secret)
+    message = f"{body.razorpay_order_id}|{body.razorpay_payment_id}".encode()
+    expected = hmac.new(RAZORPAY_KEY_SECRET.encode(), message, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, body.razorpay_signature):
+        raise HTTPException(status_code=400, detail="Invalid payment signature")
+
+    # 3) (Optional but recommended) Fetch payment from Razorpay for extra validation
+    # Brutal truth: this relies on outbound network access from the backend host.
+    payment_status = "captured"
+    payment_method = None
+    try:
+        payment = razorpay.payment.fetch(body.razorpay_payment_id)
+        if payment and payment.get("order_id") and payment["order_id"] != body.razorpay_order_id:
+            raise HTTPException(status_code=400, detail="Payment does not belong to this order")
+
+        # Amount is in paise
+        if payment and payment.get("amount") and int(payment["amount"]) != int(data["amount"]) * 100:
+            raise HTTPException(status_code=400, detail="Payment amount mismatch")
+
+        payment_method = payment.get("method")
+        # Razorpay may return "authorized" depending on capture settings.
+        # Our schema allows it, but chat/call should require captured.
+        payment_status = payment.get("status") or "captured"
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("Razorpay fetch failed (continuing with signature-only verification): %s", e)
+
+    if payment_status not in ("captured", "authorized"):
+        raise HTTPException(status_code=402, detail=f"Payment not completed (status={payment_status})")
+
+    # 4) Persist + transition state
+    # We transition to `confirmed` so chat/call can start immediately after payment.
+    update = {
+        "razorpay_payment_id": body.razorpay_payment_id,
+        "razorpay_signature": body.razorpay_signature,
+        "payment_status": payment_status,
+        "payment_method": payment_method,
+        "status": "confirmed",
+        "updated_at": _now_utc().isoformat(),
+    }
+
+    client.table("consultations").update(update).eq("id", consultation_id).execute()
+
+    return {"status": "ok", "consultation_id": consultation_id, "payment_status": payment_status}
+
+
 @router.post("/{consultation_id}/confirm")
 async def confirm_consultation(
     consultation_id: str,
     current_user: dict = Depends(get_current_pharmacist)
 ):
     """Pharmacist confirms the consultation."""
-    client = SupabaseService.get_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    client = _get_db()
 
     try:
         # Get pharmacist profile
@@ -303,12 +426,22 @@ async def confirm_consultation(
         if not consultation.data:
             raise HTTPException(status_code=404, detail="Consultation not found")
 
-        if consultation.data["status"] != "scheduled":
+        status = consultation.data.get("status")
+        payment_status = consultation.data.get("payment_status")
+
+        # If payment is done, the only valid "confirmed" state is `confirmed`.
+        if status == "confirmed":
+            return {"status": "confirmed"}
+
+        if status != "pending_payment":
             raise HTTPException(status_code=400, detail="Cannot confirm this consultation")
+
+        if payment_status not in ("captured", "authorized"):
+            raise HTTPException(status_code=400, detail="Payment not completed")
 
         client.table("consultations").update({
             "status": "confirmed",
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": _now_utc().isoformat(),
         }).eq("id", consultation_id).execute()
 
         return {"status": "confirmed"}
@@ -330,9 +463,7 @@ async def join_voice_call(
 
     Both patient and pharmacist can join.
     """
-    client = SupabaseService.get_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    client = _get_db()
 
     try:
         consultation = client.table("consultations").select(
@@ -357,8 +488,9 @@ async def join_voice_call(
         if data["status"] not in ["confirmed", "in_progress"]:
             raise HTTPException(status_code=400, detail="Consultation not ready for call")
 
+        # Voice call is allowed only after payment capture.
         if data["payment_status"] != "captured":
-            raise HTTPException(status_code=400, detail="Payment not completed")
+            raise HTTPException(status_code=400, detail="Payment not captured")
 
         # Check time window
         scheduled_at = datetime.fromisoformat(data["scheduled_at"].replace("Z", "+00:00"))
@@ -385,11 +517,11 @@ async def join_voice_call(
         if data["status"] == "confirmed":
             client.table("consultations").update({
                 "status": "in_progress",
-                "started_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat(),
+                "started_at": _now_utc().isoformat(),
+                "updated_at": _now_utc().isoformat(),
             }).eq("id", consultation_id).execute()
 
-        expires_at = datetime.utcnow() + timedelta(seconds=AGORA_TOKEN_EXPIRY_SECONDS)
+        expires_at = _now_utc() + timedelta(seconds=AGORA_TOKEN_EXPIRY_SECONDS)
 
         return JoinCallResponse(
             agora_channel=channel,
@@ -418,14 +550,12 @@ async def send_message(
 ):
     """Send a chat message in consultation."""
     content = body.content
-    client = SupabaseService.get_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    client = _get_db()
 
     try:
         # Verify user is participant
         consultation = client.table("consultations").select(
-            "patient_id, pharmacist_id, status"
+            "patient_id, pharmacist_id, status, payment_status"
         ).eq("id", consultation_id).single().execute()
 
         if not consultation.data:
@@ -447,6 +577,10 @@ async def send_message(
 
         if data["status"] not in ["confirmed", "in_progress"]:
             raise HTTPException(status_code=400, detail="Consultation not active")
+
+        # Don't allow chat before payment is at least authorized.
+        if data.get("payment_status") not in ("captured", "authorized"):
+            raise HTTPException(status_code=400, detail="Payment not completed")
 
         # Insert message
         message_data = {
@@ -481,9 +615,7 @@ async def get_messages(
         limit = MAX_LIMIT
     if limit < 1:
         limit = 50
-    client = SupabaseService.get_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    client = _get_db()
 
     try:
         # Verify user is participant
@@ -526,16 +658,18 @@ async def get_messages(
         raise HTTPException(status_code=500, detail="Failed to get messages")
 
 
+class CompleteRequest(BaseModel):
+    notes: Optional[str] = Field(None, max_length=2000)
+
+
 @router.post("/{consultation_id}/complete")
 async def complete_consultation(
     consultation_id: str,
-    notes: Optional[str] = None,
+    body: CompleteRequest,
     current_user: dict = Depends(get_current_pharmacist)
 ):
     """Mark consultation as completed (pharmacist only)."""
-    client = SupabaseService.get_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    client = _get_db()
 
     try:
         profile = client.table("pharmacist_profiles").select("id").eq(
@@ -557,11 +691,11 @@ async def complete_consultation(
 
         update_data = {
             "status": "completed",
-            "ended_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "ended_at": _now_utc().isoformat(),
+            "updated_at": _now_utc().isoformat(),
         }
-        if notes:
-            update_data["pharmacist_notes"] = notes[:2000]
+        if body.notes:
+            update_data["pharmacist_notes"] = body.notes[:2000]
 
         client.table("consultations").update(update_data).eq("id", consultation_id).execute()
 
@@ -574,16 +708,18 @@ async def complete_consultation(
         raise HTTPException(status_code=500, detail="Failed to complete")
 
 
+class CancelRequest(BaseModel):
+    reason: Optional[str] = Field(None, max_length=500)
+
+
 @router.post("/{consultation_id}/cancel")
 async def cancel_consultation(
     consultation_id: str,
-    reason: Optional[str] = None,
+    body: CancelRequest,
     current_user: dict = Depends(get_current_user)
 ):
     """Cancel a consultation (patient or pharmacist)."""
-    client = SupabaseService.get_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    client = _get_db()
 
     try:
         consultation = client.table("consultations").select(
@@ -611,12 +747,16 @@ async def cancel_consultation(
             raise HTTPException(status_code=400, detail="Cannot cancel this consultation")
 
         # Process refund if payment was captured
-        refund_status = data["payment_status"]
+        new_payment_status = data["payment_status"]
+        new_status = "cancelled"
         if data["payment_status"] == "captured" and data["razorpay_payment_id"]:
             try:
                 razorpay = get_razorpay_client()
+                # Razorpay refund creation is synchronous, settlement is async.
+                # We mark as refunded for MVP; production should reconcile via webhook.
                 razorpay.payment.refund(data["razorpay_payment_id"], {})
-                refund_status = "refund_initiated"
+                new_payment_status = "refunded"
+                new_status = "refunded"
             except Exception as e:
                 logger.error("Refund failed for consultation %s: %s", consultation_id, e)
                 # CRITICAL: Do not cancel the consultation if refund fails.
@@ -627,14 +767,15 @@ async def cancel_consultation(
                 )
 
         client.table("consultations").update({
-            "status": "cancelled",
+            "status": new_status,
             "cancelled_by": "patient" if is_patient else "pharmacist",
-            "cancellation_reason": reason,
-            "payment_status": refund_status,
-            "updated_at": datetime.utcnow().isoformat(),
+            "cancellation_reason": body.reason,
+            "payment_status": new_payment_status,
+            "cancelled_at": _now_utc().isoformat(),
+            "updated_at": _now_utc().isoformat(),
         }).eq("id", consultation_id).execute()
 
-        return {"status": "cancelled", "refund_status": refund_status}
+        return {"status": new_status, "payment_status": new_payment_status}
 
     except HTTPException:
         raise
@@ -650,9 +791,7 @@ async def submit_review(
     current_user: dict = Depends(get_current_patient)
 ):
     """Submit a review for completed consultation (patient only)."""
-    client = SupabaseService.get_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    client = _get_db()
 
     try:
         consultation = client.table("consultations").select(
@@ -697,6 +836,8 @@ async def submit_review(
         client.table("consultations").update({
             "rating": review.rating,
             "review": review.review,
+            "reviewed_at": _now_utc().isoformat(),
+            "updated_at": _now_utc().isoformat(),
         }).eq("id", consultation_id).execute()
 
         return {"status": "review_submitted"}
@@ -714,9 +855,7 @@ async def get_consultation(
     current_user: dict = Depends(get_current_user)
 ):
     """Get consultation details."""
-    client = SupabaseService.get_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    client = _get_db()
 
     try:
         consultation = client.table("consultations").select(
