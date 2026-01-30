@@ -60,16 +60,16 @@ export default function PharmacistConsultationsPage() {
 
     const getStatusColor = (status: string) => {
         switch (status) {
-            case 'confirmed': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-            case 'in_progress': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-            case 'completed': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
+            case 'confirmed': return 'bg-[rgb(var(--landing-moss-rgb)/0.12)] text-[color:var(--landing-moss)]';
+            case 'in_progress': return 'bg-[rgb(var(--landing-clay-rgb)/0.12)] text-[color:var(--landing-clay)]';
+            case 'completed': return 'bg-[rgb(var(--landing-moss-rgb)/0.12)] text-[color:var(--landing-moss)]';
             case 'cancelled': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
             default: return 'bg-muted text-muted-foreground';
         }
     };
 
     return (
-        <div className="space-y-6 px-4 lg:px-8">
+        <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Consultations</h1>
@@ -87,7 +87,7 @@ export default function PharmacistConsultationsPage() {
                 <TabsContent value={activeTab} className="mt-6 space-y-4">
                     {isLoading ? (
                         <div className="flex justify-center p-12">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                            <Loader2 className="h-8 w-8 animate-spin text-[color:var(--landing-clay)]" />
                         </div>
                     ) : consultations.length === 0 ? (
                         <Card className="bg-card border-border">
@@ -107,7 +107,7 @@ export default function PharmacistConsultationsPage() {
                                             <div className="flex justify-between items-start">
                                                 <div className="flex items-center gap-3">
                                                     <Avatar className="h-10 w-10 border-2 border-border">
-                                                        <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                                                        <AvatarFallback className="bg-[rgb(var(--landing-moss-rgb)/0.12)] text-[color:var(--landing-moss)] font-semibold">
                                                             {c.patient_name?.slice(0, 2).toUpperCase() || "PT"}
                                                         </AvatarFallback>
                                                     </Avatar>
@@ -133,7 +133,7 @@ export default function PharmacistConsultationsPage() {
                                             </div>
                                             <div className="flex items-center justify-between text-sm">
                                                 <span className="text-muted-foreground">Your Earning</span>
-                                                <span className="font-semibold flex items-center text-emerald-600 dark:text-emerald-400">
+                                                <span className="font-semibold flex items-center text-[color:var(--landing-moss)]">
                                                     <IndianRupee className="w-3 h-3 mr-1" />
                                                     {c.pharmacist_earning}
                                                 </span>

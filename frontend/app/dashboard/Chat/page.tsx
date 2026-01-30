@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@/hooks/useChat";
-
 import { useProfile } from "@/hooks/useProfile";
 import { usePatientContext } from "@/lib/context/PatientContext";
 import { useSearchParams } from "next/navigation";
@@ -11,49 +10,43 @@ import {
   ChatMessage,
   ChatSuggestions,
   ChatLoading,
-  ChatEmpty
 } from "@/components/Chat";
 import { ChatSidebar } from "@/components/Chat/ChatSidebar";
 import { PromptInputBox } from "@/components/ai-prompt-box";
-import { MessageSquare, PanelLeftOpen, PanelLeftClose, Globe, ExternalLink } from "lucide-react";
+import { Bot, PanelLeftOpen, PanelLeftClose, Globe, ExternalLink, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { motion, AnimatePresence } from "framer-motion";
 
-const ALL_SUGGESTIONS = [
-  { label: "Check interactions", prompt: "Check interactions between Aspirin and Warfarin" },
-  { label: "Summarize patient", prompt: "Summarize the current patient's medical history" },
+const SUGGESTIONS = [
+  { label: "Drug interactions", prompt: "Check interactions between Aspirin and Warfarin" },
   { label: "Side effects", prompt: "What are the common side effects of Metformin?" },
-  { label: "Identify pill", prompt: "Help me identify a pill based on its physical appearance" },
   { label: "Dosage info", prompt: "What is the standard dosage for Amoxicillin?" },
-  { label: "Contraindications", prompt: "List contraindications for Ibuprofen" },
-  { label: "Mechanism of action", prompt: "Explain how Lisinopril works" },
-  { label: "Latest alerts", prompt: "Show recent FDA alerts for cardiac medications" },
+  { label: "Identify pill", prompt: "Help me identify a pill based on its physical appearance" },
 ];
 
 export default function ChatPage() {
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [webSearchMode, setWebSearchMode] = useState(false);
-  const [randomSuggestions, setRandomSuggestions] = useState<typeof ALL_SUGGESTIONS>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    // Randomize suggestions on mount to provide "AI-like" variety
-    const shuffled = [...ALL_SUGGESTIONS].sort(() => 0.5 - Math.random());
-    setRandomSuggestions(shuffled.slice(0, 4));
-  }, []);
+  const {
+    messages,
+    isGenerating,
+    isLoadingHistory,
+    suggestions,
+    webSources,
+    send,
+    resetSession,
+    loadSession,
+    sessionId,
+    isNewMessage
+  } = useChat();
 
-  const { messages, isLoading, suggestions, webSources, send, resetSession, loadSession, sessionId } = useChat();
-
-  const { profile, loading: profileLoading } = useProfile();
+  const { profile } = useProfile();
   const { patientContext } = usePatientContext();
   const searchParams = useSearchParams();
 
-  // Define variables for visual display
-  const initialUserName = profile?.full_name;
-  const initialUserEmail = profile?.email || "User";
+  const userName = profile?.full_name || profile?.email?.split('@')[0] || "there";
 
-  // Load session from URL if present (for sharing)
   useEffect(() => {
     const sessionParam = searchParams.get("session");
     if (sessionParam && sessionParam !== sessionId) {
@@ -63,35 +56,24 @@ export default function ChatPage() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isGenerating]);
 
-  // Responsive sidebar check
   useEffect(() => {
-    const checkSize = () => {
-      if (window.innerWidth < 768) setIsSidebarOpen(false);
-      else setIsSidebarOpen(true);
-    };
+    const checkSize = () => setIsSidebarOpen(window.innerWidth >= 768);
     checkSize();
     window.addEventListener('resize', checkSize);
     return () => window.removeEventListener('resize', checkSize);
   }, []);
 
-  // Updated to receive isSearchMode from PromptInputBox
   const handleSend = async (message: string, files?: File[], isSearchMode?: boolean) => {
     if (!message.trim() && (!files || files.length === 0)) return;
-    // Use the search mode from PromptInputBox (passed via callback)
     await send(message, patientContext || undefined, isSearchMode || false, files);
   };
 
-  const copyToClipboard = (text: string, index: number) => {
-    navigator.clipboard.writeText(text);
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
-  };
+  const showEmptyState = messages.length === 0 && !isGenerating && !isLoadingHistory;
 
   return (
-    <div className="h-[calc(100vh-4rem)] w-full flex bg-linear-to-br from-background via-background to-muted/20 overflow-hidden">
-
+    <div className="h-[calc(100vh-4rem)] w-full flex bg-[color:var(--landing-paper)] overflow-hidden">
       {/* Sidebar */}
       <ChatSidebar
         isOpen={isSidebarOpen}
@@ -102,115 +84,128 @@ export default function ChatPage() {
       />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full min-w-0 transition-all duration-300">
-
+      <div className="flex-1 flex flex-col h-full min-w-0">
         {/* Header */}
-        <div className="border-b border-border/40 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
-          <div className="px-6 py-4 flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="shrink-0 text-muted-foreground hover:text-foreground"
-            >
-              {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
-            </Button>
+        <header className="shrink-0 h-14 border-b border-[color:var(--landing-border)] bg-[color:var(--landing-card-strong)] flex items-center px-4 gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="h-8 w-8 text-[color:var(--landing-muted)] hover:text-[color:var(--landing-ink)]"
+          >
+            {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+          </Button>
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-7 rounded-lg bg-[color:var(--landing-moss)] flex items-center justify-center">
+              <Bot className="h-4 w-4 text-white" />
+            </div>
+            <span className="font-semibold text-sm text-[color:var(--landing-ink)]">MediRep AI</span>
+          </div>
+        </header>
 
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-                <MessageSquare className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-xl font-semibold">AI Medical Assistant</h1>
-                <p className="text-sm text-muted-foreground hidden md:block">
-                  {webSearchMode ? "🌐 Web Search Mode Active" : "Ask about medications, interactions, and side effects"}
-                </p>
+        {/* Chat Area */}
+        <div className="flex-1 overflow-hidden flex flex-col bg-white dark:bg-zinc-950">
+          {/* Loading History */}
+          {isLoadingHistory && (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="flex items-center gap-2 text-[color:var(--landing-muted)]">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-sm">Loading conversation...</span>
               </div>
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* Chat Container */}
-        <div className="flex-1 overflow-hidden relative">
-          <div className="h-full flex flex-col max-w-5xl mx-auto px-4 py-6">
-
-            {/* Messages Area & Input */}
-            {messages.length === 0 && !isLoading ? (
-              <div className="flex-1 flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-500">
-                <div className="text-center space-y-2">
-                  <h1 className="text-4xl font-semibold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
-                    Hi there, {initialUserName || initialUserEmail}
+          {/* Empty State */}
+          {showEmptyState && (
+            <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
+              <div className="max-w-xl w-full space-y-8">
+                {/* Welcome */}
+                <div className="text-center space-y-3">
+                  <div className="h-14 w-14 rounded-2xl bg-[color:var(--landing-moss)] flex items-center justify-center mx-auto shadow-lg">
+                    <Sparkles className="h-7 w-7 text-white" />
+                  </div>
+                  <h1 className="text-2xl font-bold text-[color:var(--landing-ink)]">
+                    Hi {userName}!
                   </h1>
-                  <h2 className="text-2xl text-muted-foreground">
-                    Where should we start?
-                  </h2>
+                  <p className="text-[color:var(--landing-muted)] text-sm max-w-sm mx-auto">
+                    Ask me about medications, drug interactions, dosages, or help identifying pills.
+                  </p>
                 </div>
 
-                <div className="w-full max-w-2xl px-4">
-                  <PromptInputBox
-                    onSend={handleSend}
-                    isLoading={isLoading}
-                    placeholder="Ask about medications, interactions, or side effects..."
-                    onSearchModeChange={setWebSearchMode}
-                    className="shadow-xl border-primary/10"
-                  />
-                </div>
+                {/* Input */}
+                <PromptInputBox
+                  onSend={handleSend}
+                  isLoading={isGenerating}
+                  placeholder="Ask about medications..."
+                  onSearchModeChange={setWebSearchMode}
+                />
 
-                <div className="flex flex-wrap justify-center gap-3 px-4 max-w-3xl">
-                  {randomSuggestions.map((suggestion, i) => (
+                {/* Suggestions */}
+                <div className="flex flex-wrap justify-center gap-2">
+                  {SUGGESTIONS.map((s, i) => (
                     <button
                       key={i}
-                      onClick={() => handleSend(suggestion.prompt)}
-                      className="px-4 py-2 rounded-full bg-muted/50 hover:bg-muted border border-border/50 text-sm text-muted-foreground hover:text-foreground transition-all duration-200"
+                      onClick={() => handleSend(s.prompt)}
+                      className="px-3 py-2 text-sm rounded-xl border border-[color:var(--landing-border)] text-[color:var(--landing-muted)] hover:text-[color:var(--landing-ink)] hover:border-[color:var(--landing-border-strong)] hover:bg-[color:var(--landing-card)] transition-all"
                     >
-                      {suggestion.label}
+                      {s.label}
                     </button>
                   ))}
                 </div>
               </div>
-            ) : (
-              <>
-                <ChatMessages className="flex-1 overflow-y-auto px-2 space-y-4 mb-6 scrollbar-hide">
-                  {messages.map((message, index) => (
-                    <ChatMessage
-                      key={index}
-                      message={message}
-                      index={index}
-                      copiedIndex={copiedIndex}
-                      onCopy={copyToClipboard}
-                    />
-                  ))}
+            </div>
+          )}
 
-                  {isLoading && <ChatLoading />}
+          {/* Messages */}
+          {!showEmptyState && !isLoadingHistory && (
+            <>
+              <ChatMessages className="flex-1 overflow-y-auto py-4">
+                {messages.map((message, index) => (
+                  <ChatMessage
+                    key={index}
+                    message={message}
+                    index={index}
+                    isNewMessage={isNewMessage(index)}
+                  />
+                ))}
 
-                  {/* Web Sources Display */}
-                  {webSources.length > 0 && (
-                    <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                        <Globe className="w-4 h-4" /> Web Sources
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {webSources.map((source, i) => (
-                          <a
-                            key={i}
-                            href={source.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs bg-background px-2 py-1 rounded-md border hover:border-primary transition-colors"
-                          >
-                            <span className="truncate max-w-[150px]">{source.source}</span>
-                            <ExternalLink className="w-3 h-3 shrink-0" />
-                          </a>
-                        ))}
+                {isGenerating && <ChatLoading />}
+
+                {/* Web Sources */}
+                {webSources.length > 0 && (
+                  <div className="px-4 py-3">
+                    <div className="flex gap-3 max-w-[95%] md:max-w-[85%]">
+                      <div className="w-8" /> {/* Spacer for alignment */}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Globe className="w-3.5 h-3.5 text-[color:var(--landing-muted)]" />
+                          <span className="text-xs font-medium text-[color:var(--landing-muted)] uppercase tracking-wide">Sources</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {webSources.map((source, i) => (
+                            <a
+                              key={i}
+                              href={source.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-zinc-600 dark:text-zinc-400 transition-colors border border-zinc-200 dark:border-zinc-700"
+                            >
+                              <span className="truncate max-w-[140px]">{source.source}</span>
+                              <ExternalLink className="w-3 h-3 shrink-0" />
+                            </a>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  <div ref={messagesEndRef} />
-                </ChatMessages>
+                <div ref={messagesEndRef} />
+              </ChatMessages>
 
-                {/* Input Area */}
-                <div className="space-y-3 px-2">
+              {/* Input Area */}
+              <div className="shrink-0 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4">
+                <div className="max-w-3xl mx-auto space-y-3">
                   {suggestions.length > 0 && (
                     <ChatSuggestions
                       suggestions={suggestions}
@@ -220,18 +215,20 @@ export default function ChatPage() {
 
                   <PromptInputBox
                     onSend={handleSend}
-                    isLoading={isLoading}
-                    placeholder="Ask about medications, interactions, or side effects..."
+                    isLoading={isGenerating}
+                    placeholder="Message MediRep AI..."
                     onSearchModeChange={setWebSearchMode}
                   />
+
+                  <p className="text-[11px] text-center text-zinc-400">
+                    MediRep AI can make mistakes. Always verify medical information.
+                  </p>
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
-    </div >
+    </div>
   );
 }
-
-

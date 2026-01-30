@@ -68,7 +68,7 @@ export default function BookPharmacistPage() {
                     setView("CHAT");
                 } else {
                     // If completed/expired/pending, show Profile logic
-                    // If pending, user might have just paid but verification not synced. 
+                    // If pending, user might have just paid but verification not synced.
                     // But usually we assume confirmed.
                     // If strictly pending, we might want to check if they want to retry payment?
                     // For now, adhere to previous logic: only confirm/in_progress gets chat.
@@ -87,11 +87,10 @@ export default function BookPharmacistPage() {
 
         restoreSession();
     }, [urlConsultationId, router, session]);
-
     const handleSelectPharmacist = (pharmacist: Pharmacist) => {
         setSelectedPharmacist(pharmacist);
         setView("PROFILE");
-        // Clear params when explicitly selecting from list? 
+        // Clear params when explicitly selecting from list?
         // Actually list is hidden in PROFILE view.
     };
 
@@ -115,6 +114,7 @@ export default function BookPharmacistPage() {
             setView("LIST");
             router.push("/dashboard/BookPharmacist");
         } else if (view === "CHAT") {
+            // Confirm before leaving chat? For now just go back to list
             setConsultationId(null);
             setSelectedPharmacist(null);
             setView("LIST");
@@ -179,7 +179,7 @@ export default function BookPharmacistPage() {
                             <ChatInterface
                                 consultationId={consultationId}
                                 pharmacistName={selectedPharmacist.full_name}
-                                endTime={targetEndTime || new Date(Date.now() + 15 * 60000).toISOString()}
+                                 endTime={targetEndTime || new Date(Date.now() + 15 * 60000).toISOString()}
                                 onExpired={handleSessionExpired}
                             />
                         </motion.div>

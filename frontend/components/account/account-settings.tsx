@@ -35,7 +35,7 @@ export function AccountSettings({ user }: { user: User | null }) {
   // Profile states
   const [loading, setLoading] = useState(true);
   const [fullname, setFullname] = useState(user?.user_metadata?.full_name || "Anonymous");
-  const [bio, setBio] = useState("Hi There from V4");
+  const [bio, setBio] = useState("");
   const [avatar, setAvatarUrl] = useState("/placeholder.svg");
   const [wallet, setWallet] = useState("");
   
@@ -68,11 +68,13 @@ export function AccountSettings({ user }: { user: User | null }) {
     
     try {
       setLoading(true);
+      // This project uses `user_profiles` (see `backend/sql/schema.sql`).
+      // Store "bio" + "walletAddress" under `preferences` to avoid schema drift.
       const { data, error, status } = await supabase
-        .from("profiles")
-        .select(`full_name,avatar_url, bio, updated_at`)
+        .from("user_profiles")
+        .select(`display_name, avatar_url, preferences, updated_at`)
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
         
       if (error && status !== 406) {
         console.log(error);
@@ -80,12 +82,42 @@ export function AccountSettings({ user }: { user: User | null }) {
       }
       
       if (data) {
-
-        setFullname(data.full_name || user?.user_metadata?.full_name);
+        const prefs = (data.preferences as Record<string, unknown> | null) ?? {};
+        setFullname(
+          (data.display_name as string | null) ||
+            (user?.user_metadata?.full_name as string | undefined) ||
+            (user?.user_metadata?.name as string | undefined) ||
+            "Anonymous"
+        );
+        setBio((typeof prefs.bio === "string" ? prefs.bio : null) || "");
+        setWallet((typeof prefs.walletAddress === "string" ? prefs.walletAddress : null) || "");
+        setAvatarUrl(
+          (user?.user_metadata?.avatar_url as string | undefined) ||
+            (user?.user_metadata?.picture as string | undefined) ||
+            (data.avatar_url as string | null) ||
+            "/placeholder.svg"
+        );
         
-        setBio(data.bio || "Hi There from V4");
-        setAvatarUrl(user?.user_metadata?.avatar_url || data.avatar_url);
-        
+      }
+      // Self-heal for accounts created before profile upsert existed.
+      if (!data && !error) {
+        await supabase.from("user_profiles").upsert(
+          {
+            id: user.id,
+            display_name:
+              (user.user_metadata?.full_name as string | undefined) ||
+              (user.user_metadata?.name as string | undefined) ||
+              user.email?.split("@")[0] ||
+              null,
+            avatar_url:
+              (user.user_metadata?.avatar_url as string | undefined) ||
+              (user.user_metadata?.picture as string | undefined) ||
+              null,
+            preferences: {},
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
       }
     } catch (error) {
       console.error("Profile fetch error:", error);
@@ -102,14 +134,26 @@ export function AccountSettings({ user }: { user: User | null }) {
     if (!user?.id) return;
     try {
       setLoading(true);
+      // Merge preferences client-side (simple + safe for this schema).
+      const nextPreferences = {
+        bio: profileData.bio ?? bio,
+        walletAddress: profileData.walletAddress ?? wallet,
+      };
+
       const payload = {
         id: user.id,
-        full_name: profileData.full_name ?? fullname,
-        avatar_url: profileData.avatar_url ?? user?.user_metadata?.avatar_url ?? avatar,
-        bio: profileData.bio ?? bio,
+        display_name: profileData.full_name ?? fullname,
+        avatar_url:
+          profileData.avatar_url ??
+          (user?.user_metadata?.avatar_url as string | undefined) ??
+          (user?.user_metadata?.picture as string | undefined) ??
+          avatar,
+        preferences: nextPreferences,
         updated_at: new Date().toISOString(),
       };
-      const { error } = await supabase.from("profiles").upsert([payload], { onConflict: 'id' });
+      const { error } = await supabase
+        .from("user_profiles")
+        .upsert([payload], { onConflict: "id" });
       if (error) throw error;
       showMessage("Profile updated successfully!");
       // Optionally, refresh profile after update

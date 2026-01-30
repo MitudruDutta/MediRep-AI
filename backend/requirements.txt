@@ -39,3 +39,4 @@ lxml==5.2.2
 
 
 tf-keras
+socketio

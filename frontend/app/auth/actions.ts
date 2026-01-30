@@ -11,6 +11,7 @@ import {
   sanitizeEmail,
   sanitizeAuthError,
 } from "@/lib/auth/validation";
+import { sanitizeRedirectPath } from "@/lib/auth/redirect";
 
 export interface AuthResult {
   error?: string;
@@ -48,10 +49,24 @@ async function upsertUserProfile(supabase: Awaited<ReturnType<typeof createClien
   }
 }
 
+function getSafeOrigin(headersList: Awaited<ReturnType<typeof headers>>): string {
+  // Prefer a configured canonical origin. Do not trust request headers in production.
+  const configured = process.env.NEXT_PUBLIC_SITE_URL;
+  if (configured) return configured;
+
+  const headerOrigin = headersList.get("origin");
+  if (headerOrigin) return headerOrigin;
+
+  return "http://localhost:3000";
+}
+
 export async function signInWithEmail(formData: FormData): Promise<AuthResult> {
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
-  const redirectTo = formData.get("redirectTo") as string | null;
+  const redirectTo = sanitizeRedirectPath(
+    formData.get("redirectTo") as string | null,
+    "/dashboard"
+  );
 
   // Validate inputs
   const emailValidation = validateEmail(email);
@@ -114,7 +129,10 @@ export async function signUpWithEmail(formData: FormData): Promise<AuthResult> {
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
   const confirmPassword = formData.get("confirmPassword") as string;
-  const redirectTo = formData.get("redirectTo") as string | null;
+  const redirectTo = sanitizeRedirectPath(
+    formData.get("redirectTo") as string | null,
+    "/dashboard"
+  );
 
   // Validate email
   const emailValidation = validateEmail(email);
@@ -138,7 +156,7 @@ export async function signUpWithEmail(formData: FormData): Promise<AuthResult> {
 
   const supabase = await createClient();
   const headersList = await headers();
-  const origin = headersList.get("origin") || process.env.NEXT_PUBLIC_SITE_URL;
+  const origin = getSafeOrigin(headersList);
   const sanitizedEmail = sanitizeEmail(email);
 
   const callbackUrl = new URL(`${origin}/auth/callback`);
@@ -165,12 +183,11 @@ export async function signUpWithEmail(formData: FormData): Promise<AuthResult> {
 export async function signInWithGoogle(redirectTo?: string): Promise<void> {
   const supabase = await createClient();
   const headersList = await headers();
-  const origin = headersList.get("origin") || process.env.NEXT_PUBLIC_SITE_URL;
+  const origin = getSafeOrigin(headersList);
 
   const callbackUrl = new URL(`${origin}/auth/callback`);
-  if (redirectTo) {
-    callbackUrl.searchParams.set("next", redirectTo);
-  }
+  const safeNext = sanitizeRedirectPath(redirectTo, "/dashboard");
+  callbackUrl.searchParams.set("next", safeNext);
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
@@ -232,7 +249,7 @@ export async function resetPassword(formData: FormData): Promise<AuthResult> {
 
   const supabase = await createClient();
   const headersList = await headers();
-  const origin = headersList.get("origin") || process.env.NEXT_PUBLIC_SITE_URL;
+  const origin = getSafeOrigin(headersList);
   const sanitizedEmail = sanitizeEmail(email);
 
   const { error } = await supabase.auth.resetPasswordForEmail(sanitizedEmail, {

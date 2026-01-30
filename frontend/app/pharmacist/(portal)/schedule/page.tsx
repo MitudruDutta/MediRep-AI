@@ -103,7 +103,11 @@ export default function ScheduleManager() {
                     <Button variant="outline" onClick={applyTemplate}>
                         <RotateCcw className="mr-2 h-4 w-4" /> Load 9-5 Template
                     </Button>
-                    <Button onClick={handleSave} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                    <Button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="bg-[color:var(--landing-moss)] hover:bg-[rgb(var(--landing-moss-rgb)/0.9)] text-[color:var(--landing-bone)]"
+                    >
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                         Save Changes
                     </Button>

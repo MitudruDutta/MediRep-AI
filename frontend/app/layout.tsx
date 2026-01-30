@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+import { Geist, Geist_Mono, Playfair_Display, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -21,6 +21,13 @@ const playfair = Playfair_Display({
   subsets: ["latin"],
 });
 
+// Space Grotesk - Modern geometric sans-serif (similar to GC Gatuzo)
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+});
+
 export const metadata: Metadata = {
   title: "MediRep AI - Medical Representative Assistant",
   description: "AI-powered medical representative assistant for drug information, interactions, and safety alerts",
@@ -35,7 +42,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head />
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} ${spaceGrotesk.variable} antialiased`}
       >
         <ThemeProvider
           attribute="class"

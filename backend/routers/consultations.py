@@ -229,8 +229,9 @@ async def book_consultation(
 
 
 @router.post("/webhook/razorpay")
+@limiter.limit("120/minute")
 async def razorpay_webhook(
-    request: Request,
+    request: Request,  # Required for slowapi
     x_razorpay_signature: str = Header(None)
 ):
     """
@@ -265,19 +266,37 @@ async def razorpay_webhook(
             payment = payload["payload"]["payment"]["entity"]
             order_id = payment.get("order_id")
             payment_id = payment.get("id")
+            payment_method = payment.get("method")
+            amount_paise = payment.get("amount")
 
             if order_id:
                 # Idempotency check: verify current status
-                existing = client.table("consultations").select("payment_status").eq("razorpay_order_id", order_id).single().execute()
+                existing = client.table("consultations").select(
+                    "id, amount, status, payment_status"
+                ).eq("razorpay_order_id", order_id).single().execute()
                 
-                if existing.data and existing.data["payment_status"] == "captured":
+                if existing.data and existing.data.get("payment_status") == "captured":
                     logger.info("Payment already captured for order %s (Idempotent)", order_id)
                     return {"status": "ok"}
+
+                if existing.data and existing.data.get("status") in ("cancelled", "refunded", "completed", "no_show"):
+                    logger.warning("Webhook received for non-payable consultation state (order_id=%s, status=%s)", order_id, existing.data.get("status"))
+                    return {"status": "ok"}
+
+                # Basic amount sanity check (paise vs rupees)
+                if existing.data and amount_paise is not None:
+                    try:
+                        if int(amount_paise) != int(existing.data["amount"]) * 100:
+                            logger.warning("Webhook amount mismatch for order_id=%s (got=%s, expected=%s)", order_id, amount_paise, int(existing.data["amount"]) * 100)
+                            raise HTTPException(status_code=400, detail="Amount mismatch")
+                    except ValueError:
+                        raise HTTPException(status_code=400, detail="Invalid amount")
 
                 # Update consultation
                 update_result = client.table("consultations").update({
                     "payment_status": "captured",
                     "razorpay_payment_id": payment_id,
+                    "payment_method": payment_method,
                     # Schema truth: payment success moves consultation to `confirmed`.
                     "status": "confirmed",
                     "updated_at": _now_utc().isoformat(),
@@ -319,7 +338,9 @@ class VerifyPaymentRequest(BaseModel):
 
 
 @router.post("/{consultation_id}/verify-payment")
+@limiter.limit("10/minute")
 async def verify_payment(
+    request: Request,  # Required for slowapi
     consultation_id: str,
     body: VerifyPaymentRequest,
     current_user: dict = Depends(get_current_patient),
@@ -341,7 +362,7 @@ async def verify_payment(
 
     # 1) Load consultation and enforce ownership
     consultation = client.table("consultations").select(
-        "id, patient_id, razorpay_order_id, amount, status, payment_status"
+        "id, patient_id, razorpay_order_id, amount, status, payment_status, razorpay_payment_id"
     ).eq("id", consultation_id).single().execute()
 
     if not consultation.data:
@@ -351,11 +372,23 @@ async def verify_payment(
     if data["patient_id"] != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
 
+    # Hard-stop: don't allow "reviving" a finished/terminated consultation.
+    if data.get("status") in ("cancelled", "refunded", "completed", "no_show"):
+        raise HTTPException(status_code=400, detail="Consultation is not payable in its current state")
+
     if not data.get("razorpay_order_id"):
         raise HTTPException(status_code=400, detail="Missing Razorpay order for this consultation")
 
     if data["razorpay_order_id"] != body.razorpay_order_id:
         raise HTTPException(status_code=400, detail="Order ID mismatch")
+
+    # Idempotency: if we already recorded this payment, just return.
+    if data.get("razorpay_payment_id") == body.razorpay_payment_id and data.get("payment_status") in ("captured", "authorized"):
+        return {"status": "ok", "consultation_id": consultation_id, "payment_status": data.get("payment_status")}
+
+    # Suspicious: payment already attached but caller is trying a different payment id.
+    if data.get("razorpay_payment_id") and data.get("razorpay_payment_id") != body.razorpay_payment_id:
+        raise HTTPException(status_code=409, detail="A payment is already attached to this consultation")
 
     # 2) Verify signature (server-side, using Key Secret)
     message = f"{body.razorpay_order_id}|{body.razorpay_payment_id}".encode()
@@ -405,7 +438,9 @@ async def verify_payment(
 
 
 @router.post("/{consultation_id}/confirm")
+@limiter.limit("10/minute")
 async def confirm_consultation(
+    request: Request,  # Required for slowapi
     consultation_id: str,
     current_user: dict = Depends(get_current_pharmacist)
 ):
@@ -456,7 +491,9 @@ async def confirm_consultation(
 
 
 @router.post("/{consultation_id}/join", response_model=JoinCallResponse)
+@limiter.limit("10/minute")
 async def join_voice_call(
+    request: Request,  # Required for slowapi
     consultation_id: str,
     current_user: dict = Depends(get_current_user)
 ):
@@ -545,7 +582,9 @@ class MessageContent(BaseModel):
     content: str = Field(..., max_length=2000)
 
 @router.post("/{consultation_id}/message")
+@limiter.limit("30/minute")
 async def send_message(
+    request: Request,  # Required for slowapi
     consultation_id: str,
     body: MessageContent,
     current_user: dict = Depends(get_current_user)
@@ -593,10 +632,8 @@ async def send_message(
         }
 
         result = client.table("consultation_messages").insert(message_data).execute()
-        
         # Broadcast via Socket.IO
         await sio.emit('new_message', result.data[0], room=f"consultation_{consultation_id}")
-
         return result.data[0]
 
     except HTTPException:
@@ -607,7 +644,9 @@ async def send_message(
 
 
 @router.get("/{consultation_id}/messages")
+@limiter.limit("60/minute")
 async def get_messages(
+    request: Request,  # Required for slowapi
     consultation_id: str,
     limit: int = 50,
     before: Optional[str] = None,
@@ -668,7 +707,9 @@ class CompleteRequest(BaseModel):
 
 
 @router.post("/{consultation_id}/complete")
+@limiter.limit("10/minute")
 async def complete_consultation(
+    request: Request,  # Required for slowapi
     consultation_id: str,
     body: CompleteRequest,
     current_user: dict = Depends(get_current_pharmacist)
@@ -718,7 +759,9 @@ class CancelRequest(BaseModel):
 
 
 @router.post("/{consultation_id}/cancel")
+@limiter.limit("5/minute")
 async def cancel_consultation(
+    request: Request,  # Required for slowapi
     consultation_id: str,
     body: CancelRequest,
     current_user: dict = Depends(get_current_user)
@@ -855,7 +898,9 @@ async def submit_review(
 
 
 @router.get("/{consultation_id}", response_model=ConsultationStatus)
+@limiter.limit("60/minute")
 async def get_consultation(
+    request: Request,  # Required for slowapi
     consultation_id: str,
     current_user: dict = Depends(get_current_user)
 ):

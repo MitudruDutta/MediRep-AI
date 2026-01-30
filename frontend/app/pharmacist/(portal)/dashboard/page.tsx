@@ -79,25 +79,25 @@ export default function PharmacistDashboard() {
     };
 
     return (
-        <div className="space-y-8 p-1 px-4 lg:px-8">
+        <div className="space-y-8">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <Avatar className="h-14 w-14 border-2 border-indigo-500/30 shadow-lg">
+                    <Avatar className="h-14 w-14 border-2 border-[rgb(var(--landing-moss-rgb)/0.30)] shadow-lg">
                         {profile?.profile_image_url && (
                             <AvatarImage src={profile.profile_image_url} alt={profile?.full_name} />
                         )}
-                        <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-lg font-bold">
-                            {profile?.full_name ? getInitials(profile.full_name) : "Ph"}
-                        </AvatarFallback>
-                    </Avatar>
+                    <AvatarFallback className="bg-[color:var(--landing-clay)] text-white text-lg font-bold">
+                        {profile?.full_name ? getInitials(profile.full_name) : "Ph"}
+                    </AvatarFallback>
+                </Avatar>
                     <div>
                         <div className="flex items-center gap-2">
                             <h2 className="text-2xl font-bold tracking-tight">
                                 Welcome, {profile?.full_name || "Pharmacist"}
                             </h2>
                             {profile?.verification_status === "approved" && (
-                                <BadgeCheck className="h-5 w-5 text-indigo-500" />
+                                <BadgeCheck className="h-5 w-5 text-[color:var(--landing-moss)]" />
                             )}
                         </div>
                         <p className="text-muted-foreground text-sm">
@@ -107,13 +107,13 @@ export default function PharmacistDashboard() {
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-4 bg-background/50 border border-border p-3 rounded-xl backdrop-blur-md shadow-sm">
-                        <span className={`text-sm font-medium transition-colors ${isAvailable ? "text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "text-muted-foreground"}`}>
+                        <span className={`text-sm font-medium transition-colors ${isAvailable ? "text-[color:var(--landing-moss)] drop-shadow-[0_0_8px_rgb(var(--landing-moss-rgb)/0.55)]" : "text-muted-foreground"}`}>
                             {isAvailable ? "Available for Calls" : "Offline"}
                         </span>
                         <Switch
                             checked={isAvailable}
                             onCheckedChange={handleAvailabilityChange}
-                            className="data-[state=checked]:bg-emerald-500"
+                            className="data-[state=checked]:bg-[color:var(--landing-moss)]"
                         />
                     </div>
                     <ModeToggle />
@@ -122,24 +122,24 @@ export default function PharmacistDashboard() {
 
             {/* Stats Grid */}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="bg-gradient-to-br from-background via-muted/50 to-muted border-border shadow-lg hover:shadow-emerald-500/10 transition-shadow">
+                <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)] shadow-lg hover:shadow-[rgb(var(--landing-moss-rgb)/0.14)] transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
-                        <div className="p-2 bg-emerald-500/10 rounded-lg">
-                            <Wallet className="h-5 w-5 text-emerald-500" />
+                        <div className="p-2 bg-[rgb(var(--landing-moss-rgb)/0.12)] rounded-lg">
+                            <Wallet className="h-5 w-5 text-[color:var(--landing-moss)]" />
                         </div>
                     </CardHeader>
                     <CardContent>
                         <div className="text-3xl font-bold text-foreground">₹{stats?.total_earnings || 0}</div>
-                        <p className="text-xs text-emerald-500 mt-1 font-medium">+20.1% from last month</p>
+                        <p className="text-xs text-[color:var(--landing-moss)] mt-1 font-medium">+20.1% from last month</p>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-background via-muted/50 to-muted border-border shadow-lg hover:shadow-blue-500/10 transition-shadow">
+                <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)] shadow-lg hover:shadow-[rgb(var(--landing-clay-rgb)/0.12)] transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Consultations</CardTitle>
-                        <div className="p-2 bg-blue-500/10 rounded-lg">
-                            <Users className="h-5 w-5 text-blue-500" />
+                        <div className="p-2 bg-[rgb(var(--landing-clay-rgb)/0.12)] rounded-lg">
+                            <Users className="h-5 w-5 text-[color:var(--landing-clay)]" />
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -148,11 +148,11 @@ export default function PharmacistDashboard() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-background via-muted/50 to-muted border-border shadow-lg hover:shadow-amber-500/10 transition-shadow">
+                <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)] shadow-lg hover:shadow-[rgb(var(--landing-clay-rgb)/0.12)] transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Average Rating</CardTitle>
-                        <div className="p-2 bg-amber-500/10 rounded-lg">
-                            <Star className="h-5 w-5 text-amber-500" />
+                        <div className="p-2 bg-[rgb(var(--landing-clay-rgb)/0.10)] rounded-lg">
+                            <Star className="h-5 w-5 text-[color:var(--landing-clay)]" />
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -161,11 +161,11 @@ export default function PharmacistDashboard() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-background via-muted/50 to-muted border-border shadow-lg hover:shadow-purple-500/10 transition-shadow">
+                <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)] shadow-lg hover:shadow-[rgb(var(--landing-moss-rgb)/0.12)] transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Pending Payout</CardTitle>
-                        <div className="p-2 bg-purple-500/10 rounded-lg">
-                            <CalendarDays className="h-5 w-5 text-purple-500" />
+                        <div className="p-2 bg-[rgb(var(--landing-moss-rgb)/0.10)] rounded-lg">
+                            <CalendarDays className="h-5 w-5 text-[color:var(--landing-moss)]" />
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -205,7 +205,7 @@ export default function PharmacistDashboard() {
                                 consultations.slice(0, 5).map((consultation) => {
                                     const isJoinable = consultation.status === "confirmed" || consultation.status === "in_progress";
                                     return (
-                                        <div key={consultation.id} className="group flex items-center justify-between p-4 bg-card rounded-xl border border-border hover:border-primary/20 hover:bg-muted/50 transition-all duration-200">
+                                        <div key={consultation.id} className="group flex items-center justify-between p-4 bg-card rounded-xl border border-border hover:border-[rgb(var(--landing-moss-rgb)/0.22)] hover:bg-muted/50 transition-all duration-200">
                                             <div className="flex items-center gap-4">
                                                 <Avatar className="h-12 w-12 border-2 border-border shadow-sm">
                                                     <AvatarFallback className="bg-muted text-foreground font-semibold">
@@ -213,7 +213,7 @@ export default function PharmacistDashboard() {
                                                     </AvatarFallback>
                                                 </Avatar>
                                                 <div>
-                                                    <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                                                    <p className="text-sm font-semibold text-foreground group-hover:text-[color:var(--landing-moss)] transition-colors">
                                                         {consultation.patient_name || `Patient #${consultation.patient_id.slice(0, 8)}`}
                                                     </p>
                                                     <div className="flex items-center gap-2 mt-1">
@@ -231,7 +231,7 @@ export default function PharmacistDashboard() {
                                                     <Button
                                                         size="sm"
                                                         className={`transition-all duration-300 shadow-lg ${isJoinable
-                                                            ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-500/20"
+                                                            ? "bg-[color:var(--landing-moss)] hover:bg-[rgb(var(--landing-moss-rgb)/0.9)] text-[color:var(--landing-bone)] shadow-[rgb(var(--landing-moss-rgb)/0.18)]"
                                                             : "bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border"
                                                             }`}
                                                     >
@@ -264,7 +264,7 @@ export default function PharmacistDashboard() {
                     <CardContent>
                         <div className="space-y-6">
                             <div className="flex gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                                <div className="h-10 w-10 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500 shrink-0 shadow-[0_0_10px_rgba(59,130,246,0.1)]">
+                                <div className="h-10 w-10 rounded-full bg-[rgb(var(--landing-moss-rgb)/0.10)] border border-[rgb(var(--landing-moss-rgb)/0.20)] flex items-center justify-center text-[color:var(--landing-moss)] shrink-0 shadow-[0_0_10px_rgb(var(--landing-moss-rgb)/0.10)]">
                                     <Wallet className="h-5 w-5" />
                                 </div>
                                 <div>
@@ -275,7 +275,7 @@ export default function PharmacistDashboard() {
                             </div>
 
                             <div className="flex gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                                <div className="h-10 w-10 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0 shadow-[0_0_10px_rgba(245,158,11,0.1)]">
+                                <div className="h-10 w-10 rounded-full bg-[rgb(var(--landing-clay-rgb)/0.10)] border border-[rgb(var(--landing-clay-rgb)/0.22)] flex items-center justify-center text-[color:var(--landing-clay)] shrink-0 shadow-[0_0_10px_rgb(var(--landing-clay-rgb)/0.10)]">
                                     <Star className="h-5 w-5" />
                                 </div>
                                 <div>

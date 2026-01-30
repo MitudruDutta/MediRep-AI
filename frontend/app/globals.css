@@ -9,6 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -138,6 +139,50 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.2 0 0);
   --sidebar-ring: oklch(0.7 0.2 200);
+}
+
+/* Landing page palette (warm paper / ink) */
+:root {
+  /* Light mode: slightly darker paper so the "white" stripe stays visible */
+  --landing-paper: #f1ece3;
+  --landing-ink: #12110f;
+  --landing-bone: #ffffff;
+  --landing-card: rgba(255, 255, 255, 0.74);
+  --landing-card-strong: rgba(255, 255, 255, 0.92);
+  --landing-border: rgba(0, 0, 0, 0.12);
+  --landing-border-strong: rgba(0, 0, 0, 0.16);
+  --landing-muted: rgba(0, 0, 0, 0.66);
+  --landing-muted-2: rgba(0, 0, 0, 0.52);
+
+  --landing-clay: #c2410c;
+  /* "White" in the orange/white/green system (kept as marigold for legacy refs) */
+  --landing-marigold: #ffffff;
+  --landing-moss: #1f5a3f;
+  --landing-clay-rgb: 194 65 12;
+  --landing-marigold-rgb: 255 255 255;
+  --landing-moss-rgb: 31 90 63;
+  --landing-dot-rgb: 0 0 0;
+}
+
+.dark {
+  --landing-paper: #0f0d0a;
+  --landing-ink: #f6f0e3;
+  --landing-bone: #ffffff;
+  --landing-card: rgba(255, 255, 255, 0.06);
+  --landing-card-strong: rgba(255, 255, 255, 0.08);
+  --landing-border: rgba(255, 255, 255, 0.10);
+  --landing-border-strong: rgba(255, 255, 255, 0.14);
+  --landing-muted: rgba(255, 255, 255, 0.70);
+  --landing-muted-2: rgba(255, 255, 255, 0.55);
+
+  --landing-clay: #ff6a2a;
+  /* "White" in the orange/white/green system (kept as marigold for legacy refs) */
+  --landing-marigold: #ffffff;
+  --landing-moss: #2a7a55;
+  --landing-clay-rgb: 255 106 42;
+  --landing-marigold-rgb: 255 255 255;
+  --landing-moss-rgb: 42 122 85;
+  --landing-dot-rgb: 255 255 255;
 }
 
 @layer base {

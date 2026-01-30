@@ -1,14 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Message, PatientContext, WebSearchResult } from "@/types";
 import { sendMessage, getSessionMessages } from "@/lib/api";
 import { invalidateSessionsCache } from "@/hooks/useSessions";
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false); // AI is generating response
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false); // Loading past messages
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [webSources, setWebSources] = useState<WebSearchResult[]>([]);
+  // Track the count of messages loaded from session (not new)
+  const loadedMessageCountRef = useRef<number>(0);
 
   // Load session from storage or props on mount
   useEffect(() => {
@@ -21,21 +24,23 @@ export function useChat() {
 
   const loadHistory = async (id: string) => {
     try {
-      setIsLoading(true);
+      setIsLoadingHistory(true);
       const history = await getSessionMessages(id);
       setMessages(history);
+      // Mark all loaded messages as "old" so they don't animate
+      loadedMessageCountRef.current = history.length;
     } catch (e) {
       console.error("Failed to load history:", e);
       // If session invalid, clear it
       sessionStorage.removeItem("current_chat_session_id");
       setSessionId(null);
     } finally {
-      setIsLoading(false);
+      setIsLoadingHistory(false);
     }
   };
 
   const send = async (content: string, patientContext?: PatientContext, webSearchMode: boolean = false, files?: File[]) => {
-    setIsLoading(true);
+    setIsGenerating(true);
     setWebSources([]); // Clear previous web sources
 
     // Convert files to base64 if present
@@ -106,7 +111,7 @@ export function useChat() {
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
+      setIsGenerating(false);
     }
   };
 
@@ -121,8 +126,15 @@ export function useChat() {
     setSuggestions([]);
     setWebSources([]);
     setSessionId(null);
+    loadedMessageCountRef.current = 0;
     sessionStorage.removeItem("current_chat_session_id");
   };
 
-  return { messages, isLoading, suggestions, webSources, send, resetSession, loadSession, sessionId };
+  // Helper to check if a message at given index is new (should animate)
+  const isNewMessage = (index: number) => index >= loadedMessageCountRef.current;
+
+  // Backwards compatibility: isLoading is true when generating (not when loading history)
+  const isLoading = isGenerating;
+
+  return { messages, isLoading, isGenerating, isLoadingHistory, suggestions, webSources, send, resetSession, loadSession, sessionId, isNewMessage };
 }

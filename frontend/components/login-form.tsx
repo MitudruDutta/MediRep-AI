@@ -2,11 +2,46 @@
 
 import { Button } from "@/components/ui/button";
 import { signInWithGoogle } from "@/app/auth/actions";
+import { useState } from "react";
 
-export default function LoginWithGoogle({ className }: { className?: string }) {
+export default function LoginWithGoogle({
+  className,
+  redirectTo,
+}: {
+  className?: string;
+  redirectTo?: string;
+}) {
+  const [loading, setLoading] = useState(false);
+
   return (
-    <form action={signInWithGoogle}>
-      <Button type="submit" variant="outline" className={className}>
+    <Button
+      type="button"
+      variant="outline"
+      className={className}
+      disabled={loading}
+      onClick={async () => {
+        setLoading(true);
+        try {
+          await signInWithGoogle(redirectTo);
+        } catch (e: unknown) {
+          // Server actions throw NEXT_REDIRECT on success; do not swallow it.
+          if (
+            e &&
+            typeof e === "object" &&
+            "digest" in e &&
+            typeof (e as { digest?: string }).digest === "string" &&
+            (e as { digest: string }).digest.includes("NEXT_REDIRECT")
+          ) {
+            throw e;
+          }
+          // If OAuth fails, the server action redirects to /auth/login?error=oauth_error.
+          // We keep UI silent here because most pages already show error state.
+          console.error("Google sign in error:", e);
+        } finally {
+          setLoading(false);
+        }
+      }}
+    >
         <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
           <path
             d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -25,8 +60,7 @@ export default function LoginWithGoogle({ className }: { className?: string }) {
             fill="#EA4335"
           />
         </svg>
-        Continue with Google
-      </Button>
-    </form>
+        {loading ? "Connecting..." : "Continue with Google"}
+    </Button>
   );
 }

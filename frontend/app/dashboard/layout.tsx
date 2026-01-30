@@ -7,7 +7,7 @@ export default function DashboardLayout({
 }) {
   return (
     <PatientContextProvider>
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-[color:var(--landing-paper)] text-[color:var(--landing-ink)]">
         {children}
       </div>
     </PatientContextProvider>

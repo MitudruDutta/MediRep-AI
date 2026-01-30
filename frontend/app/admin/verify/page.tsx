@@ -89,14 +89,18 @@ export default function VerificationPage() {
             </div>
 
             {applications.length === 0 ? (
-                <Card className="bg-slate-900 border-slate-800">
+                <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)]">
                     <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                        <ShieldCheck className="h-12 w-12 text-slate-700 mb-4" />
-                        <h3 className="text-lg font-medium text-slate-300">All Caught Up</h3>
-                        <p className="text-slate-500 max-w-sm mt-2">
+                        <ShieldCheck className="h-12 w-12 text-[rgb(var(--landing-dot-rgb)/0.35)] mb-4" />
+                        <h3 className="text-lg font-medium text-[color:var(--landing-ink)]">All Caught Up</h3>
+                        <p className="text-[color:var(--landing-muted)] max-w-sm mt-2">
                             No pending verification requests at the moment. Good job!
                         </p>
-                        <Button onClick={fetchApplications} variant="outline" className="mt-6 border-slate-700 hover:bg-slate-800">
+                        <Button
+                            onClick={fetchApplications}
+                            variant="outline"
+                            className="mt-6 border-[color:var(--landing-border-strong)] hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
+                        >
                             Refresh List
                         </Button>
                     </CardContent>
@@ -108,29 +112,29 @@ export default function VerificationPage() {
                         {applications.map((app) => (
                             <Card
                                 key={app.id}
-                                className={`cursor-pointer transition-colors border-slate-800 bg-slate-900 hover:bg-slate-800/50 ${selectedApp?.id === app.id ? "ring-2 ring-primary border-transparent" : ""}`}
+                                className={`cursor-pointer transition-colors border-[color:var(--landing-border)] bg-[color:var(--landing-card)] hover:bg-[rgb(var(--landing-dot-rgb)/0.05)] ${selectedApp?.id === app.id ? "ring-2 ring-[rgb(var(--landing-clay-rgb)/0.25)] border-transparent" : ""}`}
                                 onClick={() => setSelectedApp(app)}
                             >
                                 <CardContent className="p-4 flex items-start justify-between">
                                     <div className="flex gap-4">
-                                        <div className="h-12 w-12 rounded-full bg-slate-800 flex items-center justify-center text-lg font-bold text-slate-400">
+                                        <div className="h-12 w-12 rounded-full bg-[rgb(var(--landing-dot-rgb)/0.08)] flex items-center justify-center text-lg font-bold text-[color:var(--landing-muted)]">
                                             {app.full_name.charAt(0)}
                                         </div>
                                         <div>
-                                            <h4 className="font-semibold text-slate-200">{app.full_name}</h4>
-                                            <div className="text-sm text-slate-400 flex items-center gap-2">
+                                            <h4 className="font-semibold text-[color:var(--landing-ink)]">{app.full_name}</h4>
+                                            <div className="text-sm text-[color:var(--landing-muted)] flex items-center gap-2">
                                                 <span>Lic: {app.license_number}</span>
                                                 <span>•</span>
                                                 <Badge variant={app.ai_confidence_score > 0.8 ? "default" : "destructive"} className="text-[10px] h-5">
                                                     AI: {Math.round(app.ai_confidence_score * 100)}%
                                                 </Badge>
                                             </div>
-                                            <p className="text-xs text-slate-500 mt-1">
+                                            <p className="text-xs text-[color:var(--landing-muted)] mt-1">
                                                 Applied: {new Date(app.created_at).toLocaleDateString()}
                                             </p>
                                         </div>
                                     </div>
-                                    <Button size="icon" variant="ghost" className="text-slate-400">
+                                    <Button size="icon" variant="ghost" className="text-[color:var(--landing-muted)]">
                                         <Eye className="h-4 w-4" />
                                     </Button>
                                 </CardContent>
@@ -141,8 +145,8 @@ export default function VerificationPage() {
                     {/* Details View */}
                     <div className="lg:sticky lg:top-6 space-y-6">
                         {selectedApp ? (
-                            <Card className="border-slate-800 bg-slate-900 overflow-hidden">
-                                <CardHeader className="border-b border-slate-800 bg-slate-900/50">
+                            <Card className="border-[color:var(--landing-border)] bg-[color:var(--landing-card)] overflow-hidden">
+                                <CardHeader className="border-b border-[color:var(--landing-border)] bg-[rgb(var(--landing-dot-rgb)/0.03)]">
                                     <CardTitle>Verification Details</CardTitle>
                                     <CardDescription>Compare extracted data with the uploaded image</CardDescription>
                                 </CardHeader>
@@ -167,42 +171,42 @@ export default function VerificationPage() {
                                         <div className="p-6 space-y-6">
                                             <div className="grid grid-cols-2 gap-4 text-sm">
                                                 <div className="space-y-1">
-                                                    <p className="text-xs text-slate-500 uppercase tracking-wider">Applicant Name</p>
-                                                    <p className="font-medium text-slate-200">{selectedApp.full_name}</p>
+                                                    <p className="text-xs text-[color:var(--landing-muted)] uppercase tracking-wider">Applicant Name</p>
+                                                    <p className="font-medium text-[color:var(--landing-ink)]">{selectedApp.full_name}</p>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <p className="text-xs text-slate-500 uppercase tracking-wider">License Number</p>
-                                                    <p className="font-medium text-slate-200">{selectedApp.license_number}</p>
+                                                    <p className="text-xs text-[color:var(--landing-muted)] uppercase tracking-wider">License Number</p>
+                                                    <p className="font-medium text-[color:var(--landing-ink)]">{selectedApp.license_number}</p>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <p className="text-xs text-slate-500 uppercase tracking-wider">Email</p>
-                                                    <p className="font-medium text-slate-200 break-all">{selectedApp.email || "N/A"}</p>
+                                                    <p className="text-xs text-[color:var(--landing-muted)] uppercase tracking-wider">Email</p>
+                                                    <p className="font-medium text-[color:var(--landing-ink)] break-all">{selectedApp.email || "N/A"}</p>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <p className="text-xs text-slate-500 uppercase tracking-wider">Phone</p>
-                                                    <p className="font-medium text-slate-200">{selectedApp.phone}</p>
+                                                    <p className="text-xs text-[color:var(--landing-muted)] uppercase tracking-wider">Phone</p>
+                                                    <p className="font-medium text-[color:var(--landing-ink)]">{selectedApp.phone}</p>
                                                 </div>
                                             </div>
 
                                             {/* AI Extraction Results */}
-                                            <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-800">
+                                            <div className="bg-[rgb(var(--landing-dot-rgb)/0.04)] rounded-lg p-4 border border-[color:var(--landing-border)]">
                                                 <div className="flex items-center gap-2 mb-3">
                                                     <div className={`h-2 w-2 rounded-full ${selectedApp.ai_confidence_score > 0.8 ? 'bg-green-500' : 'bg-red-500'}`} />
-                                                    <h4 className="text-sm font-semibold text-slate-300">AI Analysis</h4>
-                                                    <span className="text-xs text-slate-500 ml-auto">Confidence: {Math.round(selectedApp.ai_confidence_score * 100)}%</span>
+                                                    <h4 className="text-sm font-semibold text-[color:var(--landing-ink)]">AI Analysis</h4>
+                                                    <span className="text-xs text-[color:var(--landing-muted)] ml-auto">Confidence: {Math.round(selectedApp.ai_confidence_score * 100)}%</span>
                                                 </div>
 
                                                 {selectedApp.ai_extracted_data ? (
-                                                    <div className="space-y-2 text-xs text-slate-400">
+                                                    <div className="space-y-2 text-xs text-[color:var(--landing-muted)]">
                                                         <div className="flex justify-between">
                                                             <span>Extracted Name:</span>
-                                                            <span className={selectedApp.ai_extracted_data.name_match ? "text-green-400" : "text-amber-400"}>
+                                                            <span className={selectedApp.ai_extracted_data.name_match ? "text-[color:var(--landing-moss)]" : "text-[color:var(--landing-clay)]"}>
                                                                 {selectedApp.ai_extracted_data.full_name || "Not found"}
                                                             </span>
                                                         </div>
                                                         <div className="flex justify-between">
                                                             <span>Extracted License:</span>
-                                                            <span className={selectedApp.ai_extracted_data.license_match ? "text-green-400" : "text-amber-400"}>
+                                                            <span className={selectedApp.ai_extracted_data.license_match ? "text-[color:var(--landing-moss)]" : "text-[color:var(--landing-clay)]"}>
                                                                 {selectedApp.ai_extracted_data.license_number || "Not found"}
                                                             </span>
                                                         </div>
@@ -212,11 +216,11 @@ export default function VerificationPage() {
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <p className="text-xs text-slate-500 italic">No AI data available.</p>
+                                                    <p className="text-xs text-[color:var(--landing-muted)] italic">No AI data available.</p>
                                                 )}
 
                                                 {selectedApp.ai_confidence_score < 0.8 && (
-                                                    <div className="mt-3 flex items-start gap-2 text-amber-400 text-xs bg-amber-950/30 p-2 rounded">
+                                                    <div className="mt-3 flex items-start gap-2 text-[color:var(--landing-clay)] text-xs bg-[rgb(var(--landing-clay-rgb)/0.10)] p-2 rounded border border-[rgb(var(--landing-clay-rgb)/0.20)]">
                                                         <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                                                         <p>Low confidence match. Please verify the image manually with extra care.</p>
                                                     </div>
@@ -231,7 +235,7 @@ export default function VerificationPage() {
                                                             <X className="mr-2 h-4 w-4" /> Reject
                                                         </Button>
                                                     </DialogTrigger>
-                                                    <DialogContent className="bg-slate-900 border-slate-800 text-slate-200">
+                                                    <DialogContent className="bg-[color:var(--landing-card-strong)] border-[color:var(--landing-border)] text-[color:var(--landing-ink)]">
                                                         <DialogHeader>
                                                             <DialogTitle>Reject Application</DialogTitle>
                                                             <DialogDescription>
@@ -242,7 +246,7 @@ export default function VerificationPage() {
                                                             placeholder="Reason for rejection (e.g. Image blurry, License expired)..."
                                                             value={rejectionReason}
                                                             onChange={(e) => setRejectionReason(e.target.value)}
-                                                            className="bg-slate-950 border-slate-800 min-h-[100px]"
+                                                            className="bg-[rgb(var(--landing-dot-rgb)/0.04)] border-[color:var(--landing-border)] min-h-[100px]"
                                                         />
                                                         <DialogFooter>
                                                             <Button variant="ghost" onClick={() => setIsRejectDialogOpen(false)}>Cancel</Button>
@@ -258,7 +262,7 @@ export default function VerificationPage() {
                                                 </Dialog>
 
                                                 <Button
-                                                    className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                                                    className="flex-1 bg-[color:var(--landing-moss)] hover:bg-[rgb(var(--landing-moss-rgb)/0.9)] text-[color:var(--landing-bone)]"
                                                     onClick={() => handleVerify(selectedApp.id, "approved")}
                                                     disabled={!!processingId}
                                                 >
@@ -274,7 +278,7 @@ export default function VerificationPage() {
                                 </CardContent>
                             </Card>
                         ) : (
-                            <div className="h-64 border-2 border-dashed border-slate-800 rounded-lg flex items-center justify-center text-slate-600">
+                            <div className="h-64 border-2 border-dashed border-[color:var(--landing-border)] rounded-lg flex items-center justify-center text-[color:var(--landing-muted)]">
                                 <p>Select an application to verify</p>
                             </div>
                         )}

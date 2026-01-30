@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { toast } from "sonner";
-import { Loader2, Upload, Check, ChevronRight, ChevronLeft, Shield, FileText } from "lucide-react";
+import { FileText, Loader2, Shield, Upload } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import Stepper, { Step } from "@/components/ui/stepper";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-
-
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ModeToggle } from "@/components/mode-toggle";
 import { createClient } from "@/lib/supabase/client";
@@ -21,7 +20,7 @@ const STEPS = ["Basic Info", "Professional", "License", "Review"];
 
 export default function PharmacistRegistrationPage() {
     const router = useRouter();
-    const [currentStep, setCurrentStep] = useState(1);
+    const [step, setStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [session, setSession] = useState<any>(null);
@@ -76,23 +75,14 @@ export default function PharmacistRegistrationPage() {
     });
 
     const [licenseFile, setLicenseFile] = useState<File | null>(null);
-    const [isUploading, setIsUploading] = useState(false);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleNext = () => {
-        if (currentStep < STEPS.length) {
-            setCurrentStep(prev => prev + 1);
-        }
-    };
-
-    const handleBack = () => {
-        if (currentStep > 1) {
-            setCurrentStep(prev => prev - 1);
-        }
+        const numericFields = new Set(["experience_years", "rate"]);
+        setFormData(prev => ({
+            ...prev,
+            [name]: numericFields.has(name) ? (value === "" ? 0 : Number(value)) : value
+        }));
     };
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,17 +104,45 @@ export default function PharmacistRegistrationPage() {
             setLicenseFile(file);
 
             // Create a local preview URL (no upload yet - will upload during registration)
+            if (formData.license_image_url.startsWith("blob:")) {
+                URL.revokeObjectURL(formData.license_image_url);
+            }
             const previewUrl = URL.createObjectURL(file);
             setFormData(prev => ({ ...prev, license_image_url: previewUrl }));
             toast.success("License selected. It will be uploaded during registration.");
         }
     };
 
-    const handleSubmit = async () => {
+    useEffect(() => {
+        return () => {
+            if (formData.license_image_url.startsWith("blob:")) {
+                URL.revokeObjectURL(formData.license_image_url);
+            }
+        };
+    }, [formData.license_image_url]);
+
+    const canProceed = useMemo(() => {
+        const nameOk = Boolean(formData.full_name.trim());
+        const phoneOk = Boolean(formData.phone.trim());
+        const bioOk = Boolean(formData.bio.trim());
+        const specsOk = Boolean(formData.specializations.trim());
+        const upiOk = Boolean(formData.upi_id.trim());
+        const licNumOk = Boolean(formData.license_number.trim());
+        const licStateOk = Boolean(formData.license_state.trim());
+        const licFileOk = Boolean(licenseFile);
+
+        if (step === 1) return nameOk && phoneOk && bioOk;
+        if (step === 2) return specsOk && upiOk;
+        if (step === 3) return licNumOk && licStateOk && licFileOk;
+        // Review step: require everything critical.
+        return nameOk && phoneOk && bioOk && specsOk && upiOk && licNumOk && licStateOk && licFileOk;
+    }, [formData, licenseFile, step]);
+
+    const handleSubmit = async (): Promise<boolean> => {
         if (!session) {
             toast.error("Please login first");
             router.push("/pharmacist/auth/login?redirect=/pharmacist/register");
-            return;
+            return false;
         }
 
         try {
@@ -136,6 +154,9 @@ export default function PharmacistRegistrationPage() {
             // Add license file if exists
             if (licenseFile) {
                 formDataToSend.append('license_file', licenseFile);
+            } else {
+                toast.error("Please attach your license document.");
+                return false;
             }
 
             // Prepare registration data
@@ -166,9 +187,11 @@ export default function PharmacistRegistrationPage() {
 
             toast.success("Registration submitted successfully! Your profile is pending verification.");
             router.push("/pharmacist/dashboard");
+            return true;
         } catch (error: any) {
             console.error(error);
             toast.error(error.message);
+            return false;
         } finally {
             setIsSubmitting(false);
         }
@@ -179,338 +202,357 @@ export default function PharmacistRegistrationPage() {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="text-center">
-                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-500" />
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-emerald-500" />
                     <p className="mt-4 text-muted-foreground">Checking authentication...</p>
                 </div>
             </div>
         );
     }
 
+    const clearLicense = () => {
+        if (formData.license_image_url.startsWith("blob:")) {
+            URL.revokeObjectURL(formData.license_image_url);
+        }
+        setFormData((prev) => ({ ...prev, license_image_url: "" }));
+        setLicenseFile(null);
+    };
+
     return (
-        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative">
-            <div className="absolute top-4 right-4">
+        <div className="relative min-h-screen bg-background px-4 py-10">
+            <div className="absolute right-4 top-4">
                 <ModeToggle />
             </div>
-            <div className="w-full max-w-3xl">
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
-                        Join MediRep Marketplace
+
+            <div className="mx-auto w-full max-w-4xl">
+                <div className="text-center">
+                    <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+                        <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-500 via-amber-400 to-orange-500">
+                            Join MediRep Marketplace
+                        </span>
                     </h1>
-                    <p className="text-muted-foreground mt-2">
-                        Register as a pharmacist to start earning by providing consultations.
+                    <p className="mt-2 text-muted-foreground">
+                        Register as a pharmacist. Get verified. Start earning from paid consultations.
                     </p>
                 </div>
 
-                {/* Steps Indicator */}
-                <div className="flex justify-between mb-8 px-12 relative">
-                    <div className="absolute top-1/2 left-0 w-full h-0.5 bg-border -z-10" />
-                    {STEPS.map((step, index) => {
-                        const stepNum = index + 1;
-                        const isCompleted = currentStep > stepNum;
-                        const isActive = currentStep === stepNum;
-
-                        return (
-                            <div key={step} className="flex flex-col items-center gap-2 bg-background px-2">
-                                <div className={`
-                   w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors
-                   ${isActive ? 'border-indigo-500 bg-indigo-500/20 text-indigo-400' :
-                                        isCompleted ? 'border-green-500 bg-green-500 text-slate-950' :
-                                            'border-slate-700 bg-slate-900 text-slate-600'}
-                 `}>
-                                    {isCompleted ? <Check className="h-4 w-4" /> : stepNum}
+                <div className="mt-10">
+                    <Stepper
+                        initialStep={1}
+                        onStepChange={setStep}
+                        disableStepIndicators
+                        backButtonText="Previous"
+                        nextButtonText="Next"
+                        completeButtonText={isSubmitting ? "Submitting..." : "Submit application"}
+                        backButtonProps={{ disabled: isSubmitting }}
+                        nextButtonProps={{ disabled: isSubmitting || !canProceed }}
+                        onFinalStepCompleted={handleSubmit}
+                    >
+                        <Step>
+                            <div className="space-y-6">
+                                <div>
+                                    <h2 className="text-lg font-semibold">{STEPS[0]}</h2>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        These details show up on your public marketplace profile.
+                                    </p>
                                 </div>
-                                <span className={`text-xs ${isActive ? 'text-indigo-400' : 'text-slate-600'}`}>{step}</span>
-                            </div>
-                        );
-                    })}
-                </div>
 
-
-
-                <Card className="bg-card border-border shadow-xl">
-                    <CardHeader>
-                        <CardTitle>{STEPS[currentStep - 1]}</CardTitle>
-                        <CardDescription>Please provide the required details.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-
-                        {/* Step 1: Basic Info */}
-                        {currentStep === 1 && (
-                            <div className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-4 sm:grid-cols-2">
                                     <div className="space-y-2">
-                                        <Label>Full Name</Label>
+                                        <Label>Full name</Label>
                                         <Input
                                             name="full_name"
                                             value={formData.full_name}
                                             onChange={handleInputChange}
                                             placeholder="Dr. John Doe"
-                                            className="bg-background border-input"
+                                            autoComplete="name"
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Phone Number</Label>
+                                        <Label>Phone number</Label>
                                         <Input
                                             name="phone"
                                             value={formData.phone}
                                             onChange={handleInputChange}
                                             placeholder="+91 98765 43210"
-                                            className="bg-background border-input"
+                                            autoComplete="tel"
                                         />
                                     </div>
                                 </div>
+
                                 <div className="space-y-2">
-                                    <Label>Professional Bio</Label>
+                                    <Label>Professional bio</Label>
                                     <Textarea
                                         name="bio"
                                         value={formData.bio}
                                         onChange={handleInputChange}
-                                        placeholder="Describe your expertise and background..."
-                                        className="bg-background border-input min-h-[100px]"
+                                        placeholder="Your background, typical cases you help with, and what patients can expect..."
+                                        className="min-h-[110px]"
                                     />
+                                    <p className="text-xs text-muted-foreground">
+                                        Tip: write for patients. Keep it short, confident, and specific.
+                                    </p>
                                 </div>
+
                                 <div className="space-y-2">
-                                    <Label>Fluent Languages (Comma separated)</Label>
+                                    <Label>Fluent languages (comma separated)</Label>
                                     <Input
                                         name="languages"
                                         value={formData.languages}
                                         onChange={handleInputChange}
-                                        className="bg-background border-input"
+                                        placeholder="English, Hindi"
                                     />
                                 </div>
                             </div>
-                        )}
+                        </Step>
 
-                        {/* Step 2: Professional */}
-                        {currentStep === 2 && (
-                            <div className="space-y-4">
+                        <Step>
+                            <div className="space-y-6">
+                                <div>
+                                    <h2 className="text-lg font-semibold">{STEPS[1]}</h2>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Set what you’re good at and how the consultation will be priced.
+                                    </p>
+                                </div>
+
                                 <div className="space-y-2">
-                                    <Label className="text-slate-300">Specializations (Comma separated)</Label>
+                                    <Label>Specializations (comma separated)</Label>
                                     <Input
                                         name="specializations"
                                         value={formData.specializations}
                                         onChange={handleInputChange}
-                                        placeholder="Cardiology, Diabetology, General Medicine"
-                                        className="bg-slate-950 border-slate-800 text-white placeholder:text-slate-400"
+                                        placeholder="General Medicine, Diabetes Care, Drug Interactions"
                                     />
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
+
+                                <div className="grid gap-4 sm:grid-cols-2">
                                     <div className="space-y-2">
-                                        <Label className="text-slate-300">Years of Experience</Label>
+                                        <Label>Years of experience</Label>
                                         <Input
                                             type="number"
+                                            min={0}
                                             name="experience_years"
-                                            value={formData.experience_years}
+                                            value={String(formData.experience_years)}
                                             onChange={handleInputChange}
-                                            className="bg-slate-950 border-slate-800 text-white"
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-slate-300">Education / Degree</Label>
+                                        <Label>Education / degree</Label>
                                         <Input
                                             name="education"
                                             value={formData.education}
                                             onChange={handleInputChange}
-                                            placeholder="M.Pharm, PhD"
-                                            className="bg-slate-950 border-slate-800 text-white placeholder:text-slate-400"
+                                            placeholder="B.Pharm, M.Pharm"
                                         />
                                     </div>
                                 </div>
 
+                                <div className="rounded-2xl border bg-muted/30 p-4">
+                                    <div className="text-sm font-semibold">Consultation settings</div>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        This controls the default pricing shown to patients.
+                                    </p>
 
-                                <div className="p-4 bg-muted/50 rounded-lg border border-border space-y-4">
-                                    <h4 className="text-sm font-semibold text-muted-foreground">Consultation Settings</h4>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
                                         <div className="space-y-2">
                                             <Label>Rate (INR)</Label>
                                             <Input
                                                 type="number"
+                                                min={0}
                                                 name="rate"
-                                                value={formData.rate}
+                                                value={String(formData.rate)}
                                                 onChange={handleInputChange}
-                                                className="bg-background border-input"
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Duration (Minutes)</Label>
+                                            <Label>Duration</Label>
                                             <Select
                                                 value={String(formData.duration_minutes)}
-                                                onValueChange={(val) => setFormData(prev => ({ ...prev, duration_minutes: Number(val) }))}
+                                                onValueChange={(val) =>
+                                                    setFormData((prev) => ({
+                                                        ...prev,
+                                                        duration_minutes: Number(val),
+                                                    }))
+                                                }
                                             >
-                                                <SelectTrigger className="bg-background border-input">
+                                                <SelectTrigger>
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="15">15 Mins</SelectItem>
-                                                    <SelectItem value="30">30 Mins</SelectItem>
-                                                    <SelectItem value="45">45 Mins</SelectItem>
-                                                    <SelectItem value="60">60 Mins</SelectItem>
+                                                    <SelectItem value="15">15 minutes</SelectItem>
+                                                    <SelectItem value="30">30 minutes</SelectItem>
+                                                    <SelectItem value="45">45 minutes</SelectItem>
+                                                    <SelectItem value="60">60 minutes</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label>UPI ID (For Payouts)</Label>
+
+                                    <div className="mt-4 space-y-2">
+                                        <Label>UPI ID (payouts)</Label>
                                         <Input
                                             name="upi_id"
                                             value={formData.upi_id}
                                             onChange={handleInputChange}
-                                            placeholder="username@upi"
-                                            className="bg-background border-input"
+                                            placeholder="name@upi"
                                         />
                                     </div>
                                 </div>
                             </div>
-                        )}
+                        </Step>
 
-                        {/* Step 3: License */}
-                        {currentStep === 3 && (
+                        <Step>
                             <div className="space-y-6">
-                                <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <h2 className="text-lg font-semibold">{STEPS[2]}</h2>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Verification is what makes the marketplace trustworthy.
+                                    </p>
+                                </div>
+
+                                <div className="grid gap-4 sm:grid-cols-2">
                                     <div className="space-y-2">
-                                        <Label className="text-slate-300">License Number</Label>
+                                        <Label>License number</Label>
                                         <Input
                                             name="license_number"
                                             value={formData.license_number}
                                             onChange={handleInputChange}
-                                            className="bg-slate-950 border-slate-800 text-white"
+                                            placeholder="e.g. PH1234567"
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-slate-300">Issuing State</Label>
+                                        <Label>Issuing state</Label>
                                         <Input
                                             name="license_state"
                                             value={formData.license_state}
                                             onChange={handleInputChange}
-                                            className="bg-slate-950 border-slate-800 text-white"
+                                            placeholder="e.g. Maharashtra"
                                         />
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label>Upload License Certificate</Label>
-                                    <div className="border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors relative">
+                                    <Label>Upload license certificate</Label>
+                                    <div className="relative rounded-2xl border-2 border-dashed bg-muted/30 p-6 transition-colors hover:bg-muted/40">
                                         {formData.license_image_url ? (
-                                            <div className="relative w-full h-48 flex items-center justify-center">
+                                            <div className="relative h-48 w-full overflow-hidden rounded-xl bg-background">
                                                 {licenseFile?.type === "application/pdf" ? (
-                                                    <div className="flex flex-col items-center text-slate-500">
-                                                        <FileText className="h-16 w-16 mb-2" />
-                                                        <span className="text-sm font-medium">{licenseFile.name}</span>
+                                                    <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                                                        <FileText className="h-14 w-14" />
+                                                        <div className="text-sm font-medium">
+                                                            {licenseFile.name}
+                                                        </div>
                                                     </div>
+                                                ) : formData.license_image_url.startsWith("blob:") ? (
+                                                    <img
+                                                        src={formData.license_image_url}
+                                                        alt="License preview"
+                                                        className="h-full w-full object-contain"
+                                                    />
                                                 ) : (
                                                     <Image
                                                         src={formData.license_image_url}
                                                         alt="License"
                                                         fill
+                                                        sizes="(max-width: 768px) 100vw, 720px"
                                                         className="object-contain"
                                                     />
                                                 )}
+
                                                 <Button
+                                                    type="button"
                                                     variant="outline"
                                                     size="sm"
-                                                    className="absolute top-2 right-2 bg-slate-900/80"
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        setFormData(prev => ({ ...prev, license_image_url: "" }));
-                                                        setLicenseFile(null);
-                                                    }}
+                                                    className="absolute right-2 top-2 bg-background/80 backdrop-blur"
+                                                    onClick={clearLicense}
                                                 >
                                                     Change
                                                 </Button>
                                             </div>
                                         ) : (
-                                            <>
-                                                <Upload className="h-8 w-8 text-slate-600 mb-2" />
-                                                <p className="text-sm text-slate-500 text-center mb-4">
-                                                    Drag and drop or click to upload<br />
-                                                    (JPG, PNG, PDF up to 5MB)
+                                            <div className="flex flex-col items-center justify-center py-10 text-center">
+                                                <Upload className="h-8 w-8 text-muted-foreground" />
+                                                <p className="mt-3 text-sm text-muted-foreground">
+                                                    Drag & drop or click to upload
+                                                    <br />
+                                                    JPG / PNG / PDF up to 5MB
                                                 </p>
                                                 <input
                                                     type="file"
                                                     accept="image/jpeg,image/png,application/pdf"
-                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                                                     onChange={handleFileChange}
-                                                    disabled={isUploading}
+                                                    disabled={isSubmitting}
                                                 />
-                                                {isUploading && <Loader2 className="animate-spin h-5 w-5 text-indigo-500" />}
-                                            </>
+                                            </div>
                                         )}
                                     </div>
-                                    <p className="text-xs text-slate-500 mt-2">
-                                        <Shield className="inline h-3 w-3 mr-1" />
-                                        Your license information is encrypted and only visible to verification admins.
+
+                                    <p className="mt-2 text-xs text-muted-foreground">
+                                        <Shield className="inline h-3.5 w-3.5 -mt-0.5 mr-1" />
+                                        License data is visible only to verification admins.
                                     </p>
                                 </div>
                             </div>
-                        )}
+                        </Step>
 
-                        {/* Step 4: Review */}
-                        {currentStep === 4 && (
-                            <div className="space-y-4 text-sm text-foreground">
-                                <div className="p-4 bg-card border border-border rounded-lg space-y-3">
-                                    <div className="flex justify-between">
+                        <Step>
+                            <div className="space-y-6">
+                                <div>
+                                    <h2 className="text-lg font-semibold">{STEPS[3]}</h2>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Confirm everything looks right — then submit for admin verification.
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl border bg-muted/20 p-4 text-sm">
+                                    <div className="flex items-center justify-between py-2">
                                         <span className="text-muted-foreground">Name</span>
-                                        <span className="font-medium">{formData.full_name}</span>
+                                        <span className="font-medium">{formData.full_name || "—"}</span>
                                     </div>
-                                    <div className="flex justify-between">
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-muted-foreground">Phone</span>
+                                        <span className="font-medium">{formData.phone || "—"}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between py-2">
                                         <span className="text-muted-foreground">License</span>
-                                        <span className="font-medium">{formData.license_number}</span>
+                                        <span className="font-medium">
+                                            {formData.license_number ? `${formData.license_number} (${formData.license_state || "—"})` : "—"}
+                                        </span>
                                     </div>
-                                    <div className="flex justify-between">
+                                    <div className="flex items-center justify-between py-2">
                                         <span className="text-muted-foreground">Rate</span>
-                                        <span className="font-medium">₹{formData.rate} / {formData.duration_minutes} min</span>
+                                        <span className="font-medium">
+                                            ₹{formData.rate} / {formData.duration_minutes} min
+                                        </span>
                                     </div>
-                                    <div className="flex justify-between">
+                                    <div className="flex items-center justify-between py-2">
                                         <span className="text-muted-foreground">Specializations</span>
-                                        <span className="font-medium">{formData.specializations}</span>
+                                        <span className="font-medium">{formData.specializations || "—"}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">License Photo</span>
-                                        <span className={formData.license_image_url ? "text-green-500" : "text-red-500"}>
-                                            {formData.license_image_url ? "Uploaded" : "Missing"}
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-muted-foreground">License document</span>
+                                        <span className={licenseFile ? "text-emerald-600 font-medium" : "text-destructive font-medium"}>
+                                            {licenseFile ? "Attached" : "Missing"}
                                         </span>
                                     </div>
                                 </div>
 
-                                <div className="bg-amber-950/20 border border-amber-900/50 p-3 rounded text-amber-200/80 text-xs">
-                                    By submitting, you agree to the Terms of Service. Your profile will be reviewed by our admin team within 24-48 hours.
+                                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-800 dark:text-amber-200">
+                                    By submitting, you agree to the Terms of Service. Your profile stays hidden until verified.
+                                </div>
+
+                                <div className="rounded-2xl border bg-muted/20 p-4 text-xs text-muted-foreground">
+                                    Brutal honesty: verification + availability is the whole marketplace. Without it, it becomes spam.
                                 </div>
                             </div>
-                        )}
+                        </Step>
+                    </Stepper>
+                </div>
 
-                    </CardContent>
-                    <CardFooter className="flex justify-between border-t border-border pt-6">
-                        <Button
-                            variant="outline"
-                            onClick={handleBack}
-                            disabled={currentStep === 1 || isSubmitting}
-                            className="border-input hover:bg-accent"
-                        >
-                            <ChevronLeft className="mr-2 h-4 w-4" /> Back
-                        </Button>
-
-                        {currentStep < STEPS.length ? (
-                            <Button onClick={handleNext} disabled={isUploading}>
-                                Next <ChevronRight className="ml-2 h-4 w-4" />
-                            </Button>
-                        ) : (
-                            <Button
-                                onClick={handleSubmit}
-                                disabled={isSubmitting || !formData.license_image_url}
-                                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg shadow-blue-900/20"
-                            >
-                                {isSubmitting ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
-                                    </>
-                                ) : (
-                                    "Submit Application"
-                                )}
-                            </Button>
-                        )}
-                    </CardFooter>
-                </Card>
-            </div >
-        </div >
+                <p className="mt-8 text-center text-xs text-muted-foreground">
+                    Prototype build. We review profiles manually — production would require stronger KYC & fraud controls.
+                </p>
+            </div>
+        </div>
     );
 }

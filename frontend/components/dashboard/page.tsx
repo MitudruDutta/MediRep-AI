@@ -2,25 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageSquare, Activity, Pill, AlertTriangle, FileText, User, Sparkles, ArrowRight, Layers, Palette, Zap, Scale } from "lucide-react";
+import { useState } from "react";
+import Image from "next/image";
+import {
+  MessageSquare, Activity, Pill, AlertTriangle, User, ArrowRight, Scale,
+  LayoutDashboard, LogOut, Stethoscope, Camera
+} from "lucide-react";
 import { motion, Variants } from "framer-motion";
 import {
   Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarInset,
-} from "@/components/ui/sidebar";
-import AppHeader from "./header";
+  SidebarBody,
+  SidebarLink,
+  SidebarLogo,
+} from "@/components/ui/animated-sidebar";
 import { cn } from "@/lib/utils";
-
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 
 interface BentoGridItemProps {
   title: string;
@@ -28,6 +25,7 @@ interface BentoGridItemProps {
   icon: React.ReactNode;
   className?: string;
   url: string;
+  accent?: string;
 }
 
 const BentoGridItem = ({
@@ -36,6 +34,7 @@ const BentoGridItem = ({
   icon,
   className,
   url,
+  accent = "bg-[color:var(--landing-clay)]",
 }: BentoGridItemProps) => {
   const variants: Variants = {
     hidden: { opacity: 0, y: 20 },
@@ -49,46 +48,70 @@ const BentoGridItem = ({
   return (
     <motion.div
       variants={variants}
+      whileHover={{ y: -5, scale: 1.02 }}
       className={cn(
-        "group border-border/50 bg-background hover:border-primary/30 relative flex h-full cursor-pointer flex-col justify-between overflow-hidden rounded-xl border px-6 pt-6 pb-10 shadow-sm transition-all duration-500",
-        "dark:bg-black/40 dark:border-white/10 dark:hover:border-white/20 dark:hover:bg-white/5",
+        "group relative flex h-full cursor-pointer flex-col justify-between overflow-hidden rounded-2xl p-6",
+        "bg-[color:var(--landing-card)] backdrop-blur-xl",
+        "border border-[color:var(--landing-border)]",
+        "shadow-xl shadow-black/5 dark:shadow-black/20",
+        "hover:shadow-2xl hover:border-[color:var(--landing-border-strong)]",
+        "transition-all duration-500",
         className
       )}
     >
       <Link href={url} className="absolute inset-0 z-20" />
 
-      <div className="absolute top-0 -right-1/2 z-0 size-full cursor-pointer bg-[linear-gradient(to_right,rgba(0,0,0,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.05)_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] bg-[size:24px_24px]"></div>
-
-      <div className="text-primary/5 group-hover:text-primary/10 absolute right-1 bottom-3 scale-[6] transition-all duration-700 group-hover:scale-[6.2] dark:text-white/5 dark:group-hover:text-white/10">
+      {/* Large background icon */}
+      <div className="absolute -right-4 -bottom-4 opacity-[0.05] dark:opacity-[0.08] scale-[4] group-hover:scale-[4.5] transition-transform duration-700">
         {icon}
       </div>
 
       <div className="relative z-10 flex h-full flex-col justify-between">
         <div>
-          <div className="bg-primary/10 text-primary shadow-primary/10 group-hover:bg-primary/20 group-hover:shadow-primary/20 mb-4 flex h-12 w-12 items-center justify-center rounded-full shadow-sm transition-all duration-500 dark:bg-white/10 dark:text-white dark:shadow-none dark:group-hover:bg-white/20">
-            {icon}
+          <div className={cn(
+            "mb-4 flex h-12 w-12 items-center justify-center rounded-xl",
+            "shadow-lg shadow-black/10 dark:shadow-black/30",
+            accent,
+            "group-hover:shadow-xl transition-shadow duration-500"
+          )}>
+            <span className="text-white">{icon}</span>
           </div>
-          <h3 className="mb-2 text-xl font-semibold tracking-tight text-foreground dark:text-white">{title}</h3>
-          <p className="text-muted-foreground text-sm dark:text-white/60">{description}</p>
+          <h3 className="mb-2 text-xl font-bold tracking-tight text-[color:var(--landing-ink)] font-[family-name:var(--font-display)]">
+            {title}
+          </h3>
+          <p className="text-[color:var(--landing-muted)] text-sm leading-relaxed">
+            {description}
+          </p>
         </div>
-        <div className="text-primary mt-4 flex items-center text-sm dark:text-white/80">
-          <span className="mr-1">Open</span>
-          <ArrowRight className="size-4 transition-all duration-500 group-hover:translate-x-2" />
+        <div className="mt-4 flex items-center text-sm font-medium text-[color:var(--landing-moss)]">
+          <span className="mr-2">Open</span>
+          <ArrowRight className="size-4 transition-all duration-300 group-hover:translate-x-2" />
         </div>
       </div>
-      <div className="from-primary to-primary/30 absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r blur-2xl transition-all duration-500 group-hover:blur-lg dark:from-white dark:to-white/30" />
+
+      {/* Hover overlay (solid, no gradient) */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-[rgb(var(--landing-dot-rgb)/0.03)]" />
     </motion.div>
   );
 };
 
+type DashboardItem = {
+  title: string;
+  url: string;
+  icon: React.ReactNode;
+  description: string;
+  colSpan: string;
+  accent: string;
+};
 
-const items = [
+const items: DashboardItem[] = [
   {
     title: "AI Chat",
     url: "/dashboard/Chat",
     icon: <MessageSquare className="size-6" />,
-    description: "Ask questions about medications and get instant answers",
+    description: "Ask questions about medications and get instant AI-powered answers",
     colSpan: "md:col-span-2",
+    accent: "bg-[color:var(--landing-clay)]",
   },
   {
     title: "Drug Interactions",
@@ -96,97 +119,92 @@ const items = [
     icon: <Activity className="size-6" />,
     description: "Visualize and check drug interactions",
     colSpan: "md:col-span-1",
+    accent: "bg-[color:var(--landing-moss)]",
   },
   {
     title: "Pill Scanner",
     url: "/dashboard/PillScanner",
-    icon: <Pill className="size-6" />,
+    icon: <Camera className="size-6" />,
     description: "Identify pills using image recognition",
     colSpan: "md:col-span-1",
+    accent: "bg-[color:var(--landing-clay)]",
   },
   {
     title: "Safety Alerts",
     url: "/dashboard/SafetyAlert",
     icon: <AlertTriangle className="size-6" />,
-    description: "Check FDA alerts and recalls",
+    description: "Check FDA alerts and recalls for medications",
     colSpan: "md:col-span-2",
+    accent: "bg-[color:var(--landing-clay)]",
   },
   {
     title: "Patient Context",
     url: "/dashboard/PatientContext",
     icon: <User className="size-6" />,
-    description: "Manage patient information",
+    description: "Manage patient health information",
     colSpan: "md:col-span-1",
+    accent: "bg-[color:var(--landing-moss)]",
   },
   {
     title: "Book Pharmacist",
     url: "/dashboard/BookPharmacist",
-    icon: <User className="size-6" />,
+    icon: <Stethoscope className="size-6" />,
     description: "Connect with expert pharmacists",
     colSpan: "md:col-span-1",
+    accent: "bg-[color:var(--landing-moss)]",
   },
   {
     title: "Price Compare",
     url: "/compare",
     icon: <Scale className="size-6" />,
-    description: "Compare medicine prices across 13+ pharmacies",
+    description: "Compare medicine prices across pharmacies",
     colSpan: "md:col-span-1",
+    accent: "bg-[color:var(--landing-clay)]",
   },
 ];
 
-
-function AppSidebar({ userEmail }: { userEmail?: string | null }) {
-  const pathname = usePathname();
-
-  return (
-    <Sidebar className="border-r border-border/50 bg-background/60 backdrop-blur-xl dark:bg-black/40">
-      <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-4">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
-            <Pill className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent dark:from-white dark:to-white/60">
-              MediRep AI
-            </h2>
-          </div>
-        </div>
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-muted-foreground/70 dark:text-white/40">Features</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-2">
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname === item.url}
-                    className={cn(
-                      "h-10 transition-all duration-200 relative overflow-hidden group",
-                      pathname === item.url
-                        ? "bg-primary/10 text-primary shadow-sm dark:bg-white/10 dark:text-white dark:shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/5"
-                    )}
-                  >
-                    <Link href={item.url}>
-                      <span className={cn("h-4 w-4 flex items-center justify-center relative z-10", pathname === item.url ? "text-cyan-500 dark:text-cyan-400" : "opacity-70")}>
-                        {item.icon}
-                      </span>
-                      <span className="relative z-10">{item.title}</span>
-
-
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-    </Sidebar>
-  );
-}
+const sidebarLinks = [
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: <LayoutDashboard className="h-5 w-5" />,
+  },
+  {
+    label: "AI Chat",
+    href: "/dashboard/Chat",
+    icon: <MessageSquare className="h-5 w-5" />,
+  },
+  {
+    label: "Drug Interactions",
+    href: "/dashboard/InteractionGraph",
+    icon: <Activity className="h-5 w-5" />,
+  },
+  {
+    label: "Pill Scanner",
+    href: "/dashboard/PillScanner",
+    icon: <Camera className="h-5 w-5" />,
+  },
+  {
+    label: "Safety Alerts",
+    href: "/dashboard/SafetyAlert",
+    icon: <AlertTriangle className="h-5 w-5" />,
+  },
+  {
+    label: "Patient Context",
+    href: "/dashboard/PatientContext",
+    icon: <User className="h-5 w-5" />,
+  },
+  {
+    label: "Book Pharmacist",
+    href: "/dashboard/BookPharmacist",
+    icon: <Stethoscope className="h-5 w-5" />,
+  },
+  {
+    label: "Price Compare",
+    href: "/compare",
+    icon: <Scale className="h-5 w-5" />,
+  },
+];
 
 interface DashboardProps {
   initialUserEmail?: string | null;
@@ -195,66 +213,155 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ initialUserEmail, initialUserName, initialUserAvatar }: DashboardProps) {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/');
+  };
+
   const containerVariants = {
     hidden: {},
     visible: {
       transition: {
-        staggerChildren: 0.12,
+        staggerChildren: 0.08,
         delayChildren: 0.1,
       },
     },
   };
 
   return (
-    <SidebarProvider>
-      <div className="fixed inset-0 z-[-1] bg-background">
-
-        <div className="absolute inset-0 z-[1] bg-gradient-to-b from-background/0 via-background/50 to-background/90" />
+    <div className="flex h-screen bg-[color:var(--landing-paper)] text-[color:var(--landing-ink)] overflow-hidden">
+      {/* Animated Background */}
+      <div className="fixed inset-0 z-0">
+        {/* Keep it clean (no gradients) */}
       </div>
 
-      <AppSidebar userEmail={initialUserEmail} />
+      <Sidebar open={open} setOpen={setOpen}>
+        <SidebarBody className="justify-between gap-10 relative z-10">
+          <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+            <SidebarLogo
+              open={open}
+              icon={<Pill className="h-5 w-5 text-white" />}
+              title="MediRep AI"
+              subtitle="Medical Assistant"
+            />
 
-      <SidebarInset className="bg-transparent">
-        <div className="bg-background/20 backdrop-blur-sm border-b border-border/50">
-          <AppHeader userEmail={initialUserEmail} userAvatar={initialUserAvatar} />
-        </div>
-
-        <main className="flex-1 overflow-y-auto p-6 md:p-8">
-          <div className="max-w-7xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="mb-8"
-            >
-              <h1 className="text-4xl font-bold text-foreground mb-2 tracking-tight dark:text-white">
-                Welcome back, {initialUserName || initialUserEmail}
-              </h1>
-              <p className="text-muted-foreground text-lg dark:text-white/60">
-                Your AI-powered medical assistant is ready to help.
-              </p>
-            </motion.div>
-
-            <motion.div
-              className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3"
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-            >
-              {items.map((item, i) => (
-                <BentoGridItem
-                  key={i}
-                  title={item.title}
-                  description={item.description}
-                  icon={item.icon}
-                  url={item.url}
-                  className={item.colSpan}
+            <div className="mt-8 flex flex-col gap-1">
+              {sidebarLinks.map((link, idx) => (
+                <SidebarLink
+                  key={idx}
+                  link={link}
+                  isActive={pathname === link.href}
                 />
               ))}
-            </motion.div>
+            </div>
           </div>
-        </main>
-      </SidebarInset>
-    </SidebarProvider>
+
+          {/* User section at bottom */}
+          <div className="border-t border-[color:var(--landing-border)] pt-4">
+            <SidebarLink
+              link={{
+                label: "Profile",
+                href: "/dashboard/settings",
+                icon: <User className="h-5 w-5" />,
+              }}
+              isActive={pathname === "/dashboard/settings"}
+            />
+            <button
+              onClick={handleSignOut}
+              className="w-full flex items-center gap-3 py-3 px-3 rounded-xl text-[color:var(--landing-muted)] hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200"
+            >
+              <LogOut className="h-5 w-5 flex-shrink-0" />
+              {open && (
+                <motion.span
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-sm font-medium whitespace-pre"
+                >
+                  Sign Out
+                </motion.span>
+              )}
+            </button>
+
+            {/* User info */}
+            <Link
+              href="/dashboard/settings"
+              className="mt-4 flex items-center gap-3 px-2 rounded-xl hover:bg-[rgb(var(--landing-dot-rgb)/0.06)] transition-colors"
+              title="Edit profile"
+            >
+              {initialUserAvatar ? (
+                <Image
+                  src={initialUserAvatar}
+                  className="h-9 w-9 flex-shrink-0 rounded-full border-2 border-[rgb(var(--landing-moss-rgb)/0.45)]"
+                  width={36}
+                  height={36}
+                  alt="Avatar"
+                />
+              ) : (
+                <div className="h-9 w-9 flex-shrink-0 rounded-full bg-[color:var(--landing-clay)] flex items-center justify-center text-white font-bold text-sm">
+                  {(initialUserName || initialUserEmail || "U")[0].toUpperCase()}
+                </div>
+              )}
+              {open && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex flex-col overflow-hidden"
+                >
+                  <span className="text-sm font-medium text-[color:var(--landing-ink)] truncate">
+                    {initialUserName || "User"}
+                  </span>
+                  <span className="text-xs text-[color:var(--landing-muted)] truncate">
+                    {initialUserEmail}
+                  </span>
+                </motion.div>
+              )}
+            </Link>
+          </div>
+        </SidebarBody>
+      </Sidebar>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto relative z-10">
+                <div className="p-6 md:p-8 max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="mb-8"
+          >
+            <h1 className="text-3xl md:text-4xl font-bold text-[color:var(--landing-ink)] mb-2 tracking-tight font-[family-name:var(--font-display)]">
+              Welcome back, {initialUserName || initialUserEmail?.split('@')[0] || 'User'}
+            </h1>
+            <p className="text-[color:var(--landing-muted)] text-lg">
+              Your AI-powered medical assistant is ready to help.
+            </p>
+          </motion.div>
+
+          <motion.div
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+          >
+            {items.map((item, i) => (
+              <BentoGridItem
+                key={i}
+                title={item.title}
+                description={item.description}
+                icon={item.icon}
+                url={item.url}
+                className={item.colSpan}
+                accent={item.accent}
+              />
+            ))}
+          </motion.div>
+        </div>
+      </main>
+    </div>
   );
 }

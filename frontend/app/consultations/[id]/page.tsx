@@ -104,11 +104,12 @@ export default function ConsultationDetailPage() {
                 }
             )
             .subscribe();
-
         // Fallback polling every 30s for any missed messages
         const interval = setInterval(async () => {
             if (id) {
                 try {
+                    // Ideally we check last message time or use realtime subscription
+                    // For now, just re-fetch
                     const msgs = await marketplaceApi.getMessages(id);
                     setMessages(msgs.messages);
                 } catch (e) { }

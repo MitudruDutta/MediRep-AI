@@ -118,7 +118,7 @@ export default function PharmacistProfilePage() {
     }
 
     return (
-        <div className="space-y-6 px-4 lg:px-8 max-w-3xl">
+        <div className="space-y-6 max-w-3xl">
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Edit Profile</h1>
                 <p className="text-muted-foreground mt-1">Update your public profile and consultation settings.</p>
@@ -128,8 +128,8 @@ export default function PharmacistProfilePage() {
             <Card className="bg-card border-border">
                 <CardContent className="pt-6">
                     <div className="flex items-center gap-6">
-                        <Avatar className="h-20 w-20 border-4 border-primary/20">
-                            <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/40 text-primary text-2xl font-bold">
+                        <Avatar className="h-20 w-20 border-4 border-[rgb(var(--landing-moss-rgb)/0.22)]">
+                            <AvatarFallback className="bg-[color:var(--landing-clay)] text-white text-2xl font-bold">
                                 {formData.full_name?.slice(0, 2).toUpperCase() || "PH"}
                             </AvatarFallback>
                         </Avatar>
@@ -137,10 +137,10 @@ export default function PharmacistProfilePage() {
                             <h2 className="text-xl font-semibold">{formData.full_name || "Pharmacist"}</h2>
                             <p className="text-muted-foreground text-sm mt-1">Licensed Pharmacist</p>
                             <div className="flex items-center gap-4 mt-3">
-                                <span className="text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-2 py-1 rounded-full flex items-center gap-1">
+                                <span className="text-xs bg-[rgb(var(--landing-moss-rgb)/0.12)] text-[color:var(--landing-moss)] px-2 py-1 rounded-full flex items-center gap-1">
                                     <IndianRupee className="h-3 w-3" /> {formData.rate} / session
                                 </span>
-                                <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-1 rounded-full flex items-center gap-1">
+                                <span className="text-xs bg-[rgb(var(--landing-clay-rgb)/0.12)] text-[color:var(--landing-clay)] px-2 py-1 rounded-full flex items-center gap-1">
                                     <Clock className="h-3 w-3" /> {formData.duration_minutes} mins
                                 </span>
                             </div>
@@ -280,7 +280,11 @@ export default function PharmacistProfilePage() {
                     </div>
                 </CardContent>
                 <CardFooter className="flex justify-end border-t border-border pt-6">
-                    <Button onClick={handleSave} disabled={saving} className="min-w-[140px] bg-primary hover:bg-primary/90">
+                    <Button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="min-w-[140px] bg-[color:var(--landing-moss)] hover:bg-[rgb(var(--landing-moss-rgb)/0.9)] text-[color:var(--landing-bone)]"
+                    >
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                         Save Changes
                     </Button>

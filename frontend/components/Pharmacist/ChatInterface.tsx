@@ -136,7 +136,6 @@ export default function ChatInterface({ consultationId, pharmacistName, endTime,
             });
 
             if (!res.ok) throw new Error("Failed to send");
-
             const realMsg = await res.json();
             setMessages(prev => {
                 // If socket already delivered the message, just remove the optimistic one
