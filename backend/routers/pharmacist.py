@@ -551,18 +551,48 @@ async def get_pharmacist_consultations(
         if not result.data:
             return []
 
-        # Manually fetch patient names
+        # Manually fetch patient names using Admin Client (Bypass RLS)
         patient_ids = list(set([c["patient_id"] for c in result.data if c.get("patient_id")]))
         
         patient_map = {}
         if patient_ids:
             try:
-                # Fetch user profiles
-                logger.info(f"Fetching {len(patient_ids)} user profiles")
-                profiles = client.table("user_profiles").select("id, display_name").in_("id", patient_ids).execute()
-                patient_map = {p["id"]: p.get("display_name", "Unknown Patient") for p in profiles.data}
+                # Use Service Role client to bypass RLS
+                admin_client = SupabaseService.get_service_client()
+                if admin_client:
+                    # 1. Try user_profiles
+                    logger.info(f"Fetching {len(patient_ids)} user profiles (Admin)")
+                    profiles = admin_client.table("user_profiles").select("*").in_("id", patient_ids).execute()
+                    
+                    for p in profiles.data:
+                        name = p.get("full_name") or p.get("display_name") or p.get("username")
+                        try:
+                            if not name and p.get("first_name"):
+                                name = f"{p.get('first_name')} {p.get('last_name', '')}".strip()
+                        except:
+                            pass
+                        if name:
+                            patient_map[p["id"]] = name
+
+                    # 2. Fallback to Auth Admin for missing IDs
+                    missing_ids = [pid for pid in patient_ids if pid not in patient_map]
+                    if missing_ids:
+                        logger.info(f"Fetching {len(missing_ids)} users from Auth Admin")
+                        for pid in missing_ids:
+                            try:
+                                user_response = admin_client.auth.admin.get_user_by_id(pid)
+                                if user_response and user_response.user:
+                                    meta = user_response.user.user_metadata or {}
+                                    name = meta.get("full_name") or meta.get("name") or user_response.user.email
+                                    if name:
+                                        patient_map[pid] = name
+                            except Exception as ex:
+                                logger.warning(f"Failed to fetch user {pid} from auth: {ex}")
+                else:
+                    logger.error("Service Role client unavailable - check SUPABASE_SERVICE_ROLE_KEY")
+                
             except Exception as e:
-                logger.error("Failed to fetch patient names: %s", e)
+                logger.error("Failed to fetch patient names: %s", e, exc_info=True)
 
         # Transform data
         consultations = []
@@ -594,4 +624,86 @@ async def get_pharmacist_consultations(
     except Exception as e:
         logger.error("Failed to get consultations (Unhandled): %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to load consultations")
+
+
+@router.get("/consultations/{consultation_id}", response_model=PharmacistConsultationSummary)
+async def get_consultation_detail(
+    consultation_id: str,
+    current_user: dict = Depends(get_current_pharmacist)
+):
+    """Get single consultation details."""
+    try:
+        client = SupabaseService.get_auth_client(current_user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client: %s", e)
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    try:
+        # Get pharmacist ID
+        profile = client.table("pharmacist_profiles").select("id").eq(
+            "user_id", current_user["id"]
+        ).limit(1).execute()
+        
+        if not profile.data:
+            raise HTTPException(status_code=404, detail="Not registered as pharmacist")
+        
+        pharmacist_id = profile.data[0]["id"]
+        
+        # Fetch consultation
+        result = client.table("consultations").select(
+             "id, patient_id, scheduled_at, duration_minutes, status, amount, pharmacist_earning, payment_status, razorpay_order_id, patient_concern"
+        ).eq("id", consultation_id).eq("pharmacist_id", pharmacist_id).single().execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Consultation not found")
+            
+        c = result.data
+        patient_name = "Unknown Patient"
+        
+        # Resolve Patient Name (Admin Client)
+        # Resolve Patient Name (Admin Client)
+        try:
+             admin_client = SupabaseService.get_service_client()
+             if admin_client and c.get("patient_id"):
+                 # 1. Profile
+                 try:
+                     p_res = admin_client.table("user_profiles").select("*").eq("id", c["patient_id"]).single().execute()
+                     if p_res.data:
+                         p = p_res.data
+                         name = p.get("full_name") or p.get("display_name")
+                         if not name and p.get("first_name"):
+                             name = f"{p.get('first_name')} {p.get('last_name', '')}".strip()
+                         if name:
+                             patient_name = name
+                 except:
+                     pass
+                 
+                 # 2. Auth Fallback
+                 if patient_name == "Unknown Patient":
+                     user_res = admin_client.auth.admin.get_user_by_id(c["patient_id"])
+                     if user_res and user_res.user:
+                         meta = user_res.user.user_metadata or {}
+                         patient_name = meta.get("full_name") or meta.get("name") or user_res.user.email or "Unknown Patient"
+        except Exception as e:
+            logger.error(f"Failed to resolve name for {c.get('patient_id')}: {e}")
+
+        return PharmacistConsultationSummary(
+                    id=c["id"],
+                    patient_id=c["patient_id"],
+                    patient_name=patient_name,
+                    scheduled_at=c["scheduled_at"],
+                    duration_minutes=c["duration_minutes"],
+                    status=c["status"],
+                    amount=c["amount"],
+                    pharmacist_earning=c.get("pharmacist_earning", 0),
+                    payment_status=c.get("payment_status"),
+                    razorpay_order_id=c.get("razorpay_order_id"),
+                    patient_concern=c.get("patient_concern")
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get consultation detail: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to load consultation")
 

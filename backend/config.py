@@ -71,7 +71,7 @@ if CACHE_TTL_ALERT < 0:
     raise ValueError(f"CACHE_TTL_ALERT must be non-negative, got: {CACHE_TTL_ALERT}")
 
 # Auth timeout with positive validation
-AUTH_TIMEOUT = get_env_float("AUTH_TIMEOUT", 10.0)
+AUTH_TIMEOUT = get_env_float("AUTH_TIMEOUT", 30.0)
 if AUTH_TIMEOUT <= 0:
     raise ValueError(f"AUTH_TIMEOUT must be positive, got: {AUTH_TIMEOUT}")
 

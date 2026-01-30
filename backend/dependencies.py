@@ -17,11 +17,31 @@ def _get_user_role(user: dict) -> str | None:
     return app_meta.get("role") or user_meta.get("role")
 
 
+
+# --- Simple In-Memory Cache for Auth ---
+# Global cache: {token: (user_dict, expiry_timestamp)}
+_auth_cache = {}
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> dict:
     """Verify JWT token and return user dict."""
     token = credentials.credentials
+    
+    # Clean cache occasionally? For now, we rely on the fact that map won't grow infinitely 
+    # unless millions of unique tokens are sent. A proper LRU is better but requires external lib.
+    # We will just clean expired entries lazily on access or implement a simple cleanup if needed.
+
+    import time
+    current_time = time.time()
+    
+    # 1. Check Cache
+    if token in _auth_cache:
+        cached_user, expiry = _auth_cache[token]
+        if current_time < expiry:
+            return cached_user
+        else:
+            del _auth_cache[token]  # Expired
 
     client = SupabaseService.get_client()
     if not client:
@@ -42,7 +62,7 @@ async def get_current_user(
         role = app_meta.get("role") or user_meta.get("role")
 
         # Return user as dict for consistent access, including app_metadata
-        return {
+        user_dict = {
             "id": user_response.user.id,
             "email": user_response.user.email,
             "metadata": user_meta,
@@ -50,6 +70,11 @@ async def get_current_user(
             "role": role,
             "token": token
         }
+        
+        # 2. Set Cache (TTL 60 seconds)
+        _auth_cache[token] = (user_dict, current_time + 60)
+        
+        return user_dict
 
     except asyncio.TimeoutError:
         logger.error("Authentication request timed out")

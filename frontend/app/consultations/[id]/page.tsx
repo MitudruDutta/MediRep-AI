@@ -26,6 +26,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { marketplaceApi, Consultation, Message } from "@/lib/marketplace-api";
 import { useSpeechToText } from "@/hooks/use-speech-to-text";
+import { createClient } from "@/lib/supabase/client";
 import dynamic from "next/dynamic";
 
 const VoiceCall = dynamic(() => import("@/components/consultation/voice-call").then(mod => mod.VoiceCall), {
@@ -79,19 +80,45 @@ export default function ConsultationDetailPage() {
         }
         load();
 
-        // Polling for new messages (simple implementation)
+        // Set up Supabase Realtime subscription for instant message updates
+        const supabase = createClient();
+        const channel = supabase
+            .channel(`consultation_messages:${id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'consultation_messages',
+                    filter: `consultation_id=eq.${id}`
+                },
+                (payload) => {
+                    const newMessage = payload.new as Message;
+                    // Only add if not already in the list (avoid duplicates)
+                    setMessages(prev => {
+                        if (prev.some(m => m.id === newMessage.id)) {
+                            return prev;
+                        }
+                        return [...prev, newMessage];
+                    });
+                }
+            )
+            .subscribe();
+
+        // Fallback polling every 30s for any missed messages
         const interval = setInterval(async () => {
             if (id) {
                 try {
-                    // Ideally we check last message time or use realtime subscription
-                    // For now, just re-fetch
                     const msgs = await marketplaceApi.getMessages(id);
                     setMessages(msgs.messages);
                 } catch (e) { }
             }
-        }, 5000);
+        }, 30000);
 
-        return () => clearInterval(interval);
+        return () => {
+            clearInterval(interval);
+            supabase.removeChannel(channel);
+        };
     }, [id, router]);
 
     useEffect(() => {

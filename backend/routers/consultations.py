@@ -41,6 +41,7 @@ from config import (
     AGORA_TOKEN_EXPIRY_SECONDS,
     PLATFORM_FEE_PERCENT,
 )
+from services.socket_service import sio
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -139,7 +140,8 @@ async def book_consultation(
 
         # Check scheduled time is in future (UTC)
         scheduled_at = _as_aware_utc(booking.scheduled_at)
-        if scheduled_at <= _now_utc():
+        # Allow 2 minutes grace period for network latency/clock skew
+        if scheduled_at < _now_utc() - timedelta(minutes=2):
             raise HTTPException(status_code=400, detail="Scheduled time must be in the future")
 
         amount = pharmacist.data["rate"]
@@ -591,8 +593,11 @@ async def send_message(
         }
 
         result = client.table("consultation_messages").insert(message_data).execute()
+        
+        # Broadcast via Socket.IO
+        await sio.emit('new_message', result.data[0], room=f"consultation_{consultation_id}")
 
-        return {"message_id": result.data[0]["id"], "sent_at": result.data[0]["created_at"]}
+        return result.data[0]
 
     except HTTPException:
         raise

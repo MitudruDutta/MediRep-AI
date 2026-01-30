@@ -23,6 +23,8 @@ from routers import chat, drugs, vision, alerts, user, marketplace, pharmacist, 
 from limiter import limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from services.socket_service import sio
+import socketio
 
 app = FastAPI(
     title="MediRep AI",
@@ -122,3 +124,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     # Use string import path for reload to work
     uvicorn.run("main:app", host="0.0.0.0", port=PORT, reload=True)
+
+# Wrap FastAPI with Socket.IO
+app = socketio.ASGIApp(sio, app)

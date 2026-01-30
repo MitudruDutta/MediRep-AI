@@ -55,7 +55,7 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
                 },
                 body: JSON.stringify({
                     pharmacist_id: pharmacist.id,
-                    scheduled_at: new Date(Date.now() + 10 * 60000).toISOString(), // Schedule for 10 mins from now (immediate)
+                    scheduled_at: new Date().toISOString(),
                 }),
             });
 

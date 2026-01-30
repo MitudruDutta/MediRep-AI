@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { io } from "socket.io-client";
 
 interface Message {
     id: string;
@@ -88,7 +89,7 @@ export default function ConsultationChatPage() {
 
                 if (res.ok) {
                     const data = await res.json();
-                    setMessages(data);
+                    setMessages(data.messages || []);
                 }
             } catch (error) {
                 console.error("Failed to fetch messages", error);
@@ -96,8 +97,32 @@ export default function ConsultationChatPage() {
         };
 
         fetchMessages();
-        const interval = setInterval(fetchMessages, 5000); // Poll every 5s
-        return () => clearInterval(interval);
+
+        // Socket.IO Subscription
+        const socket = io(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}`, {
+            transports: ["websocket"],
+            path: "/socket.io/"
+        });
+
+        socket.on("connect", () => {
+            console.log("Socket connected");
+            socket.emit("join_room", { room: `consultation_${consultationId}` });
+        });
+
+        socket.on("new_message", (message: Message) => {
+            setMessages(prev => {
+                if (prev.some(m => m.id === message.id)) return prev;
+                return [...prev, message];
+            });
+        });
+
+        // Fallback polling every 10s for any missed messages
+        const interval = setInterval(fetchMessages, 10000);
+
+        return () => {
+            clearInterval(interval);
+            socket.disconnect();
+        };
     }, [consultationId]);
 
     // Timer countdown
@@ -140,7 +165,7 @@ export default function ConsultationChatPage() {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) return;
 
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/consultations/${consultationId}/messages`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/consultations/${consultationId}/message`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -151,7 +176,10 @@ export default function ConsultationChatPage() {
 
             if (res.ok) {
                 const msg = await res.json();
-                setMessages(prev => [...prev, msg]);
+                setMessages(prev => {
+                    if (prev.some(m => m.id === msg.id)) return prev;
+                    return [...prev, msg];
+                });
                 setNewMessage("");
                 inputRef.current?.focus();
             }

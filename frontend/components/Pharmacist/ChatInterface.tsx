@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/context/AuthContext";
+import { createClient } from "@/lib/supabase/client";
+import { io } from "socket.io-client";
 
 interface Message {
     id: string;
@@ -19,9 +21,10 @@ interface ChatInterfaceProps {
     consultationId: string;
     pharmacistName: string;
     endTime: string; // ISO string
+    onExpired?: () => void;
 }
 
-export default function ChatInterface({ consultationId, pharmacistName, endTime }: ChatInterfaceProps) {
+export default function ChatInterface({ consultationId, pharmacistName, endTime, onExpired }: ChatInterfaceProps) {
     const { session } = useAuth();
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
@@ -41,6 +44,7 @@ export default function ChatInterface({ consultationId, pharmacistName, endTime 
                 setTimeLeft("00:00");
                 setIsExpired(true);
                 clearInterval(interval);
+                onExpired?.();
             } else {
                 const mins = Math.floor((diff / 1000 / 60) % 60);
                 const secs = Math.floor((diff / 1000) % 60);
@@ -49,9 +53,9 @@ export default function ChatInterface({ consultationId, pharmacistName, endTime 
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [endTime]);
+    }, [endTime, onExpired]);
 
-    // Fetch Messages
+    // Fetch Messages & Socket.IO
     useEffect(() => {
         const fetchMessages = async () => {
             if (!session) return;
@@ -71,9 +75,33 @@ export default function ChatInterface({ consultationId, pharmacistName, endTime 
         };
 
         fetchMessages();
-        const poll = setInterval(fetchMessages, 3000); // Poll every 3s
-        return () => clearInterval(poll);
-    }, [consultationId]);
+
+        // Socket.IO Subscription
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const socket = io(backendUrl, {
+            transports: ["websocket"],
+            path: "/socket.io/"
+        });
+
+        socket.on("connect", () => {
+            console.log("Socket connected");
+            socket.emit("join_room", { room: `consultation_${consultationId}` });
+        });
+
+        socket.on("new_message", (message: Message) => {
+            setMessages(prev => {
+                if (prev.some(m => m.id === message.id)) return prev;
+                return [...prev, message];
+            });
+        });
+
+        const poll = setInterval(fetchMessages, 10000);
+
+        return () => {
+            socket.disconnect();
+            clearInterval(poll);
+        };
+    }, [consultationId, session]);
 
     // Scroll to bottom
     useEffect(() => {
@@ -108,9 +136,20 @@ export default function ChatInterface({ consultationId, pharmacistName, endTime 
             });
 
             if (!res.ok) throw new Error("Failed to send");
+
+            const realMsg = await res.json();
+            setMessages(prev => {
+                // If socket already delivered the message, just remove the optimistic one
+                if (prev.some(m => m.id === realMsg.id)) {
+                    return prev.filter(m => m.id !== tempId);
+                }
+                // Otherwise swap optimistic for real
+                return prev.map(m => m.id === tempId ? realMsg : m);
+            });
         } catch (error) {
             console.error(error);
-            // Revert on failure (simplified)
+            // Optionally remove optimistic message on error or show retry
+            setMessages(prev => prev.filter(m => m.id !== tempId));
         } finally {
             setSending(false);
         }

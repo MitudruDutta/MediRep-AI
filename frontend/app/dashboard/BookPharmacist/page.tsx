@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { marketplaceApi } from "@/lib/marketplace-api";
+import { useAuth } from "@/lib/context/AuthContext";
 import PharmacistList from "@/components/Pharmacist/PharmacistList";
 import PharmacistProfile from "@/components/Pharmacist/PharmacistProfile";
 import ChatInterface from "@/components/Pharmacist/ChatInterface";
@@ -23,29 +26,99 @@ interface Pharmacist {
 }
 
 export default function BookPharmacistPage() {
+    const { session } = useAuth();
     const [view, setView] = useState<ViewState>("LIST");
     const [selectedPharmacist, setSelectedPharmacist] = useState<Pharmacist | null>(null);
     const [consultationId, setConsultationId] = useState<string | null>(null);
+    const [targetEndTime, setTargetEndTime] = useState<string | null>(null);
+
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const urlConsultationId = searchParams.get("consultationId");
+
+    useEffect(() => {
+        async function restoreSession() {
+            if (!urlConsultationId || !session) return;
+            try {
+                // 1. Get Consultation Status with explicit auth
+                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/consultations/${urlConsultationId}`, {
+                    headers: {
+                        "Authorization": `Bearer ${session.access_token}`
+                    }
+                });
+
+                if (!res.ok) throw new Error("Failed to fetch consultation");
+
+                const consultation = await res.json();
+
+                // 2. Get Pharmacist Details (Needed for Profile/Chat UI)
+                const pharmacistData = await marketplaceApi.getPharmacist(consultation.pharmacist_id);
+                // Cast API response to local interface if needed, usually compatible
+                setSelectedPharmacist(pharmacistData as any);
+
+                // 3. Determine View based on Status
+                if (['confirmed', 'in_progress'].includes(consultation.status)) {
+                    setConsultationId(urlConsultationId);
+
+                    const scheduledAt = new Date(consultation.scheduled_at);
+                    const duration = consultation.duration_minutes || 15;
+                    const endTime = new Date(scheduledAt.getTime() + duration * 60000).toISOString();
+                    setTargetEndTime(endTime);
+
+                    setView("CHAT");
+                } else {
+                    // If completed/expired/pending, show Profile logic
+                    // If pending, user might have just paid but verification not synced. 
+                    // But usually we assume confirmed.
+                    // If strictly pending, we might want to check if they want to retry payment?
+                    // For now, adhere to previous logic: only confirm/in_progress gets chat.
+                    // But DO NOT clear param if it's just a temporary fetch error.
+                    // Here we assume fetch success.
+                    setConsultationId(null);
+                    setView("PROFILE");
+                }
+            } catch (e) {
+                console.error("Failed to restore session", e);
+                // Only clear param if it's a permanent error (e.g. 404) NOT 401/loading
+                // But here we rely on success.
+                // We'll leave the param for now to avoid 'vanishing' on transient errors.
+            }
+        }
+
+        restoreSession();
+    }, [urlConsultationId, router, session]);
 
     const handleSelectPharmacist = (pharmacist: Pharmacist) => {
         setSelectedPharmacist(pharmacist);
         setView("PROFILE");
+        // Clear params when explicitly selecting from list? 
+        // Actually list is hidden in PROFILE view.
     };
 
     const handleBookingComplete = (id: string) => {
         setConsultationId(id);
+        setTargetEndTime(new Date(Date.now() + 15 * 60000).toISOString());
         setView("CHAT");
+        router.push(`/dashboard/BookPharmacist?consultationId=${id}`);
+    };
+
+    const handleSessionExpired = () => {
+        setConsultationId(null);
+        setTargetEndTime(null);
+        setView("PROFILE");
+        router.push("/dashboard/BookPharmacist");
     };
 
     const handleBack = () => {
         if (view === "PROFILE") {
             setSelectedPharmacist(null);
             setView("LIST");
+            router.push("/dashboard/BookPharmacist");
         } else if (view === "CHAT") {
-            // Confirm before leaving chat? For now just go back to list
             setConsultationId(null);
             setSelectedPharmacist(null);
             setView("LIST");
+            router.push("/dashboard/BookPharmacist");
         }
     };
 
@@ -106,7 +179,8 @@ export default function BookPharmacistPage() {
                             <ChatInterface
                                 consultationId={consultationId}
                                 pharmacistName={selectedPharmacist.full_name}
-                                endTime={new Date(Date.now() + (selectedPharmacist.duration_minutes || 15) * 60000).toISOString()}
+                                endTime={targetEndTime || new Date(Date.now() + 15 * 60000).toISOString()}
+                                onExpired={handleSessionExpired}
                             />
                         </motion.div>
                     )}

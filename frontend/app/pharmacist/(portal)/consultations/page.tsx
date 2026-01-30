@@ -148,17 +148,10 @@ export default function PharmacistConsultationsPage() {
 
                                             <div className="flex gap-2 pt-2">
                                                 <Link href={`/pharmacist/consultations/${c.id}`} className="flex-1">
-                                                    <Button className="w-full" size="sm" variant="outline">
+                                                    <Button className="w-full" size="sm">
                                                         <MessageSquare className="w-4 h-4 mr-2" /> Chat
                                                     </Button>
                                                 </Link>
-                                                {isActive && (
-                                                    <Link href={`/pharmacist/consultations/${c.id}`} className="flex-1">
-                                                        <Button className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white" size="sm">
-                                                            <Video className="w-4 h-4 mr-2" /> Join
-                                                        </Button>
-                                                    </Link>
-                                                )}
                                             </div>
                                         </CardContent>
                                     </Card>
