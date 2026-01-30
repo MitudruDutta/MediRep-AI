@@ -7,7 +7,7 @@ from supabase import create_client
 
 from models import PatientContext, ConsultationStatus
 from config import SUPABASE_URL, SUPABASE_KEY
-from dependencies import get_current_user
+from dependencies import get_current_user, get_current_patient
 from services.supabase_service import SupabaseService
 from services.language_service import get_supported_languages_list
 
@@ -23,7 +23,7 @@ def get_auth_client(token: str):
 
 @router.get("/profile/context", response_model=Optional[PatientContext])
 async def get_patient_context(
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_patient),
     creds: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Get saved patient context for the current user."""
@@ -50,8 +50,8 @@ async def get_patient_context(
 
 @router.post("/profile/context", response_model=bool)
 async def save_patient_context(
-    context: PatientContext, 
-    user: dict = Depends(get_current_user),
+    context: PatientContext,
+    user: dict = Depends(get_current_patient),
     creds: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Save or update patient context."""
@@ -79,7 +79,7 @@ async def save_patient_context(
 @router.get("/consultations", response_model=List[ConsultationStatus])
 async def get_my_consultations(
     status: Optional[str] = None,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_patient)
 ):
     """Get all consultations for the current patient."""
     client = SupabaseService.get_client()

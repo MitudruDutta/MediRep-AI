@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form
 from pydantic import BaseModel
 
-from dependencies import get_current_user
+from dependencies import get_current_user, get_current_pharmacist
 from models import (
     PharmacistRegistration,
     PharmacistProfile,
@@ -156,7 +156,7 @@ async def register_pharmacist(
 
 
 @router.get("/profile", response_model=PharmacistProfile)
-async def get_own_profile(current_user: dict = Depends(get_current_user)):
+async def get_own_profile(current_user: dict = Depends(get_current_pharmacist)):
     """Get current user's pharmacist profile."""
     # Use authenticated client so RLS policies can verify auth.uid()
     try:
@@ -198,7 +198,7 @@ class PharmacistProfileUpdate(BaseModel):
 @router.put("/profile", response_model=PharmacistProfile)
 async def update_profile(
     update_data: PharmacistProfileUpdate,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_pharmacist)
 ):
     """Update pharmacist profile. Only non-null fields are updated."""
     client = SupabaseService.get_client()
@@ -251,7 +251,7 @@ async def update_profile(
 
 
 @router.get("/dashboard", response_model=PharmacistDashboardStats)
-async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
+async def get_dashboard_stats(current_user: dict = Depends(get_current_pharmacist)):
     """Get pharmacist dashboard statistics."""
     # Use authenticated client for RLS
     try:
@@ -314,7 +314,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
 @router.put("/availability")
 async def toggle_availability(
     is_available: bool,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_pharmacist)
 ):
     """Toggle pharmacist availability status."""
     # Use authenticated client for RLS
@@ -356,7 +356,7 @@ async def toggle_availability(
 @router.post("/schedule", response_model=List[PharmacistScheduleSlot])
 async def set_schedule(
     slots: List[PharmacistScheduleSlot],
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_pharmacist)
 ):
     """
     Set weekly availability schedule.
@@ -427,7 +427,7 @@ async def set_schedule(
 
 
 @router.get("/schedule", response_model=List[PharmacistScheduleSlot])
-async def get_schedule(current_user: dict = Depends(get_current_user)):
+async def get_schedule(current_user: dict = Depends(get_current_pharmacist)):
     """Get own availability schedule."""
     client = SupabaseService.get_client()
     if not client:
@@ -459,7 +459,7 @@ async def get_pharmacist_consultations(
     status_filter: Optional[str] = Query(None, description="Filter: upcoming, past, all"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_pharmacist)
 ):
     """Get pharmacist's consultations."""
     client = SupabaseService.get_client()

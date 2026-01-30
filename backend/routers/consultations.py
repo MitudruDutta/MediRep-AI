@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from limiter import limiter
 
-from dependencies import get_current_user
+from dependencies import get_current_user, get_current_patient, get_current_pharmacist
 from models import (
     BookingRequest,
     BookingResponse,
@@ -70,9 +70,9 @@ def generate_agora_token(channel_name: str, uid: int, expiry_seconds: int = 3600
 @router.post("/book", response_model=BookingResponse)
 @limiter.limit("5/minute")
 async def book_consultation(
-    request: Request, # Required for slowapi
+    request: Request,  # Required for slowapi
     booking: BookingRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_patient)
 ):
     """
     Book a consultation with a pharmacist.
@@ -280,7 +280,7 @@ async def razorpay_webhook(
 @router.post("/{consultation_id}/confirm")
 async def confirm_consultation(
     consultation_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_pharmacist)
 ):
     """Pharmacist confirms the consultation."""
     client = SupabaseService.get_client()
@@ -288,13 +288,13 @@ async def confirm_consultation(
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     try:
-        # Verify pharmacist owns this consultation
+        # Get pharmacist profile
         profile = client.table("pharmacist_profiles").select("id").eq(
             "user_id", current_user["id"]
         ).single().execute()
 
         if not profile.data:
-            raise HTTPException(status_code=403, detail="Not a pharmacist")
+            raise HTTPException(status_code=404, detail="Pharmacist profile not found")
 
         consultation = client.table("consultations").select("*").eq(
             "id", consultation_id
@@ -530,7 +530,7 @@ async def get_messages(
 async def complete_consultation(
     consultation_id: str,
     notes: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_pharmacist)
 ):
     """Mark consultation as completed (pharmacist only)."""
     client = SupabaseService.get_client()
@@ -543,7 +543,7 @@ async def complete_consultation(
         ).single().execute()
 
         if not profile.data:
-            raise HTTPException(status_code=403, detail="Not a pharmacist")
+            raise HTTPException(status_code=404, detail="Pharmacist profile not found")
 
         consultation = client.table("consultations").select("status").eq(
             "id", consultation_id
@@ -647,7 +647,7 @@ async def cancel_consultation(
 async def submit_review(
     consultation_id: str,
     review: ReviewRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_patient)
 ):
     """Submit a review for completed consultation (patient only)."""
     client = SupabaseService.get_client()

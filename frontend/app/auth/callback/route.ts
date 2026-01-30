@@ -30,59 +30,69 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error && data.user) {
-      // Create or update user profile in database
-      try {
-        const { error: profileError } = await supabase
-          .from("user_profiles")
-          .upsert(
-            {
-              id: data.user.id,
-              display_name: data.user.user_metadata?.full_name ||
-                data.user.user_metadata?.name ||
-                data.user.email?.split("@")[0] || null,
-              avatar_url: data.user.user_metadata?.avatar_url ||
-                data.user.user_metadata?.picture || null,
-              updated_at: new Date().toISOString(),
-            },
-            {
-              onConflict: "id",
-              ignoreDuplicates: false
-            }
-          );
-
-        if (profileError) {
-          console.error("Error creating/updating user profile:", profileError);
-        }
-      } catch (e) {
-        console.error("Error in profile upsert:", e);
-      }
-
       // ----------------------------------------------------------------------
-      // Smart Redirection Logic
+      // Smart Redirection Logic - CHECK ROLE FIRST before creating profiles
       // ----------------------------------------------------------------------
       let finalRedirect = next;
 
       // 1. Check if Admin
-      const isAdmin = data.user.user_metadata?.role === "admin";
+      const isAdmin = data.user.user_metadata?.role === "admin" ||
+                      data.user.app_metadata?.role === "admin";
 
       // 2. Check if Pharmacist (query by user_id, not id)
-      let isPharmacist = false;
-      try {
-        const { data: pharma } = await supabase
-          .from("pharmacist_profiles")
-          .select("id")
-          .eq("user_id", data.user.id)
-          .maybeSingle();
-        if (pharma) isPharmacist = true;
-      } catch (e) { }
+      let isPharmacist = data.user.user_metadata?.role === "pharmacist" ||
+                         data.user.app_metadata?.role === "pharmacist";
 
-      // Decouple redirect logic
+      // Also check database if role not in metadata
+      if (!isPharmacist) {
+        try {
+          const { data: pharma } = await supabase
+            .from("pharmacist_profiles")
+            .select("id")
+            .eq("user_id", data.user.id)
+            .maybeSingle();
+          if (pharma) isPharmacist = true;
+        } catch (e) {
+          console.error("Error checking pharmacist profile:", e);
+        }
+      }
+
+      // 3. Only create user_profiles for NON-pharmacists
+      if (!isPharmacist && !isAdmin) {
+        try {
+          const { error: profileError } = await supabase
+            .from("user_profiles")
+            .upsert(
+              {
+                id: data.user.id,
+                display_name: data.user.user_metadata?.full_name ||
+                  data.user.user_metadata?.name ||
+                  data.user.email?.split("@")[0] || null,
+                avatar_url: data.user.user_metadata?.avatar_url ||
+                  data.user.user_metadata?.picture || null,
+                updated_at: new Date().toISOString(),
+              },
+              {
+                onConflict: "id",
+                ignoreDuplicates: false
+              }
+            );
+
+          if (profileError) {
+            console.error("Error creating/updating user profile:", profileError);
+          }
+        } catch (e) {
+          console.error("Error in profile upsert:", e);
+        }
+      }
+
+      // Determine redirect destination
       if (isAdmin) {
         finalRedirect = "/admin/verify";
       } else if (isPharmacist) {
         finalRedirect = "/pharmacist/dashboard";
       } else if (next === "/dashboard") {
-        // Default to dashboard for patients (as per user request)
+        // Default to dashboard for patients
         finalRedirect = "/dashboard";
       }
 

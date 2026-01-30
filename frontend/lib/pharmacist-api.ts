@@ -1,4 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
+"use client";
+
+import { createClient } from "@/lib/supabase/client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -17,150 +19,6 @@ export interface ScheduleSlot {
     end_time: string;
     is_active: boolean;
 }
-
-export const pharmacistApi = {
-    async getHeaders() {
-        const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        );
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (!session) {
-            throw new Error("Not authenticated");
-        }
-
-        return {
-            "Authorization": `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-        };
-    },
-
-    async getDashboardStats(): Promise<PharmacistStats> {
-        const headers = await this.getHeaders();
-        const res = await fetch(`${API_URL}/api/pharmacist/dashboard`, { headers });
-        if (!res.ok) throw new Error("Failed to fetch dashboard stats");
-        return res.json();
-    },
-
-    async toggleAvailability(isAvailable: boolean): Promise<{ is_available: boolean }> {
-        const headers = await this.getHeaders();
-        const res = await fetch(`${API_URL}/api/pharmacist/availability?is_available=${isAvailable}`, {
-            method: "PUT",
-            headers
-        });
-        if (!res.ok) throw new Error("Failed to update availability");
-        return res.json();
-    },
-
-    async getProfile(): Promise<PharmacistProfile> {
-        const headers = await this.getHeaders();
-        const res = await fetch(`${API_URL}/api/pharmacist/profile`, { headers });
-        if (!res.ok) throw new Error("Failed to fetch profile");
-        return res.json();
-    },
-
-    async getSchedule(): Promise<ScheduleSlot[]> {
-        const headers = await this.getHeaders();
-        const res = await fetch(`${API_URL}/api/pharmacist/schedule`, { headers });
-        if (!res.ok) throw new Error("Failed to fetch schedule");
-        return res.json();
-    },
-
-    async setSchedule(slots: ScheduleSlot[]): Promise<ScheduleSlot[]> {
-        const headers = await this.getHeaders();
-        const res = await fetch(`${API_URL}/api/pharmacist/schedule`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(slots)
-        });
-        if (!res.ok) throw new Error("Failed to update schedule");
-        return res.json();
-    },
-
-    async getMyConsultations(status?: string): Promise<PharmacistConsultation[]> {
-        const headers = await this.getHeaders();
-        const url = status
-            ? `${API_URL}/api/pharmacist/consultations?status=${status}`
-            : `${API_URL}/api/pharmacist/consultations`;
-
-        const res = await fetch(url, { headers });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || `Failed to fetch consultations (${res.status})`);
-        }
-        return res.json();
-    },
-
-    async getConsultation(id: string): Promise<PharmacistConsultation> {
-        const headers = await this.getHeaders();
-        const res = await fetch(`${API_URL}/api/consultations/${id}`, { headers });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "Failed to load consultation");
-        }
-        return res.json();
-    },
-
-    async joinCall(id: string) {
-        const headers = await this.getHeaders();
-        const res = await fetch(`${API_URL}/api/consultations/${id}/join`, {
-            method: "POST",
-            headers
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "Failed to join call");
-        }
-        return res.json();
-    },
-
-    async getMessages(id: string) {
-        const headers = await this.getHeaders();
-        const res = await fetch(`${API_URL}/api/consultations/${id}/messages`, { headers });
-        if (!res.ok) throw new Error("Failed to load messages");
-        return res.json();
-    },
-
-    async sendMessage(id: string, content: string) {
-        const headers = await this.getHeaders();
-        const res = await fetch(`${API_URL}/api/consultations/${id}/message`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ content })
-        });
-        if (!res.ok) throw new Error("Failed to send message");
-        return res.json();
-    },
-
-    async completeConsultation(id: string, notes?: string) {
-        const headers = await this.getHeaders();
-        const res = await fetch(`${API_URL}/api/consultations/${id}/complete`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ notes })
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "Failed to complete consultation");
-        }
-        return res.json();
-    },
-
-    async cancelConsultation(id: string, reason?: string) {
-        const headers = await this.getHeaders();
-        const res = await fetch(`${API_URL}/api/consultations/${id}/cancel`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ reason: reason || "Cancelled by pharmacist" })
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "Failed to cancel consultation");
-        }
-        return res.json();
-    }
-};
 
 export interface PharmacistConsultation {
     id: string;
@@ -193,3 +51,159 @@ export interface PharmacistProfile {
     is_available: boolean;
     verification_status: string;
 }
+
+/**
+ * Get authentication headers with the current user's access token
+ */
+async function getAuthHeaders(): Promise<HeadersInit> {
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+        // Try to refresh the session
+        const { data: { session: refreshedSession } } = await supabase.auth.refreshSession();
+        if (!refreshedSession?.access_token) {
+            throw new Error("Not authenticated. Please log in again.");
+        }
+        return {
+            "Authorization": `Bearer ${refreshedSession.access_token}`,
+            "Content-Type": "application/json",
+        };
+    }
+
+    return {
+        "Authorization": `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+    };
+}
+
+/**
+ * Handle API response errors consistently
+ */
+async function handleResponse<T>(response: Response): Promise<T> {
+    if (!response.ok) {
+        if (response.status === 401) {
+            // Token expired or invalid - trigger re-auth
+            const supabase = createClient();
+            await supabase.auth.refreshSession();
+            throw new Error("Session expired. Please refresh the page.");
+        }
+
+        if (response.status === 403) {
+            throw new Error("Access denied. You may not have pharmacist privileges.");
+        }
+
+        if (response.status === 429) {
+            throw new Error("Too many requests. Please wait a moment.");
+        }
+
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Request failed: ${response.statusText}`);
+    }
+
+    if (response.status === 204) {
+        return {} as T;
+    }
+
+    return response.json();
+}
+
+/**
+ * Authenticated fetch wrapper for pharmacist API
+ */
+async function authFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            ...headers,
+            ...options.headers,
+        },
+    });
+
+    return handleResponse<T>(response);
+}
+
+export const pharmacistApi = {
+    async getDashboardStats(): Promise<PharmacistStats> {
+        return authFetch<PharmacistStats>(`${API_URL}/api/pharmacist/dashboard`);
+    },
+
+    async toggleAvailability(isAvailable: boolean): Promise<{ is_available: boolean }> {
+        return authFetch<{ is_available: boolean }>(
+            `${API_URL}/api/pharmacist/availability?is_available=${isAvailable}`,
+            { method: "PUT" }
+        );
+    },
+
+    async getProfile(): Promise<PharmacistProfile> {
+        return authFetch<PharmacistProfile>(`${API_URL}/api/pharmacist/profile`);
+    },
+
+    async updateProfile(data: Partial<PharmacistProfile>): Promise<PharmacistProfile> {
+        return authFetch<PharmacistProfile>(`${API_URL}/api/pharmacist/profile`, {
+            method: "PUT",
+            body: JSON.stringify(data)
+        });
+    },
+
+    async getSchedule(): Promise<ScheduleSlot[]> {
+        return authFetch<ScheduleSlot[]>(`${API_URL}/api/pharmacist/schedule`);
+    },
+
+    async setSchedule(slots: ScheduleSlot[]): Promise<ScheduleSlot[]> {
+        return authFetch<ScheduleSlot[]>(`${API_URL}/api/pharmacist/schedule`, {
+            method: "POST",
+            body: JSON.stringify(slots)
+        });
+    },
+
+    async getMyConsultations(statusFilter?: string): Promise<PharmacistConsultation[]> {
+        const url = statusFilter
+            ? `${API_URL}/api/pharmacist/consultations?status_filter=${statusFilter}`
+            : `${API_URL}/api/pharmacist/consultations`;
+        return authFetch<PharmacistConsultation[]>(url);
+    },
+
+    async getConsultation(id: string): Promise<PharmacistConsultation> {
+        return authFetch<PharmacistConsultation>(`${API_URL}/api/consultations/${id}`);
+    },
+
+    async confirmConsultation(id: string): Promise<{ status: string }> {
+        return authFetch<{ status: string }>(`${API_URL}/api/consultations/${id}/confirm`, {
+            method: "POST"
+        });
+    },
+
+    async joinCall(id: string) {
+        return authFetch(`${API_URL}/api/consultations/${id}/join`, {
+            method: "POST"
+        });
+    },
+
+    async getMessages(id: string) {
+        return authFetch(`${API_URL}/api/consultations/${id}/messages`);
+    },
+
+    async sendMessage(id: string, content: string) {
+        return authFetch(`${API_URL}/api/consultations/${id}/message`, {
+            method: "POST",
+            body: JSON.stringify({ content })
+        });
+    },
+
+    async completeConsultation(id: string, notes?: string) {
+        return authFetch(`${API_URL}/api/consultations/${id}/complete`, {
+            method: "POST",
+            body: JSON.stringify({ notes })
+        });
+    },
+
+    async cancelConsultation(id: string, reason?: string) {
+        return authFetch(`${API_URL}/api/consultations/${id}/cancel`, {
+            method: "POST",
+            body: JSON.stringify({ reason: reason || "Cancelled by pharmacist" })
+        });
+    }
+};

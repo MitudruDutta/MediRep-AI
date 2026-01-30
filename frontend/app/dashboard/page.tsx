@@ -12,21 +12,25 @@ export default async function DashboardPage() {
     redirect('/auth/login');
   }
 
-  // Check if user is a pharmacist by querying the database
-  try {
-    const { data: pharmacistProfile, error } = await supabase
-      .from("pharmacist_profiles")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
+  // Check role from metadata first (faster)
+  const metadataRole = user.user_metadata?.role || user.app_metadata?.role;
+  if (metadataRole === "pharmacist") {
+    redirect('/pharmacist/dashboard');
+  }
+  if (metadataRole === "admin") {
+    redirect('/admin/verify');
+  }
 
-    console.log("Pharmacist profile check:", { userId: user.id, pharmacistProfile, error });
+  // Double-check by querying the database (ground truth)
+  const { data: pharmacistProfile } = await supabase
+    .from("pharmacist_profiles")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-    if (pharmacistProfile) {
-      redirect('/pharmacist/dashboard');
-    }
-  } catch (e) {
-    console.error("Error checking pharmacist profile:", e);
+  if (pharmacistProfile) {
+    // Pharmacist found - redirect immediately
+    redirect('/pharmacist/dashboard');
   }
 
   return (

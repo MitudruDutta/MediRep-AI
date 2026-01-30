@@ -54,4 +54,6 @@ temp/
 *.tmp
 
 data/
+docs/
 CLAUDE.md
+.mcp.json
