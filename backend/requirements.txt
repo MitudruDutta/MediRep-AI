@@ -21,7 +21,7 @@ libsql-client
 qdrant-client==1.7.0
 
 # Marketplace
-razorpay==1.4.3
+razorpay==1.4.2
 agora-token-builder==1.0.0
 
 # Security
