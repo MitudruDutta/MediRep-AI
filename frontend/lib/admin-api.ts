@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 
 // We need to use the backend API URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
 
 // Interface for Pharmacist Application
 export interface PharmacistApplication {

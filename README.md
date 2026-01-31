@@ -1,27 +1,38 @@
-# MediRep AI 🏥
-
 <div align="center">
 
-![MediRep AI](https://img.shields.io/badge/MediRep-AI-blue?style=for-the-badge&logo=google&logoColor=white)
-![Gemini](https://img.shields.io/badge/Powered%20by-Gemini%202.5-4285F4?style=for-the-badge&logo=google&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
+<img src="frontend/public/logo.svg" alt="MediRep AI" width="72" height="72" />
 
-**Your AI-Powered Digital Medical Representative**
+# MediRep AI
 
-[Features](#-features) • [Quick Start](#-quick-start) • [API Docs](#-api-documentation) • [Architecture](#-architecture) • [License](#-license)
+**AI-powered drug intelligence + verified pharmacist marketplace.**
+
+<p>
+  <a href="#features">Features</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#deployment">Deployment</a>
+</p>
+
+![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square)
+![React](https://img.shields.io/badge/React-19-61dafb?style=flat-square)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square)
+![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=flat-square)
+![Gemini](https://img.shields.io/badge/Gemini-2.5%20Flash-4285F4?style=flat-square)
 
 </div>
 
 ---
 
-## 🎯 What is MediRep AI?
+## Overview
 
-MediRep AI is an intelligent medical information assistant that helps healthcare professionals and patients access accurate drug information, check interactions, identify pills, and stay updated on FDA alerts — all powered by Google Gemini AI.
+MediRep AI helps clinicians, pharmacists, medical reps, and patients get fast, high-quality medication answers:
+drug facts, interactions, safety alerts, pill identification, price comparison, and an escalation path to verified pharmacists.
 
-> ⚠️ **Disclaimer**: MediRep AI is for informational purposes only. Always consult a healthcare professional for medical advice.
+> **Disclaimer:** MediRep AI is for informational purposes only and is **not medical advice**. Always verify against authoritative sources and consult a qualified clinician for medical decisions.
 
-## ✨ Features
+![MediRep AI landing page](website.png)
+
+## Features
 
 | Feature                    | Description                                               | Status  |
 | -------------------------- | --------------------------------------------------------- | ------- |
@@ -35,7 +46,7 @@ MediRep AI is an intelligent medical information assistant that helps healthcare
 | 🚨 **FDA Alerts**          | Real-time recalls, warnings, and safety alerts            | ✅ Live |
 | 🔍 **RAG System**          | Context-aware responses using vector embeddings           | ✅ Live |
 
-## 🚀 Quick Start
+## Quick start
 
 ### Prerequisites
 
@@ -43,14 +54,13 @@ MediRep AI is an intelligent medical information assistant that helps healthcare
 - Node.js 18+ and npm
 - [Gemini API Key](https://aistudio.google.com/)
 - [Supabase Project](https://supabase.com/)
-- [ElevenLabs Key](https://elevenlabs.io/) (Optional, for voice features)
 
 ### Backend Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/MitudruDutta/medirep-ai.git
-cd medirep-ai
+# Clone the repository (update URL as needed)
+git clone https://github.com/MitudruDutta/MediRep-AI
+cd MediRep-AI
 
 # Navigate to backend
 cd backend
@@ -72,7 +82,6 @@ pip install -r requirements.txt
 # GEMINI_API_KEY=your_gemini_api_key
 # SUPABASE_URL=your_supabase_url
 # SUPABASE_KEY=your_supabase_service_role_key
-# ELEVENLABS_API_KEY=your_elevenlabs_key
 
 # Run the server
 uvicorn main:app --reload --port 8000
@@ -90,7 +99,7 @@ npm install
 # Configure environment variables
 # Create a .env.local file and add:
 # NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-# NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your_supabase_publishable_key
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_or_publishable_key
 # NEXT_PUBLIC_API_URL=http://localhost:8000
 # NEXT_PUBLIC_SITE_URL=http://localhost:3000
 
@@ -103,7 +112,7 @@ Access the application:
 - Backend API: `http://localhost:8000`
 - API Documentation: `http://localhost:8000/docs`
 
-## 📡 API Documentation
+## API documentation
 
 ### Base URL
 
@@ -131,7 +140,7 @@ Once the backend is running, you can explore and test all endpoints using:
 - **Swagger UI**: `http://localhost:8000/docs`
 - **ReDoc**: `http://localhost:8000/redoc`
 
-## 🏗️ Architecture
+## Architecture
 
 ### System Overview
 
@@ -166,7 +175,7 @@ Once the backend is running, you can explore and test all endpoints using:
 | **Auth**          | Supabase Auth (JWT)                             |
 | **External APIs** | openFDA (Labels, Enforcement)                   |
 
-## 📁 Project Structure
+## Project structure
 
 ```
 medirep-ai/
@@ -209,7 +218,7 @@ medirep-ai/
 └── README.md
 ```
 
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -228,13 +237,13 @@ medirep-ai/
 | Variable                                      | Required | Description                                |
 | --------------------------------------------- | -------- | ------------------------------------------ |
 | `NEXT_PUBLIC_SUPABASE_URL`                    | ✅       | Supabase project URL                       |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`| ✅       | Supabase publishable key (sb_publishable_) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`               | ✅       | Supabase anon/publishable key              |
 | `NEXT_PUBLIC_API_URL`                         | ✅       | Backend API URL (http://localhost:8000)    |
 | `NEXT_PUBLIC_SITE_URL`                        | ✅       | Frontend URL (http://localhost:3000)       |
 
-> **Note**: Supabase now uses `sb_publishable_` keys instead of the old JWT-based `anon` keys. Get your publishable key from the [Supabase Dashboard](https://supabase.com/dashboard/project/_/settings/api).
+> Note: use the key that matches your Supabase project configuration. Keep service role keys **server-side only**.
 
-## 🚀 Deployment
+## Deployment
 
 ### Backend Deployment (Railway/Heroku)
 
@@ -256,6 +265,16 @@ cd frontend/
 vercel
 ```
 
+**Vercel settings**
+- Root Directory: `frontend`
+- Production env vars:
+  - `NEXT_PUBLIC_API_URL=https://<your-railway-backend-domain>` (no trailing `/`)
+  - `NEXT_PUBLIC_SITE_URL=https://<your-vercel-domain>` (no trailing `/`)
+
+**Railway settings (CORS)**
+- `ENV=production`
+- `ALLOWED_ORIGINS=https://<your-vercel-domain>` (comma-separated for multiple)
+
 ### Docker (Optional)
 
 ```bash
@@ -266,7 +285,7 @@ docker build -t medirep-ai-backend ./backend
 docker run -p 8000:8000 --env-file backend/.env medirep-ai-backend
 ```
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please read our contributing guidelines before submitting PRs.
 
@@ -276,11 +295,11 @@ Contributions are welcome! Please read our contributing guidelines before submit
 4. Push to the branch (`git push origin feature/amazing`)
 5. Open a Pull Request
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [Google Gemini](https://deepmind.google/technologies/gemini/) for AI capabilities
 - [openFDA](https://open.fda.gov/) for drug data
@@ -290,7 +309,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-**Built with ❤️ for better healthcare information access**
+**Built for better, faster medication decisions.**
 
 [⬆ Back to Top](#medirep-ai-)
 

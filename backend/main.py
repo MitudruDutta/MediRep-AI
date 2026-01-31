@@ -39,25 +39,55 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Environment detection
 IS_PRODUCTION = os.getenv("ENV", "development").lower() == "production"
 
+
+def _unique_preserve_order(values: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for v in values:
+        if v in seen:
+            continue
+        out.append(v)
+        seen.add(v)
+    return out
+
+
 # CORS Configuration - environment-aware
-cors_origins = []
+#
+# IMPORTANT:
+# - Browsers send a CORS preflight (OPTIONS) when using Authorization headers.
+# - If the Origin isn't allowed, Starlette returns 400 and your app looks "broken".
+#
+# Configure in production via either:
+# - ALLOWED_ORIGINS (comma-separated), OR
+# - FRONTEND_URL (single origin).
+cors_origins: list[str] = []
+cors_origin_regex = os.getenv("ALLOWED_ORIGIN_REGEX")  # optional
+
+frontend_url = os.getenv("FRONTEND_URL")
+
 if IS_PRODUCTION:
-    # Production: Only allow the actual frontend URL
-    frontend_url = os.getenv("FRONTEND_URL", "https://medirep.ai")
-    cors_origins = [frontend_url]
-    logger.info("CORS: Production mode - allowing only %s", frontend_url)
+    if ALLOWED_ORIGINS:
+        cors_origins = ALLOWED_ORIGINS
+        logger.info("CORS: Production mode - allowing ALLOWED_ORIGINS=%s", ",".join(cors_origins))
+    else:
+        cors_origins = [frontend_url or "https://medirep-ai.vercel.app"]
+        logger.info("CORS: Production mode - allowing FRONTEND_URL=%s", cors_origins[0])
 else:
-    # Development: Allow localhost
-    cors_origins = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        os.getenv("FRONTEND_URL", "http://localhost:3000"),
-    ]
-    logger.info("CORS: Development mode - allowing localhost")
+    # Development: Allow localhost + any configured origins for convenience
+    cors_origins = _unique_preserve_order(
+        [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            *(ALLOWED_ORIGINS or []),
+            frontend_url or "http://localhost:3000",
+        ]
+    )
+    logger.info("CORS: Development mode - allowing %s", ",".join(cors_origins))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
