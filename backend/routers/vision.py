@@ -56,5 +56,10 @@ async def identify_pill_endpoint(image: UploadFile = File(...)):
         )
     
     # Identify the pill
-    result = await identify_pill(image_bytes, image.content_type)
-    return result
+    try:
+        result = await identify_pill(image_bytes, image.content_type)
+        return result
+    except ValueError as e:
+        # Common case: missing AI provider config (e.g., GEMINI_API_KEY not set).
+        logger.warning("Vision unavailable (misconfigured AI provider): %s", e)
+        raise HTTPException(status_code=503, detail="AI service not configured")

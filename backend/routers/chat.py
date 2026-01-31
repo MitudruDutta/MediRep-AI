@@ -296,6 +296,10 @@ async def chat_endpoint(
             web_sources=web_sources_response,
         )
 
+    except ValueError as e:
+        # Common case: missing AI provider config (e.g., GEMINI_API_KEY not set).
+        logger.warning("Chat unavailable (misconfigured AI provider): %s", e)
+        raise HTTPException(status_code=503, detail="AI service not configured")
     except Exception as e:
         logger.exception("Chat error")
         raise HTTPException(

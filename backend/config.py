@@ -34,10 +34,15 @@ def get_env_float(key: str, default: float) -> float:
         raise ValueError(f"Environment variable {key} must be a float, got: {value}")
 
 
-# Required API Keys
+# AI API Keys
+#
+# IMPORTANT: Don't hard-fail app startup if Gemini is not configured.
+# In real deployments (Railway/Render/etc.) env vars are easy to misconfigure and
+# crashing at import time makes the service undeployable. Instead, we treat the
+# key as feature-gating: AI endpoints should return 503 when missing.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY environment variable is required")
+    logger.warning("GEMINI_API_KEY not set. AI features (chat/vision/interactions) will be disabled.")
 
 # Optional - HuggingFace token (not currently used but kept for future)
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -184,4 +189,3 @@ if not RESEND_API_KEY:
     logger.warning("RESEND_API_KEY not set. Email notifications will be disabled.")
 if not ADMIN_EMAILS:
     logger.warning("ADMIN_EMAILS not set. Admin notifications will be disabled.")
-

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 
-from config import ALLOWED_ORIGINS, PORT, RESEND_API_KEY, ADMIN_EMAILS
+from config import ALLOWED_ORIGINS, PORT, RESEND_API_KEY, ADMIN_EMAILS, GEMINI_API_KEY
 from routers import chat, drugs, vision, alerts, user, marketplace, pharmacist, consultations, admin
 
 # Rate Limiting
@@ -97,6 +97,12 @@ async def startup_event():
         logger.info("[EMAIL] Admin emails: %s", ", ".join(ADMIN_EMAILS))
     else:
         logger.warning("[EMAIL] Admin emails: NOT CONFIGURED - Admin notifications DISABLED")
+
+    # AI configuration status
+    if GEMINI_API_KEY:
+        logger.info("[AI] Gemini: CONFIGURED")
+    else:
+        logger.warning("[AI] Gemini: NOT CONFIGURED - Chat/Vision will return 503")
 
     logger.info("=" * 60)
 
