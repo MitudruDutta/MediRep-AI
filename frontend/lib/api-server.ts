@@ -27,8 +27,8 @@ async function serverFetch<T>(endpoint: string): Promise<T | null> {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${session.access_token}`,
             },
-            // Cache for 60 seconds on the server
-            next: { revalidate: 60 },
+            // This request depends on cookies/auth and must not be statically cached.
+            cache: "no-store",
         });
 
         if (!response.ok) {
