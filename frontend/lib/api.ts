@@ -114,6 +114,13 @@ export async function checkInteractions(drugs: string[], patientContext?: any) {
   });
 }
 
+// === NEW: Price Compare API ===
+export async function comparePrices(drugName: string) {
+  const encoded = encodeURIComponent(drugName);
+  return authFetch(`${API_URL}/api/prices/compare?drug_name=${encoded}`);
+}
+// =============================
+
 // === NEW: User Profile API ===
 export async function getPatientContext() {
   return authFetch<any>(`${API_URL}/api/user/profile/context`);

@@ -33,9 +33,6 @@ playwright==1.45.0
 requests==2.32.3
 redis==5.0.8
 
-# Crawl4AI (Advanced scraping)
-crawl4ai==0.10.0
-
 lxml==5.2.2
 
 python-socketio

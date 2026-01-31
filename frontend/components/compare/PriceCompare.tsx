@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { comparePrices } from "@/lib/api";
 import {
     Search,
     ExternalLink,
@@ -107,16 +108,7 @@ export default function PriceCompare() {
         }, 100);
 
         try {
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/prices/compare?drug_name=${encodeURIComponent(q)}`
-            );
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || "Failed to fetch prices");
-            }
-
-            const result: CompareResponse = await response.json();
+            const result = (await comparePrices(q)) as CompareResponse;
 
             // Handle error in response
             if (result.error) {
