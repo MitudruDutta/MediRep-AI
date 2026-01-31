@@ -7,16 +7,19 @@ A powerful medical representative AI backend powered by **Google Gemini**. Provi
 | Feature                    | Description                                     |
 | -------------------------- | ----------------------------------------------- |
 | **💬 AI Chat**             | Medical Q&A powered by Gemini 2.5 Flash         |
+| **🎙️ Voice AI**            | High-precision speech-to-text via ElevenLabs    |
 | **💊 Drug Search**         | Search drugs via openFDA database               |
 | **⚠️ Interaction Checker** | AI-powered drug-drug interaction analysis       |
 | **📸 Pill Identification** | Vision AI to identify pills from photos         |
 | **🚨 FDA Alerts**          | Real-time recalls and safety alerts             |
+| **🧑‍⚕️ Pharmacist Portal**   | Backend verification and marketplace logic      |
 | **🔍 RAG System**          | Context-aware responses using vector embeddings |
 
 ## 📋 Tech Stack
 
 - **Framework**: FastAPI
 - **AI**: Google Gemini 2.5 Flash
+- **Voice**: ElevenLabs (Transcription & Synthesis)
 - **Database**: Supabase (PostgreSQL + pgvector)
 - **APIs**: openFDA (labels, enforcement)
 - **Auth**: Supabase JWT
@@ -44,6 +47,9 @@ cp .env.example .env
 - `GEMINI_API_KEY` - Get from [Google AI Studio](https://aistudio.google.com/)
 - `SUPABASE_URL` - Your Supabase project URL
 - `SUPABASE_KEY` - Supabase anon key
+- `ELEVENLABS_API_KEY` - Get from [ElevenLabs](https://elevenlabs.io/) (Optional)
+- `GEMINI_MODEL` - Model name (default: `gemini-2.5-flash`)
+- `PORT` - Server port (default: `8000`)
 
 ### 3. Database Setup (Supabase)
 

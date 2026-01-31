@@ -151,8 +151,8 @@
   --landing-card-strong: rgba(255, 255, 255, 0.92);
   --landing-border: rgba(0, 0, 0, 0.12);
   --landing-border-strong: rgba(0, 0, 0, 0.16);
-  --landing-muted: rgba(0, 0, 0, 0.66);
-  --landing-muted-2: rgba(0, 0, 0, 0.52);
+  --landing-muted: rgba(0, 0, 0, 0.85);
+  --landing-muted-2: rgba(0, 0, 0, 0.70);
 
   --landing-clay: #c2410c;
   /* "White" in the orange/white/green system (kept as marigold for legacy refs) */
@@ -168,12 +168,12 @@
   --landing-paper: #0f0d0a;
   --landing-ink: #f6f0e3;
   --landing-bone: #ffffff;
-  --landing-card: rgba(255, 255, 255, 0.06);
-  --landing-card-strong: rgba(255, 255, 255, 0.08);
-  --landing-border: rgba(255, 255, 255, 0.10);
-  --landing-border-strong: rgba(255, 255, 255, 0.14);
-  --landing-muted: rgba(255, 255, 255, 0.70);
-  --landing-muted-2: rgba(255, 255, 255, 0.55);
+  --landing-card: rgba(255, 255, 255, 0.10);
+  --landing-card-strong: rgba(255, 255, 255, 0.12);
+  --landing-border: rgba(255, 255, 255, 0.15);
+  --landing-border-strong: rgba(255, 255, 255, 0.20);
+  --landing-muted: rgba(255, 255, 255, 0.85);
+  --landing-muted-2: rgba(255, 255, 255, 0.70);
 
   --landing-clay: #ff6a2a;
   /* "White" in the orange/white/green system (kept as marigold for legacy refs) */
@@ -189,6 +189,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     background: var(--bg-primary);
     color: var(--text-primary);
@@ -224,10 +225,13 @@
 
 /* Hide scrollbar but keep functionality */
 .scrollbar-hide {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 .scrollbar-hide::-webkit-scrollbar {
-  display: none;  /* Chrome, Safari and Opera */
+  display: none;
+  /* Chrome, Safari and Opera */
 }

@@ -7,28 +7,24 @@ Modern, responsive frontend for MediRedAI - your AI-powered digital medical repr
 - **Framework**: Next.js 16 (App Router)
 - **UI Library**: React 19
 - **Language**: TypeScript 5
-- **Styling**: Tailwind CSS 4
-- **UI Components**: Radix UI
+- **Styling**: Tailwind CSS 4, Shadcn UI
+- **Animations**: Framer Motion, GSAP (ScrollTrigger)
 - **Authentication**: Supabase Auth
-- **State Management**: React Context + Hooks
-- **Forms**: React Hook Form + Zod
-- **Charts**: Recharts
-- **Graph Visualization**: React Force Graph 2D
-- **PDF Export**: jsPDF
 - **Icons**: Lucide React
+- **Voice**: ElevenLabs Integration
 
 ## Features
 
-- 🔐 **Authentication**: Secure login/signup with Supabase Auth
+- 🔐 **Authentication**: Secure login/signup with Supabase Auth (Patient & Pharmacist roles)
+- 🖥️ **Landing Page v2**: High-performance, animation-rich landing page with "Clinical Speed" workflow
 - 💬 **AI Chat**: Natural language medical Q&A with context awareness
+- 🏛️ **Pharmacist Marketplace**: Consult verified pharmacists via chat/voice
 - 💊 **Drug Search**: Search and explore 100,000+ drugs
 - ⚠️ **Interaction Checker**: Visualize drug-drug interactions with force graphs
 - 📸 **Pill Scanner**: Identify pills using camera/image upload
 - 🚨 **Safety Alerts**: Real-time FDA recalls and warnings
-- 👤 **User Profile**: Manage account settings and saved medications
-- 📊 **Dashboard**: Unified interface with widget-based layout
-- 📱 **Responsive**: Mobile-first design that works on all devices
-- 🎨 **Modern UI**: Beautiful components with Radix UI and Tailwind
+- 📊 **Dashboard**: Patient and Pharmacist specific dashboards
+- 🎨 **Modern UI**: "Paper & Ink" aesthetic with premium typography
 
 ## Getting Started
 
@@ -98,91 +94,45 @@ npm run lint
 frontend/
 ├── app/                      # Next.js App Router
 │   ├── auth/                 # Authentication pages
-│   │   ├── login/           # Login page
-│   │   ├── signup/          # Signup page
-│   │   ├── callback/        # OAuth callback
-│   │   ├── confirm/         # Email confirmation
-│   │   └── error/           # Auth error page
-│   ├── dashboard/           # Main application
-│   │   ├── Chat/            # AI chat interface
-│   │   ├── PillScanner/     # Pill identification
-│   │   ├── InteractionGraph/ # Drug interactions
-│   │   ├── SafetyAlert/     # FDA alerts
-│   │   ├── PatientContext/  # Patient info
-│   │   ├── ExportSummary/   # PDF export
-│   │   └── layout.tsx       # Dashboard layout
-│   ├── account/             # User account settings
-│   ├── layout.tsx           # Root layout
-│   ├── page.tsx             # Landing page
-│   └── globals.css          # Global styles
-├── components/              # React components
-│   ├── dashboard/           # Dashboard components
-│   │   ├── dashboard.tsx    # Main dashboard
-│   │   └── widgets/         # Feature widgets
-│   ├── account/             # Account components
-│   ├── ui/                  # Radix UI components
-│   └── login-form.tsx       # Login form
-├── lib/                     # Utilities
-│   ├── supabase/            # Supabase clients
-│   │   ├── client.ts        # Browser client
-│   │   ├── server.ts        # Server client
-│   │   └── middleware.ts    # Auth middleware
-│   ├── context/             # React contexts
-│   │   └── PatientContext.tsx
-│   ├── api.ts               # API client
-│   └── utils.ts             # Helper functions
-├── hooks/                   # Custom React hooks
-│   ├── useChat.ts           # Chat functionality
-│   ├── useVoice.ts          # Voice input
-│   └── use-mobile.ts        # Mobile detection
-├── types/                   # TypeScript types
-│   └── index.ts
-├── public/                  # Static assets
-├── .env.local               # Environment variables
-├── next.config.ts           # Next.js configuration
-├── tailwind.config.ts       # Tailwind configuration
-├── tsconfig.json            # TypeScript configuration
-└── package.json             # Dependencies
+│   ├── dashboard/            # Patient Dashboard
+│   ├── pharmacist/           # Pharmacist Portal & Dashboard
+│   ├── v2/                   # New Landing Page components
+│   └── page.tsx              # Main Landing Page
+├── components/               # React components
+│   ├── dashboard/            # Dashboard widgets
+│   ├── ui/                   # Shadcn UI & Primitive components
+│   ├── v2/                   # Landing page v2 specifics
+│   └── ...
+├── lib/                      # Utilities
+│   ├── supabase/             # Supabase clients
+│   └── api.ts                # Backend API client
+├── hooks/                    # Custom React hooks
+│   ├── useChat.ts
+│   └── useVoice.ts
+└── public/                   # Static assets
 ```
 
 ## Key Components
 
-### Dashboard Widgets
+### Landing Page (v2)
+- **Clinical Speed**: Optimized sections showing evidence-based workflows
+- **Scroll Effects**: GSAP-powered scroll animations (`ScrollFloat`, `ScrambledText`)
+- **Liquid Glass**: Premium visual effects using custom shaders
 
+### Dashboard Widgets
 - **Chat Widget**: AI-powered medical Q&A with streaming responses
 - **Pill Scanner**: Camera/upload interface for pill identification
 - **Interaction Graph**: Force-directed graph visualization of drug interactions
 - **Safety Alert Widget**: Real-time FDA alerts and recalls
-- **Patient Context**: Manage patient medications and conditions
-- **Export Summary**: Generate PDF reports of patient data
-
-### Authentication Flow
-
-1. User signs up/logs in via Supabase Auth
-2. OAuth callback handles authentication
-3. Middleware protects dashboard routes
-4. Session persists across page loads
-
-### API Integration
-
-The frontend communicates with the FastAPI backend through `lib/api.ts`:
-
-```typescript
-// Example API calls
-await fetch(`${API_URL}/api/drugs/search?q=aspirin`)
-await fetch(`${API_URL}/api/chat`, { method: 'POST', body: JSON.stringify({ message }) })
-await fetch(`${API_URL}/api/vision/identify-pill`, { method: 'POST', body: formData })
-```
 
 ## Styling
 
 This project uses Tailwind CSS 4 with custom configuration:
 
-- **Design System**: Consistent spacing, colors, and typography
+- **Design System**: "Paper & Ink" theme for landing, Dashboard theme for app
 - **Dark Mode**: Theme support via `next-themes`
-- **Responsive**: Mobile-first breakpoints
-- **Animations**: Smooth transitions and micro-interactions
-- **Components**: Pre-built Radix UI components with Tailwind styling
+- **Animations**: Framer Motion for UI transitions, GSAP for scroll-linked effects
+- **Components**: Shadcn UI (Radix UI + Tailwind)
 
 ## Development Tips
 

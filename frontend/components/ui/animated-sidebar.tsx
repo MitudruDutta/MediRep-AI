@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import Link, { LinkProps } from "next/link";
 import React, { useState, createContext, useContext } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Menu, X } from "lucide-react";
+import { Menu, X, PanelLeft } from "lucide-react";
 
 interface Links {
   label: string;
@@ -218,7 +218,7 @@ export const SidebarLogo = ({
 }) => {
   return (
     <Link
-      href="/dashboard"
+      href="/"
       className={cn(
         "font-normal flex items-center gap-3 text-sm py-1 relative z-20 w-full",
         !open && "justify-center gap-0"
@@ -252,5 +252,29 @@ export const SidebarLogo = ({
         )}
       </AnimatePresence>
     </Link>
+  );
+};
+
+export const SidebarTrigger = ({
+  className,
+  onClick,
+  ...props
+}: React.ComponentProps<"button">) => {
+  const { open, setOpen } = useSidebar();
+  return (
+    <button
+      className={cn(
+        "h-7 w-7 text-[color:var(--landing-muted)] hover:text-[color:var(--landing-ink)] transition-colors",
+        className
+      )}
+      onClick={(e) => {
+        onClick?.(e);
+        setOpen(!open);
+      }}
+      {...props}
+    >
+      <PanelLeft className="h-5 w-5" />
+      <span className="sr-only">Toggle Sidebar</span>
+    </button>
   );
 };

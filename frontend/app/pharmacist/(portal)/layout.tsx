@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import {
     LayoutDashboard,
     Calendar,
@@ -14,7 +15,8 @@ import { Pill } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Sidebar, SidebarBody, SidebarLink, SidebarLogo } from "@/components/ui/animated-sidebar";
+import { Sidebar, SidebarBody, SidebarLink, SidebarLogo, SidebarTrigger } from "@/components/ui/animated-sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
 
 export default function PharmacistPortalLayout({
@@ -94,10 +96,34 @@ export default function PharmacistPortalLayout({
     // Show loading while checking pharmacist status
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-[color:var(--landing-paper)] text-[color:var(--landing-ink)] flex items-center justify-center">
-                <div className="text-center">
-                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-[color:var(--landing-clay)]" />
-                    <p className="mt-4 text-[color:var(--landing-muted)]">Verifying pharmacist access...</p>
+            <div className="flex h-screen bg-[color:var(--landing-paper)] overflow-hidden">
+                {/* Sidebar Skeleton */}
+                <div className="hidden md:flex h-full w-[280px] flex-col border-r border-[color:var(--landing-border)] bg-[color:var(--landing-card-strong)] p-4 gap-4">
+                    <div className="flex items-center gap-3 mb-4">
+                        <Skeleton className="h-10 w-10 rounded-xl" />
+                        <div className="space-y-2">
+                            <Skeleton className="h-4 w-24" />
+                            <Skeleton className="h-3 w-16" />
+                        </div>
+                    </div>
+                    <div className="space-y-3">
+                        {[1, 2, 3, 4].map((i) => (
+                            <Skeleton key={i} className="h-12 w-full rounded-xl" />
+                        ))}
+                    </div>
+                </div>
+
+                {/* Main Content Skeleton */}
+                <div className="flex-1 p-6 md:p-8 space-y-6">
+                    <div className="flex items-center gap-4">
+                        <Skeleton className="h-8 w-8 rounded-md" /> {/* Trigger placeholder */}
+                        <Skeleton className="h-8 w-64" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {[1, 2, 3, 4].map((i) => (
+                            <Skeleton key={i} className="h-48 rounded-2xl" />
+                        ))}
+                    </div>
                 </div>
             </div>
         );
@@ -109,13 +135,13 @@ export default function PharmacistPortalLayout({
     }
 
     return (
-        <div className="flex h-screen bg-[color:var(--landing-paper)] text-[color:var(--landing-ink)] overflow-hidden">
-            <Sidebar open={open} setOpen={setOpen}>
+        <Sidebar open={open} setOpen={setOpen}>
+            <div className="flex h-screen bg-[color:var(--landing-paper)] text-[color:var(--landing-ink)] overflow-hidden">
                 <SidebarBody className="justify-between gap-10 relative z-10">
                     <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
                         <SidebarLogo
                             open={open}
-                            icon={<Pill className="h-5 w-5 text-white" />}
+                            icon={<Image src="/logo.png" alt="MediRep AI" width={20} height={20} className="h-5 w-5 dark:invert" />}
                             title="MediRep AI"
                             subtitle="Pharmacist Portal"
                         />
@@ -167,13 +193,16 @@ export default function PharmacistPortalLayout({
                         </button>
                     </div>
                 </SidebarBody>
-            </Sidebar>
 
-            <main className="flex-1 overflow-y-auto relative z-10">
-                <div className="p-6 md:p-8 max-w-7xl mx-auto">
-                    {children}
-                </div>
-            </main>
-        </div>
+                <main className="flex-1 overflow-y-auto relative z-10 text-[color:var(--landing-ink)]">
+                    <div className="absolute top-4 left-4 z-50">
+                        <SidebarTrigger />
+                    </div>
+                    <div className="p-6 md:p-8 max-w-7xl mx-auto pt-16">
+                        {children}
+                    </div>
+                </main>
+            </div>
+        </Sidebar>
     );
 }

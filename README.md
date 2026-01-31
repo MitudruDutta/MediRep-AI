@@ -23,15 +23,17 @@ MediRep AI is an intelligent medical information assistant that helps healthcare
 
 ## ✨ Features
 
-| Feature                    | Description                                         | Status  |
-| -------------------------- | --------------------------------------------------- | ------- |
-| 💬 **AI Chat**             | Natural language medical Q&A with context awareness | ✅ Live |
-| 💊 **Drug Search**         | Search 100,000+ drugs via openFDA database          | ✅ Live |
-| ⚠️ **Interaction Checker** | AI-powered drug-drug interaction analysis           | ✅ Live |
-| 📸 **Pill Scanner**        | Vision AI to identify pills from camera photos      | ✅ Live |
-| 🚨 **FDA Alerts**          | Real-time recalls, warnings, and safety alerts      | ✅ Live |
-| 🔍 **RAG System**          | Context-aware responses using vector embeddings     | ✅ Live |
-| 👤 **User Accounts**       | Save drugs, chat history via Supabase Auth          | ✅ Live |
+| Feature                    | Description                                               | Status  |
+| -------------------------- | --------------------------------------------------------- | ------- |
+| 💬 **AI Chat**             | Natural language medical Q&A with context awareness       | ✅ Live |
+| 💊 **Drug Search**         | Search 100,000+ drugs via openFDA database                | ✅ Live |
+| ⚡ **Clinical Speed**       | Optimized workflow for rapid evidence-based answers       | ✅ Live |
+| 🧑‍⚕️ **Pharmacist Market**   | Connect with verified pharmacists for consultations       | ✅ Live |
+| ⚠️ **Interaction Checker** | AI-powered drug-drug interaction analysis                 | ✅ Live |
+| 🎙️ **Voice Mode**          | Speech-to-text search & consultations (ElevenLabs)        | ✅ Live |
+| 📸 **Pill Scanner**        | Vision AI to identify pills from camera photos            | ✅ Live |
+| 🚨 **FDA Alerts**          | Real-time recalls, warnings, and safety alerts            | ✅ Live |
+| 🔍 **RAG System**          | Context-aware responses using vector embeddings           | ✅ Live |
 
 ## 🚀 Quick Start
 
@@ -41,6 +43,7 @@ MediRep AI is an intelligent medical information assistant that helps healthcare
 - Node.js 18+ and npm
 - [Gemini API Key](https://aistudio.google.com/)
 - [Supabase Project](https://supabase.com/)
+- [ElevenLabs Key](https://elevenlabs.io/) (Optional, for voice features)
 
 ### Backend Setup
 
@@ -69,6 +72,7 @@ pip install -r requirements.txt
 # GEMINI_API_KEY=your_gemini_api_key
 # SUPABASE_URL=your_supabase_url
 # SUPABASE_KEY=your_supabase_service_role_key
+# ELEVENLABS_API_KEY=your_elevenlabs_key
 
 # Run the server
 uvicorn main:app --reload --port 8000
@@ -113,6 +117,7 @@ http://localhost:8000
 | ------ | --------------------------- | ------------------------ |
 | `GET`  | `/health`                   | Health check             |
 | `POST` | `/api/chat`                 | Chat with AI             |
+| `POST` | `/api/audio/transcribe`     | Voice transcription      |
 | `GET`  | `/api/drugs/search?q=`      | Search drugs             |
 | `GET`  | `/api/drugs/{name}`         | Get drug details         |
 | `POST` | `/api/drugs/interactions`   | Check interactions       |
@@ -139,6 +144,7 @@ Once the backend is running, you can explore and test all endpoints using:
 3. **API Call** → FastAPI backend receives request
 4. **Service Layer** → Appropriate service processes the request:
    - **Chat**: Gemini AI + RAG Service (vector similarity search)
+   - **Voice**: ElevenLabs API for high-accuracy transcription
    - **Drug Search**: openFDA API + caching
    - **Interactions**: Gemini AI analysis
    - **Pill ID**: Gemini Vision API
@@ -149,15 +155,16 @@ Once the backend is running, you can explore and test all endpoints using:
 
 ### Tech Stack
 
-| Layer             | Technology                       |
-| ----------------- | -------------------------------- |
-| **Frontend**      | Next.js 16, React 19, TypeScript |
-| **UI Components** | Radix UI, Tailwind CSS           |
-| **AI Engine**     | Google Gemini 2.5 Flash          |
-| **Backend**       | FastAPI (Python 3.10+)           |
-| **Database**      | Supabase (PostgreSQL + pgvector) |
-| **Auth**          | Supabase Auth (JWT)              |
-| **External APIs** | openFDA (Labels, Enforcement)    |
+| Layer             | Technology                                      |
+| ----------------- | ----------------------------------------------- |
+| **Frontend**      | Next.js 16, React 19, TypeScript                |
+| **Styling**       | Tailwind CSS 4, Shadcn UI, Framer Motion, GSAP  |
+| **AI Engine**     | Google Gemini 2.5 Flash                         |
+| **Voice AI**      | ElevenLabs                                      |
+| **Backend**       | FastAPI (Python 3.10+)                          |
+| **Database**      | Supabase (PostgreSQL + pgvector)                |
+| **Auth**          | Supabase Auth (JWT)                             |
+| **External APIs** | openFDA (Labels, Enforcement)                   |
 
 ## 📁 Project Structure
 

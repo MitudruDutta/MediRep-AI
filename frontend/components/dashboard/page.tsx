@@ -14,6 +14,7 @@ import {
   SidebarBody,
   SidebarLink,
   SidebarLogo,
+  SidebarTrigger,
 } from "@/components/ui/animated-sidebar";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -119,7 +120,7 @@ const items: DashboardItem[] = [
     icon: <Activity className="size-6" />,
     description: "Visualize and check drug interactions",
     colSpan: "md:col-span-1",
-    accent: "bg-[color:var(--landing-moss)]",
+    accent: "bg-[color:var(--landing-clay)]",
   },
   {
     title: "Pill Scanner",
@@ -143,7 +144,7 @@ const items: DashboardItem[] = [
     icon: <User className="size-6" />,
     description: "Manage patient health information",
     colSpan: "md:col-span-1",
-    accent: "bg-[color:var(--landing-moss)]",
+    accent: "bg-[color:var(--landing-clay)]",
   },
   {
     title: "Book Pharmacist",
@@ -151,7 +152,7 @@ const items: DashboardItem[] = [
     icon: <Stethoscope className="size-6" />,
     description: "Connect with expert pharmacists",
     colSpan: "md:col-span-1",
-    accent: "bg-[color:var(--landing-moss)]",
+    accent: "bg-[color:var(--landing-clay)]",
   },
   {
     title: "Price Compare",
@@ -234,18 +235,18 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
   };
 
   return (
-    <div className="flex h-screen bg-[color:var(--landing-paper)] text-[color:var(--landing-ink)] overflow-hidden">
-      {/* Animated Background */}
-      <div className="fixed inset-0 z-0">
-        {/* Keep it clean (no gradients) */}
-      </div>
+    <Sidebar open={open} setOpen={setOpen}>
+      <div className="flex h-screen bg-[color:var(--landing-paper)] text-[color:var(--landing-ink)] overflow-hidden">
+        {/* Animated Background */}
+        <div className="fixed inset-0 z-0">
+          {/* Keep it clean (no gradients) */}
+        </div>
 
-      <Sidebar open={open} setOpen={setOpen}>
         <SidebarBody className="justify-between gap-10 relative z-10">
           <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
             <SidebarLogo
               open={open}
-              icon={<Pill className="h-5 w-5 text-white" />}
+              icon={<Image src="/logo.png" alt="MediRep AI" width={20} height={20} className="h-5 w-5 dark:invert" />}
               title="MediRep AI"
               subtitle="Medical Assistant"
             />
@@ -322,46 +323,51 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
               )}
             </Link>
           </div>
+
+
         </SidebarBody>
-      </Sidebar>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative z-10">
-                <div className="p-6 md:p-8 max-w-7xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="mb-8"
-          >
-            <h1 className="text-3xl md:text-4xl font-bold text-[color:var(--landing-ink)] mb-2 tracking-tight font-[family-name:var(--font-display)]">
-              Welcome back, {initialUserName || initialUserEmail?.split('@')[0] || 'User'}
-            </h1>
-            <p className="text-[color:var(--landing-muted)] text-lg">
-              Your AI-powered medical assistant is ready to help.
-            </p>
-          </motion.div>
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto relative z-10">
+          <div className="absolute top-4 left-4 z-50">
+            <SidebarTrigger />
+          </div>
+          <div className="p-6 md:p-8 max-w-7xl mx-auto pt-16">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="mb-8"
+            >
+              <h1 className="text-3xl md:text-4xl font-bold text-[color:var(--landing-ink)] mb-2 tracking-tight font-[family-name:var(--font-display)]">
+                Welcome back, {initialUserName || initialUserEmail?.split('@')[0] || 'User'}
+              </h1>
+              <p className="text-[color:var(--landing-muted)] text-lg">
+                Your AI-powered medical assistant is ready to help.
+              </p>
+            </motion.div>
 
-          <motion.div
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3"
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-          >
-            {items.map((item, i) => (
-              <BentoGridItem
-                key={i}
-                title={item.title}
-                description={item.description}
-                icon={item.icon}
-                url={item.url}
-                className={item.colSpan}
-                accent={item.accent}
-              />
-            ))}
-          </motion.div>
-        </div>
-      </main>
-    </div>
+            <motion.div
+              className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3"
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              {items.map((item, i) => (
+                <BentoGridItem
+                  key={i}
+                  title={item.title}
+                  description={item.description}
+                  icon={item.icon}
+                  url={item.url}
+                  className={item.colSpan}
+                  accent={item.accent}
+                />
+              ))}
+            </motion.div>
+          </div>
+        </main>
+      </div>
+    </Sidebar>
   );
 }

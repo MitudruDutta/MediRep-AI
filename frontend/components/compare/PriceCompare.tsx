@@ -210,7 +210,7 @@ export default function PriceCompare() {
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
                                     onKeyPress={(e) => e.key === "Enter" && handleSearch()}
-                                    className="h-16 border-0 text-lg bg-transparent placeholder:text-slate-400 focus-visible:ring-0 px-4"
+                                    className="h-16 border-0 text-lg !bg-transparent text-slate-900 placeholder:text-slate-400 focus-visible:ring-0 px-4"
                                 />
                                 <div className="pr-3">
                                     <Button
@@ -392,7 +392,7 @@ export default function PriceCompare() {
                                                 transition={{ delay: Math.min(index * 0.02, 0.4) }}
                                             >
                                                 <Card
-                                                    className={`group h-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${isLowest
+                                                    className={`!bg-white group h-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${isLowest
                                                         ? "ring-2 ring-emerald-500 ring-offset-2 shadow-lg shadow-emerald-100"
                                                         : "border-slate-200 hover:border-slate-300"
                                                         } ${!inStock ? "opacity-60" : ""}`}
