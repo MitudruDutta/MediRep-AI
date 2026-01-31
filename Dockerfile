@@ -9,10 +9,14 @@ WORKDIR /app
 
 # Install Python dependencies first for better Docker layer caching.
 COPY backend/requirements.txt backend/requirements.txt
-RUN pip install --upgrade pip && pip install -r backend/requirements.txt
+# Install CPU-only PyTorch (much smaller) and other dependencies
+RUN pip install --upgrade pip && \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install -r backend/requirements.txt
 
-# Ensure Chromium is installed (Playwright base image already includes browsers,
-# but this keeps the build deterministic if the base image changes).
+# Note: The base image mcr.microsoft.com/playwright/python already includes 
+# Chromium and all necessary system dependencies. We do NOT need to run 
+# 'playwright install' again. This saves significantly on build time.
 RUN python -m playwright install --with-deps chromium
 
 COPY backend /app/backend
