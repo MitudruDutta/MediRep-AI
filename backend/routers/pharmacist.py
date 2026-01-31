@@ -302,11 +302,11 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_pharmacis
 
         pharmacist_id = profile.data[0]["id"]
 
-        # Get earnings from completed consultations
+        # Get earnings from all paid consultations (confirmed, in_progress, completed)
         earnings_result = client.table("consultations").select(
             "pharmacist_earning"
-        ).eq("pharmacist_id", pharmacist_id).eq(
-            "status", "completed"
+        ).eq("pharmacist_id", pharmacist_id).in_(
+            "status", ["confirmed", "in_progress", "completed"]
         ).eq("payment_status", "captured").execute()
 
         total_earnings = sum(c["pharmacist_earning"] or 0 for c in earnings_result.data)
