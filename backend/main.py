@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 
-from config import ALLOWED_ORIGINS, PORT
+from config import ALLOWED_ORIGINS, PORT, RESEND_API_KEY, ADMIN_EMAILS
 from routers import chat, drugs, vision, alerts, user, marketplace, pharmacist, consultations, admin
 
 # Rate Limiting
@@ -78,6 +78,27 @@ async def log_requests(request: Request, call_next):
         elapsed_ms
     )
     return response
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Log important configuration status at startup."""
+    logger.info("=" * 60)
+    logger.info("MediRep AI Backend Starting...")
+    logger.info("=" * 60)
+
+    # Email configuration status
+    if RESEND_API_KEY:
+        logger.info("[EMAIL] Resend API Key: CONFIGURED")
+    else:
+        logger.warning("[EMAIL] Resend API Key: NOT CONFIGURED - Email notifications DISABLED")
+
+    if ADMIN_EMAILS:
+        logger.info("[EMAIL] Admin emails: %s", ", ".join(ADMIN_EMAILS))
+    else:
+        logger.warning("[EMAIL] Admin emails: NOT CONFIGURED - Admin notifications DISABLED")
+
+    logger.info("=" * 60)
 
 
 @app.get("/health")

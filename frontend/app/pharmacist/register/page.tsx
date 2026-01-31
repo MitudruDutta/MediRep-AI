@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { toast } from "sonner";
@@ -538,7 +539,11 @@ export default function PharmacistRegistrationPage() {
                                 </div>
 
                                 <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-800 dark:text-amber-200">
-                                    By submitting, you agree to the Terms of Service. Your profile stays hidden until verified.
+                                    By submitting, you agree to the{" "}
+                                    <Link href="/terms" className="underline underline-offset-4">
+                                        Terms of Service
+                                    </Link>
+                                    . Your profile stays hidden until verified.
                                 </div>
 
                                 <div className="rounded-2xl border bg-muted/20 p-4 text-xs text-muted-foreground">

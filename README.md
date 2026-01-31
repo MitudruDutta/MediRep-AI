@@ -49,7 +49,7 @@ MediRep AI is an intelligent medical information assistant that helps healthcare
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/medirep-ai.git
+git clone https://github.com/MitudruDutta/medirep-ai.git
 cd medirep-ai
 
 # Navigate to backend

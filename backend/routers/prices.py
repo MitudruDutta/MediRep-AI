@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends, Request
 from typing import List, Dict, Any
 import logging
 
@@ -14,10 +14,16 @@ except ImportError:
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+from limiter import limiter
+from middleware.auth import get_current_user
+
 
 @router.get("/compare")
+@limiter.limit("10/minute")
 async def compare_prices(
-    drug_name: str = Query(..., min_length=2, max_length=100, description="Drug name to search for")
+    request: Request,  # required for slowapi
+    drug_name: str = Query(..., min_length=2, max_length=100, description="Drug name to search for"),
+    user: object = Depends(get_current_user),  # authenticated-only: this endpoint is expensive
 ) -> Dict[str, Any]:
     """
     Compare medicine prices across Indian pharmacies.
@@ -100,11 +106,8 @@ async def compare_prices(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Error comparing prices for {drug_name}: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to fetch price comparison. Please try again later. Error: {str(e)}"
-        )
+        logger.error("Error comparing prices for %s: %s", drug_name, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch price comparison. Please try again later.")
 
 
 def _parse_price(price_str: str) -> float:

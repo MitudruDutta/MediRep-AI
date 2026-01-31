@@ -54,6 +54,30 @@ export interface PharmacistProfile {
     verification_status: string;
 }
 
+export interface PayoutSummary {
+    id: string;
+    period_start: string;
+    period_end: string;
+    gross_amount: number;
+    tds_deducted: number;
+    net_amount: number;
+    consultation_count: number;
+    status: "pending" | "processing" | "completed" | "failed";
+    payout_method?: string;
+    transfer_reference?: string;
+    processed_at?: string;
+    created_at: string;
+}
+
+export interface PayoutStats {
+    total_earned: number;
+    pending_payout: number;
+    last_payout: {
+        amount: number;
+        date?: string;
+    };
+}
+
 /**
  * Get authentication headers with the current user's access token
  */
@@ -207,5 +231,20 @@ export const pharmacistApi = {
             method: "POST",
             body: JSON.stringify({ reason: reason || "Cancelled by pharmacist" })
         });
+    },
+
+    // =====================================================
+    // PAYOUT ENDPOINTS
+    // =====================================================
+
+    async getPayoutHistory(statusFilter?: string): Promise<PayoutSummary[]> {
+        const url = statusFilter
+            ? `${API_URL}/api/pharmacist/payouts?status_filter=${statusFilter}`
+            : `${API_URL}/api/pharmacist/payouts`;
+        return authFetch<PayoutSummary[]>(url);
+    },
+
+    async getPayoutStats(): Promise<PayoutStats> {
+        return authFetch<PayoutStats>(`${API_URL}/api/pharmacist/payouts/stats`);
     }
 };

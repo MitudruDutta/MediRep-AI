@@ -1,31 +1,38 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Playfair_Display, Space_Grotesk } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { SWRProvider } from "@/lib/swr-provider";
 import { AuthProvider } from "@/lib/context/AuthContext";
 
-const geistSans = Geist({
+const geistSans = localFont({
+  src: "../public/fonts/geist.woff2",
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  display: "swap",
+  weight: "100 900",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "../public/fonts/geist-mono.woff2",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  display: "swap",
+  weight: "100 900",
 });
 
-const playfair = Playfair_Display({
+const playfair = localFont({
+  src: "../public/fonts/playfair-display.woff2",
   variable: "--font-playfair",
-  subsets: ["latin"],
+  display: "swap",
+  weight: "400 900",
 });
 
 // Space Grotesk - Modern geometric sans-serif (similar to GC Gatuzo)
-const spaceGrotesk = Space_Grotesk({
+const spaceGrotesk = localFont({
+  src: "../public/fonts/space-grotesk.woff2",
   variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  display: "swap",
+  weight: "300 700",
 });
 
 export const metadata: Metadata = {

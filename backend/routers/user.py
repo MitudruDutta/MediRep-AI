@@ -80,18 +80,24 @@ async def get_my_consultations(
     user: dict = Depends(get_current_patient)
 ):
     """Get all consultations for the current patient."""
-    client = get_auth_client(user["token"])
+    # We use service role to safely join pharmacist profile fields without
+    # reopening public SELECT policies on pharmacist_profiles.
+    client = SupabaseService.get_service_client()
+    if not client:
+        raise HTTPException(status_code=503, detail="Database unavailable")
     try:
         user_id = user["id"]
         
         query = client.table("consultations").select(
-            "*, pharmacist_profiles(full_name)"
+            "id, patient_id, pharmacist_id, scheduled_at, duration_minutes, status, amount, payment_status, patient_concern, razorpay_order_id, created_at, updated_at, pharmacist_profiles(full_name)"
         ).eq("patient_id", user_id)
         
         if status:
             if status == "upcoming":
+                # Active consultations (pending payment, confirmed, or in progress)
                 query = query.in_("status", ["pending_payment", "confirmed", "in_progress"])
             elif status == "past":
+                # Completed or terminal states
                 query = query.in_("status", ["completed", "cancelled", "refunded", "no_show"])
             else:
                 query = query.eq("status", status)

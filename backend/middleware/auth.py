@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from fastapi import Request, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from services.supabase_service import SupabaseService
+from dependencies import get_current_user as _get_current_user_dict
 
 logger = logging.getLogger(__name__)
 
@@ -53,35 +53,15 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"}
         )
     
-    token = credentials.credentials
-    
-    client = SupabaseService.get_client()
-    if not client:
-        raise HTTPException(
-            status_code=503,
-            detail="Authentication service unavailable"
-        )
-    
     try:
-        # Verify the JWT with Supabase
-        user_response = client.auth.get_user(token)
-        
-        if not user_response or not user_response.user:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid or expired token",
-                headers={"WWW-Authenticate": "Bearer"}
-            )
-        
-        user = user_response.user
-        
+        user_dict = await _get_current_user_dict(credentials)
         return AuthUser(
-            id=user.id,
-            email=user.email,
-            role=user.role or "authenticated",
-            app_metadata=user.app_metadata or {},
-            user_metadata=user.user_metadata or {},
-            token=token
+            id=user_dict["id"],
+            email=user_dict.get("email"),
+            role=user_dict.get("role") or "user",
+            app_metadata=user_dict.get("app_metadata") or {},
+            user_metadata=user_dict.get("metadata") or {},
+            token=user_dict["token"]
         )
     
     except HTTPException:

@@ -135,8 +135,8 @@ const footerLinkGroups: FooterLinkGroup[] = [
             { title: 'About Us', href: '#' },
             { title: 'Careers', href: '#' },
             { title: 'Contact', href: '#' },
-            { title: 'Privacy Policy', href: '#' },
-            { title: 'Terms of Service', href: '#' },
+            { title: 'Privacy Policy', href: '/privacy' },
+            { title: 'Terms of Service', href: '/terms' },
         ],
     },
 ];

@@ -11,7 +11,7 @@ import logging
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Query
 
-from models import PharmacistSearchResult, PharmacistProfile, PharmacistScheduleSlot
+from models import PharmacistSearchResult, PharmacistPublicProfile, PharmacistScheduleSlot
 from services.supabase_service import SupabaseService
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,9 @@ async def search_pharmacists(
     Public endpoint - no auth required.
     Only returns verified, approved pharmacists.
     """
-    client = SupabaseService.get_client()
+    # Public marketplace endpoints are served by the backend; use service role to
+    # bypass RLS and avoid exposing DB access directly.
+    client = SupabaseService.get_service_client()
     if not client:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -85,7 +87,7 @@ async def search_pharmacists(
         raise HTTPException(status_code=500, detail="Failed to search pharmacists")
 
 
-@router.get("/pharmacists/{pharmacist_id}", response_model=PharmacistProfile)
+@router.get("/pharmacists/{pharmacist_id}", response_model=PharmacistPublicProfile)
 async def get_pharmacist_profile(pharmacist_id: str):
     """
     Get detailed pharmacist profile.
@@ -93,22 +95,21 @@ async def get_pharmacist_profile(pharmacist_id: str):
     Public endpoint - no auth required.
     Only returns verified, approved pharmacists.
     """
-    client = SupabaseService.get_client()
+    client = SupabaseService.get_service_client()
     if not client:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     try:
         result = client.table("pharmacist_profiles").select(
-            "id, user_id, full_name, bio, profile_image_url, specializations, "
+            "id, full_name, bio, profile_image_url, specializations, "
             "experience_years, languages, education, rate, duration_minutes, "
-            "rating_avg, rating_count, completed_consultations, is_available, "
-            "verification_status"
+            "rating_avg, rating_count, completed_consultations, is_available"
         ).eq("id", pharmacist_id).eq("verification_status", "approved").maybe_single().execute()
 
         if not result.data:
             raise HTTPException(status_code=404, detail="Pharmacist not found")
 
-        return PharmacistProfile(**result.data)
+        return PharmacistPublicProfile(**result.data)
 
     except HTTPException:
         raise
@@ -124,7 +125,7 @@ async def get_pharmacist_schedule(pharmacist_id: str):
 
     Returns recurring slots (day_of_week, start_time, end_time).
     """
-    client = SupabaseService.get_client()
+    client = SupabaseService.get_service_client()
     if not client:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -162,7 +163,7 @@ async def get_pharmacist_reviews(
     """
     Get pharmacist's public reviews.
     """
-    client = SupabaseService.get_client()
+    client = SupabaseService.get_service_client()
     if not client:
         raise HTTPException(status_code=503, detail="Database unavailable")
 

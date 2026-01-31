@@ -9,13 +9,14 @@ import {
     History,
     LogOut,
     User,
-    Loader2
+    Loader2,
+    Wallet
 } from "lucide-react";
 import { Pill } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Sidebar, SidebarBody, SidebarLink, SidebarLogo, SidebarTrigger } from "@/components/ui/animated-sidebar";
+import { Sidebar, SidebarBody, SidebarLink, SidebarLogo } from "@/components/ui/animated-sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
 
@@ -87,6 +88,11 @@ export default function PharmacistPortalLayout({
             icon: History
         },
         {
+            href: "/pharmacist/earnings",
+            label: "Earnings",
+            icon: Wallet
+        },
+        {
             href: "/pharmacist/profile",
             label: "Profile",
             icon: User
@@ -115,10 +121,7 @@ export default function PharmacistPortalLayout({
 
                 {/* Main Content Skeleton */}
                 <div className="flex-1 p-6 md:p-8 space-y-6">
-                    <div className="flex items-center gap-4">
-                        <Skeleton className="h-8 w-8 rounded-md" /> {/* Trigger placeholder */}
-                        <Skeleton className="h-8 w-64" />
-                    </div>
+                    <Skeleton className="h-8 w-64" />
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {[1, 2, 3, 4].map((i) => (
                             <Skeleton key={i} className="h-48 rounded-2xl" />
@@ -168,13 +171,19 @@ export default function PharmacistPortalLayout({
                     </div>
 
                     <div className="border-t border-[color:var(--landing-border)] pt-4 space-y-2">
-                        <div className="px-3 py-2 text-xs text-[color:var(--landing-muted)] flex items-center justify-between">
-                            <span>Status</span>
-                            <span className="flex items-center gap-1.5">
-                                <span className="h-2 w-2 rounded-full bg-[color:var(--landing-moss)] animate-pulse"></span>
-                                Online
-                            </span>
-                        </div>
+                        {open && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="px-3 py-2 text-xs text-[color:var(--landing-muted)] flex items-center justify-between"
+                            >
+                                <span>Status</span>
+                                <span className="flex items-center gap-1.5">
+                                    <span className="h-2 w-2 rounded-full bg-[color:var(--landing-moss)] animate-pulse"></span>
+                                    Online
+                                </span>
+                            </motion.div>
+                        )}
 
                         <button
                             onClick={handleLogout}
@@ -195,10 +204,7 @@ export default function PharmacistPortalLayout({
                 </SidebarBody>
 
                 <main className="flex-1 overflow-y-auto relative z-10 text-[color:var(--landing-ink)]">
-                    <div className="absolute top-4 left-4 z-50">
-                        <SidebarTrigger />
-                    </div>
-                    <div className="p-6 md:p-8 max-w-7xl mx-auto pt-16">
+                    <div className="p-6 md:p-8 max-w-7xl mx-auto">
                         {children}
                     </div>
                 </main>

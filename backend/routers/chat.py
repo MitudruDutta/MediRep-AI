@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timezone
 
 from slowapi import Limiter
-from slowapi.util import get_remote_address
+from limiter import get_client_ip
 
 from models import ChatRequest, ChatResponse, Message
 from services.gemini_service import generate_response, plan_intent
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Local limiter for chat endpoint (separate from global app limiter)
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_client_ip)
 
 
 
@@ -59,9 +59,8 @@ async def chat_endpoint(
     user_id = user.id
     auth_token = user.token
     
-    # Debug: Log web search mode
-    logger.info("Chat request received. web_search_mode=%s, message=%s", 
-                chat_request.web_search_mode, chat_request.message[:50])
+    # Do not log message content (PHI/PII risk).
+    logger.info("Chat request received. web_search_mode=%s", chat_request.web_search_mode)
     
     try:
         # ============================================================

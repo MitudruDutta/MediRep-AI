@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -9,12 +10,14 @@ from config import AUTH_TIMEOUT
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
-
-def _get_user_role(user: dict) -> str | None:
-    """Extract role from user metadata."""
-    app_meta = user.get("app_metadata", {})
-    user_meta = user.get("metadata", {})
-    return app_meta.get("role") or user_meta.get("role")
+# Role model:
+# - app_metadata.role is server-controlled (service role / admin API). TRUST this.
+# - user_metadata is user-controlled. NEVER use it for authorization.
+ROLE_USER = "user"
+ROLE_ADMIN = "admin"
+ROLE_PHARMACIST = "pharmacist"
+ROLE_PHARMACIST_PENDING = "pharmacist_pending"
+ROLE_PHARMACIST_REJECTED = "pharmacist_rejected"
 
 
 
@@ -32,7 +35,6 @@ async def get_current_user(
     # unless millions of unique tokens are sent. A proper LRU is better but requires external lib.
     # We will just clean expired entries lazily on access or implement a simple cleanup if needed.
 
-    import time
     current_time = time.time()
     
     # 1. Check Cache
@@ -59,7 +61,7 @@ async def get_current_user(
 
         user_meta = user_response.user.user_metadata or {}
         app_meta = user_response.user.app_metadata or {}
-        role = app_meta.get("role") or user_meta.get("role")
+        role = app_meta.get("role") or ROLE_USER
 
         # Return user as dict for consistent access, including app_metadata
         user_dict = {
@@ -91,7 +93,7 @@ async def get_current_user(
 
 def get_current_admin(user: dict = Depends(get_current_user)) -> dict:
     """Verify user has admin role."""
-    if user.get("role") != "admin":
+    if user.get("role") != ROLE_ADMIN:
         logger.warning(f"Unauthorized admin access attempt by {user['id']}")
         raise HTTPException(status_code=403, detail="Admin privileges required")
     return user
@@ -105,29 +107,31 @@ async def get_current_pharmacist(user: dict = Depends(get_current_user)) -> dict
     1. Role in user_metadata (set during registration)
     2. Existence in pharmacist_profiles table (ground truth)
     """
-    # First check role metadata for quick rejection
-    if user.get("role") == "pharmacist":
+    # Source of truth: pharmacist_profiles row existence for this user (via auth client so RLS works).
+    try:
+        client = SupabaseService.get_auth_client(user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client for pharmacist check: %s", e)
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    try:
+        result = await asyncio.to_thread(
+            lambda: client.table("pharmacist_profiles")
+                .select("id, verification_status")
+                .eq("user_id", user["id"])
+                .limit(1)
+                .execute()
+        )
+    except Exception as e:
+        logger.error("Error checking pharmacist profile: %s", e)
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    if result.data and len(result.data) > 0:
+        user["pharmacist_profile_id"] = result.data[0].get("id")
+        user["pharmacist_verification_status"] = result.data[0].get("verification_status")
         return user
 
-    # Fallback: Check pharmacist_profiles table (handles cases where metadata wasn't set)
-    client = SupabaseService.get_client()
-    if client:
-        try:
-            result = await asyncio.to_thread(
-                lambda: client.table("pharmacist_profiles")
-                    .select("id")
-                    .eq("user_id", user["id"])
-                    .limit(1)
-                    .execute()
-            )
-            if result.data and len(result.data) > 0:
-                # Update user dict to include role for consistency
-                user["role"] = "pharmacist"
-                return user
-        except Exception as e:
-            logger.error("Error checking pharmacist profile: %s", e)
-
-    logger.warning(f"Non-pharmacist tried to access pharmacist endpoint: {user['id']}")
+    logger.warning("Non-pharmacist tried to access pharmacist endpoint: %s", user.get("id"))
     raise HTTPException(status_code=403, detail="Pharmacist access required")
 
 
@@ -137,34 +141,28 @@ async def get_current_patient(user: dict = Depends(get_current_user)) -> dict:
 
     Pharmacists should use the pharmacist portal, not patient features.
     """
-    # Check if user has pharmacist role
-    if user.get("role") == "pharmacist":
-        logger.warning(f"Pharmacist tried to access patient endpoint: {user['id']}")
-        raise HTTPException(
-            status_code=403,
-            detail="Pharmacists should use the pharmacist portal"
-        )
+    # Ground truth: if they have a pharmacist profile, they must use pharmacist portal.
+    try:
+        client = SupabaseService.get_auth_client(user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client for patient check: %s", e)
+        raise HTTPException(status_code=503, detail="Database unavailable")
 
-    # Double-check: verify user is not in pharmacist_profiles
-    client = SupabaseService.get_client()
-    if client:
-        try:
-            result = await asyncio.to_thread(
-                lambda: client.table("pharmacist_profiles")
-                    .select("id")
-                    .eq("user_id", user["id"])
-                    .limit(1)
-                    .execute()
-            )
-            if result.data and len(result.data) > 0:
-                logger.warning(f"Pharmacist (by profile) tried to access patient endpoint: {user['id']}")
-                raise HTTPException(
-                    status_code=403,
-                    detail="Pharmacists should use the pharmacist portal"
-                )
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error("Error checking pharmacist profile: %s", e)
+    try:
+        result = await asyncio.to_thread(
+            lambda: client.table("pharmacist_profiles")
+                .select("id")
+                .eq("user_id", user["id"])
+                .limit(1)
+                .execute()
+        )
+        if result.data and len(result.data) > 0:
+            logger.warning("Pharmacist tried to access patient endpoint: %s", user.get("id"))
+            raise HTTPException(status_code=403, detail="Pharmacists should use the pharmacist portal")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error checking pharmacist profile: %s", e)
+        raise HTTPException(status_code=503, detail="Database unavailable")
 
     return user

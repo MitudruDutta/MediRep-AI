@@ -272,16 +272,37 @@ async def save_message_to_session(
         return False
 
     try:
-        # Get next sequence number
-        seq_result = await asyncio.to_thread(
-            lambda: client.table("chat_history").select("sequence_num").eq("session_id", session_id).order("sequence_num", desc=True).limit(1).execute()
-        )
-        next_seq = 1
-        if seq_result.data:
-            next_seq = seq_result.data[0]["sequence_num"] + 1
+        # Preferred: atomic insert via DB function (handles sequence numbering safely).
+        try:
+            rpc_payload = {
+                "p_user_id": user_id,
+                "p_session_id": session_id,
+                "p_message": message[:4000],
+                "p_response": response[:8000],
+                "p_patient_context": patient_context,
+                "p_citations": citations,
+            }
+            rpc_result = await asyncio.to_thread(
+                lambda: client.rpc("insert_chat_message", rpc_payload).execute()
+            )
+            if rpc_result.data:
+                logger.info("Message saved to session %s (rpc)", session_id[:8])
+                return True
+        except Exception as rpc_err:
+            # Fallback to direct insert if RPC is unavailable/misconfigured.
+            logger.warning("insert_chat_message RPC failed; falling back to direct insert: %s", rpc_err)
 
-        # Direct insert (Bypassing RPC due to 22P02 error)
-        # Note: We rely on RLS to allow inserting into chat_history for owned sessions
+        # Fallback: direct insert (non-atomic sequence; best-effort).
+        seq_result = await asyncio.to_thread(
+            lambda: client.table("chat_history")
+                .select("sequence_num")
+                .eq("session_id", session_id)
+                .order("sequence_num", desc=True)
+                .limit(1)
+                .execute()
+        )
+        next_seq = (seq_result.data[0]["sequence_num"] + 1) if seq_result.data else 1
+
         insert_data = {
             "session_id": session_id,
             "message": message[:4000],
@@ -289,20 +310,12 @@ async def save_message_to_session(
             "sequence_num": next_seq,
             "patient_context": patient_context,
             "citations": citations,
-            "user_id": user_id # Often RLS requires user_id column if policy is strictly row-owner
+            "user_id": user_id,
         }
-        
-        # Verify if chat_history has user_id column? 
-        # Usually checking session ownership is enough, but some schemas duplicate user_id.
-        # Let's assume standard normalization: session has user_id, history links to session.
-        # But RLS might check session.user_id. The insert should work if user owns session.
-        # Safest to try inserting session_id links.
 
-        result = await asyncio.to_thread(
-            lambda: client.table("chat_history").insert(insert_data).execute()
-        )
+        await asyncio.to_thread(lambda: client.table("chat_history").insert(insert_data).execute())
 
-        logger.info("Message saved to session %s (seq %d)", session_id[:8], next_seq)
+        logger.info("Message saved to session %s (fallback seq %d)", session_id[:8], next_seq)
         return True
 
     except Exception as e:

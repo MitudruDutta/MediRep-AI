@@ -62,6 +62,7 @@ class EmailService:
             payload["text"] = text
 
         try:
+            logger.info("Sending email via Resend API to: %s, subject: %s", to, subject)
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     RESEND_API_URL,
@@ -73,15 +74,18 @@ class EmailService:
                     timeout=10.0
                 )
 
-                if response.status_code == 200:
-                    logger.info("Email sent successfully to %s", to)
+                if response.status_code in (200, 201):
+                    logger.info("Email sent successfully to %s (status: %s)", to, response.status_code)
                     return True
                 else:
-                    logger.error("Failed to send email: %s - %s", response.status_code, response.text)
+                    logger.error("Failed to send email: HTTP %s - %s", response.status_code, response.text)
                     return False
 
+        except httpx.TimeoutException:
+            logger.error("Email send timeout - Resend API did not respond in time")
+            return False
         except Exception as e:
-            logger.error("Email send error: %s", e)
+            logger.error("Email send error: %s", e, exc_info=True)
             return False
 
     @staticmethod
@@ -98,9 +102,17 @@ class EmailService:
             license_number: License number submitted
             email: Pharmacist's email (if available)
         """
-        if not ADMIN_EMAILS:
-            logger.warning("No admin emails configured, skipping notification")
+        logger.info("Attempting to send admin notification for new pharmacist: %s", pharmacist_name)
+
+        if not EmailService.is_enabled():
+            logger.warning("Email service disabled (RESEND_API_KEY not configured). Admin notification skipped.")
             return False
+
+        if not ADMIN_EMAILS:
+            logger.warning("No admin emails configured (ADMIN_EMAILS env var empty). Admin notification skipped.")
+            return False
+
+        logger.info("Sending notification to admins: %s", ADMIN_EMAILS)
 
         subject = f"[MediRep] New Pharmacist Registration: {pharmacist_name}"
 

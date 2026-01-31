@@ -30,6 +30,7 @@ from models import (
 )
 from services.supabase_service import SupabaseService
 from services.email_service import EmailService
+from config import MAX_UPLOAD_SIZE, MAX_UPLOAD_SIZE_MB, SUPABASE_URL
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -44,6 +45,69 @@ def _normalize_public_url(url: str) -> str:
         return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
     except Exception:
         return url
+
+
+def _extract_supabase_storage_path(value: str) -> Optional[tuple[str, str]]:
+    """
+    Accept either a raw storage object path (e.g. 'licenses/x.png') or a Supabase
+    Storage URL to this project's SUPABASE_URL and extract (bucket, path).
+    Returns None if it is not a valid project-owned Storage URL/path.
+    """
+    if not value:
+        return None
+
+    value = value.strip()
+
+    # Raw path format we store in DB: "private_documents:licenses/...."
+    if value.startswith("private_documents:"):
+        return ("private_documents", value.split("private_documents:", 1)[1].lstrip("/"))
+
+    # Raw object path (default bucket is private_documents for licenses).
+    if not value.startswith("http"):
+        return ("private_documents", value.lstrip("/"))
+
+    try:
+        parts = urlsplit(value)
+        if not SUPABASE_URL:
+            return None
+        supabase_host = urlsplit(SUPABASE_URL).netloc
+        if parts.netloc != supabase_host:
+            return None
+
+        # Supported patterns:
+        # /storage/v1/object/public/<bucket>/<path>
+        # /storage/v1/object/<bucket>/<path>
+        seg = [s for s in parts.path.split("/") if s]
+        if len(seg) < 5 or seg[0] != "storage" or seg[1] != "v1" or seg[2] != "object":
+            return None
+
+        idx = 3
+        if seg[3] == "public":
+            idx = 4
+        if len(seg) <= idx:
+            return None
+
+        bucket = seg[idx]
+        obj_path = "/".join(seg[idx + 1 :])
+        if not bucket or not obj_path:
+            return None
+        return (bucket, obj_path)
+    except Exception:
+        return None
+
+
+def _validate_license_upload(content_type: str, data: bytes) -> None:
+    allowed = {"image/jpeg", "image/png", "application/pdf"}
+    if content_type not in allowed:
+        raise HTTPException(status_code=400, detail="License file must be JPEG, PNG, or PDF")
+
+    # Magic-byte checks.
+    if content_type == "image/jpeg" and not data.startswith(b"\xff\xd8"):
+        raise HTTPException(status_code=400, detail="Invalid JPEG file")
+    if content_type == "image/png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(status_code=400, detail="Invalid PNG file")
+    if content_type == "application/pdf" and not data.startswith(b"%PDF-"):
+        raise HTTPException(status_code=400, detail="Invalid PDF file")
 
 
 @router.post("/register", response_model=PharmacistProfile)
@@ -83,33 +147,66 @@ async def register_pharmacist(
                 detail="Already registered as pharmacist"
             )
 
-        # Upload license file if provided
-        license_image_url = _normalize_public_url(registration_data.get("license_image_url", ""))
+        # Upload license doc (preferred) or validate provided storage reference.
+        # IMPORTANT: never accept arbitrary external URLs here.
+        license_ref = None
         if license_file:
             try:
-                # Read file content
-                file_content = await license_file.read()
-                file_ext = license_file.filename.split('.')[-1] if license_file.filename else 'jpg'
-                file_name = f"licenses/{user_id}_{uuid.uuid4().hex[:8]}.{file_ext}"
+                # Read file in chunks to prevent memory exhaustion.
+                chunks = []
+                total_size = 0
+                while True:
+                    chunk = await license_file.read(64 * 1024)
+                    if not chunk:
+                        break
+                    total_size += len(chunk)
+                    if total_size > MAX_UPLOAD_SIZE:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"License file too large. Maximum size is {MAX_UPLOAD_SIZE_MB}MB",
+                        )
+                    chunks.append(chunk)
 
-                # Upload using service role (bypasses RLS)
-                # Actually, can use auth_client if RLS allows authenticated uploads
-                # Assuming private_documents allows user uploads:
-                upload_result = auth_client.storage.from_("private_documents").upload(
+                file_content = b"".join(chunks)
+                _validate_license_upload(license_file.content_type or "application/octet-stream", file_content)
+
+                # Normalize extension (do not trust filename).
+                ext = "bin"
+                if license_file.content_type == "image/jpeg":
+                    ext = "jpg"
+                elif license_file.content_type == "image/png":
+                    ext = "png"
+                elif license_file.content_type == "application/pdf":
+                    ext = "pdf"
+
+                file_name = f"licenses/{user_id}_{uuid.uuid4().hex[:8]}.{ext}"
+
+                # Upload to a private bucket. Store the object path only; admins fetch via signed URLs.
+                auth_client.storage.from_("private_documents").upload(
                     file_name,
                     file_content,
-                    file_options={"content-type": license_file.content_type or "application/octet-stream"}
+                    file_options={"content-type": license_file.content_type or "application/octet-stream"},
                 )
-
-                # Get public URL
-                license_image_url = _normalize_public_url(
-                    auth_client.storage.from_("private_documents").get_public_url(file_name)
-                )
+                license_ref = f"private_documents:{file_name}"
                 logger.info("License uploaded: %s", file_name)
-
+            except HTTPException:
+                raise
             except Exception as upload_error:
-                logger.error("License upload failed: %s", upload_error)
-                # Continue without license image - admin can request later
+                logger.error("License upload failed: %s", upload_error, exc_info=True)
+                raise HTTPException(status_code=500, detail="Failed to upload license file")
+        else:
+            # Legacy/alternate flow: accept only a project-owned Supabase Storage reference.
+            provided = (registration_data.get("license_image_url") or "").strip()
+            extracted = _extract_supabase_storage_path(provided)
+            if extracted is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="License file is required (or provide a valid Supabase Storage URL/path)",
+                )
+            bucket, obj_path = extracted
+            if bucket != "private_documents":
+                raise HTTPException(status_code=400, detail="License must be stored in private_documents bucket")
+            license_ref = f"private_documents:{obj_path}"
 
         # Create pharmacist profile
         profile_data = {
@@ -117,7 +214,8 @@ async def register_pharmacist(
             "full_name": registration_data.get("full_name", ""),
             "phone": registration_data.get("phone", ""),
             "license_number": registration_data.get("license_number", ""),
-            "license_image_url": license_image_url,
+            # Stored as "private_documents:<path>" (not a public URL).
+            "license_image_url": license_ref,
             "license_state": registration_data.get("license_state", ""),
             "specializations": registration_data.get("specializations", []),
             "experience_years": registration_data.get("experience_years", 0),
@@ -145,32 +243,38 @@ async def register_pharmacist(
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create profile")
 
-        # Update user metadata role to 'pharmacist' using Service Client (Admin)
+        # Update app_metadata.role using service client (server-controlled).
         try:
             if service_client:
-                service_client.auth.admin.update_user_by_id(
-                    user_id,
-                    {"user_metadata": {"role": "pharmacist"}}
-                )
-                logger.info("Updated user role to pharmacist: %s", user_id)
+                user_response = service_client.auth.admin.get_user_by_id(user_id)
+                current_app_meta = (user_response.user.app_metadata if user_response and user_response.user else {}) or {}
+                merged_app_meta = dict(current_app_meta)
+                merged_app_meta["role"] = "pharmacist_pending"
+                service_client.auth.admin.update_user_by_id(user_id, {"app_metadata": merged_app_meta})
+                logger.info("Updated user app_metadata role to pharmacist_pending: %s", user_id)
             else:
                  logger.warning("Service client unavailable, skipping role update")
         except Exception as role_error:
              # Log error but don't fail registration
-            logger.error("Failed to update user role metadata: %s", role_error)
+            logger.error("Failed to update user app_metadata role: %s", role_error, exc_info=True)
 
         logger.info("Pharmacist registered: user_id=%s", user_id)
 
         # Send email notification to admins
         try:
-            await EmailService.notify_admins_new_pharmacist(
+            logger.info("Sending admin notification for new pharmacist registration: %s", profile_data["full_name"])
+            email_sent = await EmailService.notify_admins_new_pharmacist(
                 pharmacist_name=profile_data["full_name"],
                 license_number=profile_data["license_number"],
                 email=current_user.get("email")
             )
+            if email_sent:
+                logger.info("Admin notification email sent successfully")
+            else:
+                logger.warning("Admin notification email was not sent (check RESEND_API_KEY and ADMIN_EMAILS config)")
         except Exception as email_error:
             # Don't fail registration if email fails
-            logger.error("Failed to send admin notification email: %s", email_error)
+            logger.error("Failed to send admin notification email: %s", email_error, exc_info=True)
 
         return PharmacistProfile(**result.data[0])
 
@@ -230,7 +334,7 @@ async def update_profile(
 ):
     """Update pharmacist profile. Only non-null fields are updated."""
     try:
-        logger.info(f"Update profile request: {update_data}")
+        logger.info("Update profile request for user=%s", current_user.get("id"))
         client = SupabaseService.get_auth_client(current_user["token"])
     except Exception as e:
         logger.error("Failed to create auth client: %s", e)
@@ -398,20 +502,21 @@ async def set_schedule(
 
     Replaces all existing slots with new ones.
     """
-    client = SupabaseService.get_client()
-    if not client:
+    try:
+        client = SupabaseService.get_auth_client(current_user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client: %s", e)
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     try:
-        # Get pharmacist ID
-        profile = client.table("pharmacist_profiles").select("id").eq(
-            "user_id", current_user["id"]
-        ).single().execute()
-
-        if not profile.data:
-            raise HTTPException(status_code=404, detail="Not registered as pharmacist")
-
-        pharmacist_id = profile.data["id"]
+        pharmacist_id = current_user.get("pharmacist_profile_id")
+        if not pharmacist_id:
+            profile = client.table("pharmacist_profiles").select("id").eq(
+                "user_id", current_user["id"]
+            ).limit(1).execute()
+            if not profile.data:
+                raise HTTPException(status_code=404, detail="Not registered as pharmacist")
+            pharmacist_id = profile.data[0]["id"]
 
         # Validate Overlaps (Application-side enforcement)
         if slots:
@@ -537,9 +642,13 @@ async def get_pharmacist_consultations(
 
         now = datetime.utcnow().isoformat()
         if status_filter == "upcoming":
-            query = query.in_("status", ["confirmed", "in_progress"]).gte("scheduled_at", now)
+            # Include confirmed/in_progress consultations regardless of time
+            # (they may have just been booked or scheduled for now)
+            query = query.in_("status", ["confirmed", "in_progress"])
         elif status_filter == "past":
-            query = query.in_("status", ["completed", "cancelled", "refunded", "no_show"]).lt("scheduled_at", now)
+            # Past includes completed, cancelled, refunded, no_show
+            # Also include confirmed consultations that are past their scheduled time (missed?)
+            query = query.in_("status", ["completed", "cancelled", "refunded", "no_show"])
 
         query = query.order("scheduled_at", desc=True).range(offset, offset + limit - 1)
         
@@ -707,3 +816,147 @@ async def get_consultation_detail(
         logger.error("Failed to get consultation detail: %s", e)
         raise HTTPException(status_code=500, detail="Failed to load consultation")
 
+
+# ============================================================================
+# PAYOUT HISTORY ENDPOINTS
+# ============================================================================
+
+class PayoutSummary(BaseModel):
+    """Payout record for pharmacist view."""
+    id: str
+    period_start: str
+    period_end: str
+    gross_amount: int
+    tds_deducted: int = 0
+    net_amount: int
+    consultation_count: int
+    status: str
+    payout_method: Optional[str] = None
+    transfer_reference: Optional[str] = None
+    processed_at: Optional[datetime] = None
+    created_at: datetime
+
+
+@router.get("/payouts", response_model=List[PayoutSummary])
+async def get_payout_history(
+    status_filter: Optional[str] = Query(None, pattern="^(pending|processing|completed|failed)$"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(get_current_pharmacist)
+):
+    """Get pharmacist's payout history."""
+    try:
+        client = SupabaseService.get_auth_client(current_user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client: %s", e)
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    try:
+        # Get pharmacist ID
+        profile = client.table("pharmacist_profiles").select("id").eq(
+            "user_id", current_user["id"]
+        ).limit(1).execute()
+
+        if not profile.data or len(profile.data) == 0:
+            raise HTTPException(status_code=404, detail="Not registered as pharmacist")
+
+        pharmacist_id = profile.data[0]["id"]
+
+        # Build query
+        query = client.table("pharmacist_payouts").select("*").eq(
+            "pharmacist_id", pharmacist_id
+        ).order("created_at", desc=True)
+
+        if status_filter:
+            query = query.eq("status", status_filter)
+
+        result = query.range(offset, offset + limit - 1).execute()
+
+        if not result.data:
+            return []
+
+        return [PayoutSummary(
+            id=p["id"],
+            period_start=p["period_start"],
+            period_end=p["period_end"],
+            gross_amount=p.get("gross_amount", 0),
+            tds_deducted=p.get("tds_deducted", 0),
+            net_amount=p.get("net_amount", 0),
+            consultation_count=p.get("consultation_count", 0),
+            status=p["status"],
+            payout_method=p.get("payout_method"),
+            transfer_reference=p.get("transfer_reference"),
+            processed_at=p.get("processed_at"),
+            created_at=p["created_at"]
+        ) for p in result.data]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get payout history: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to load payout history")
+
+
+@router.get("/payouts/stats")
+async def get_payout_stats(current_user: dict = Depends(get_current_pharmacist)):
+    """Get summary stats for payouts (total earned, pending, last payout)."""
+    try:
+        client = SupabaseService.get_auth_client(current_user["token"])
+    except Exception as e:
+        logger.error("Failed to create auth client: %s", e)
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    try:
+        # Get pharmacist ID
+        profile = client.table("pharmacist_profiles").select("id").eq(
+            "user_id", current_user["id"]
+        ).limit(1).execute()
+
+        if not profile.data or len(profile.data) == 0:
+            raise HTTPException(status_code=404, detail="Not registered as pharmacist")
+
+        pharmacist_id = profile.data[0]["id"]
+
+        # Get all payouts
+        payouts = client.table("pharmacist_payouts").select("*").eq(
+            "pharmacist_id", pharmacist_id
+        ).execute()
+
+        total_paid = 0
+        total_pending = 0
+        last_payout = None
+
+        for p in (payouts.data or []):
+            if p["status"] == "completed":
+                total_paid += p.get("net_amount", 0)
+                if not last_payout or p["processed_at"] > last_payout["processed_at"]:
+                    last_payout = p
+            elif p["status"] in ["pending", "processing"]:
+                total_pending += p.get("net_amount", 0)
+
+        # Get unpaid earnings (completed consultations not yet in a payout)
+        unpaid = client.table("consultations").select(
+            "pharmacist_earning"
+        ).eq("pharmacist_id", pharmacist_id).eq(
+            "status", "completed"
+        ).eq("payment_status", "captured").is_(
+            "payout_id", "null"
+        ).execute()
+
+        unpaid_amount = sum(c.get("pharmacist_earning", 0) or 0 for c in (unpaid.data or []))
+
+        return {
+            "total_paid": total_paid,
+            "pending_payout": total_pending,
+            "unpaid_earnings": unpaid_amount,
+            "last_payout": {
+                "amount": last_payout.get("net_amount", 0) if last_payout else 0,
+                "date": last_payout.get("processed_at") if last_payout else None
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get payout stats: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to load payout stats")

@@ -242,6 +242,23 @@ class PharmacistProfile(BaseModel):
     is_available: bool = False
     verification_status: str = "pending"
 
+class PharmacistPublicProfile(BaseModel):
+    """Public-safe pharmacist profile (no user_id, no license fields)."""
+    id: str
+    full_name: str
+    bio: Optional[str] = None
+    profile_image_url: Optional[str] = None
+    specializations: List[str] = Field(default_factory=list)
+    experience_years: int = 0
+    languages: List[str] = Field(default_factory=list)
+    education: Optional[str] = None
+    rate: int
+    duration_minutes: int
+    rating_avg: float = 0.0
+    rating_count: int = 0
+    completed_consultations: int = 0
+    is_available: bool = False
+
 
 class PharmacistSearchResult(BaseModel):
     """Simplified pharmacist for search results."""
