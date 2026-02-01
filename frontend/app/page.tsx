@@ -10,6 +10,7 @@ import {
   Zap,
   Users,
   Loader2,
+  Github,
   MessageSquareText,
   Search,
   IndianRupee,
@@ -197,6 +198,21 @@ export default function HomePage() {
 
             {/* Right Side Actions */}
             <div className="flex items-center gap-4">
+              <Link
+                href="https://github.com/MitudruDutta/MediRep-AI"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="View source on GitHub"
+                title="GitHub"
+              >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-foreground/90 hover:text-foreground"
+                >
+                  <Github className="h-5 w-5" />
+                </Button>
+              </Link>
               <ModeToggle />
               {isLoading ? (
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
