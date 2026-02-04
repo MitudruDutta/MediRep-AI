@@ -161,6 +161,26 @@ class PillIdentification(BaseModel):
     imprint: Optional[str] = None
 
 
+class PillDrugMatch(BaseModel):
+    name: str
+    generic_name: Optional[str] = None
+    manufacturer: Optional[str] = None
+    price_raw: Optional[str] = None
+    description: Optional[str] = None
+    match_score: float = Field(..., ge=0.0, le=1.0)
+    match_reason: str
+
+
+class PillScanResponse(PillIdentification):
+    """Extended pill scan response with structured DB matches + enriched drug info."""
+
+    ocr_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    matches: List[PillDrugMatch] = Field(default_factory=list)
+    drug_info: Optional[DrugInfo] = None
+    drug_info_source: Optional[Literal["database", "llm"]] = None
+    drug_info_disclaimer: Optional[str] = None
+
+
 class FDAAlert(BaseModel):
     id: str
     severity: Literal["info", "warning", "recall"]

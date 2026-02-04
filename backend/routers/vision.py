@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 import logging
 
-from models import PillIdentification
+from models import PillScanResponse
 from services.vision_service import identify_pill
 from config import MAX_UPLOAD_SIZE, MAX_UPLOAD_SIZE_MB
 
@@ -12,7 +12,7 @@ router = APIRouter()
 CHUNK_SIZE = 1024 * 64  # 64KB chunks
 
 
-@router.post("/identify-pill", response_model=PillIdentification)
+@router.post("/identify-pill", response_model=PillScanResponse)
 async def identify_pill_endpoint(image: UploadFile = File(...)):
     """Identify a pill from an uploaded image"""
     

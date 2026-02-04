@@ -105,6 +105,26 @@ def _get_enrichment_model():
     return _enrichment_model
 
 
+def extract_balanced_json(text: str) -> Optional[str]:
+    """Extract the first balanced JSON object from a string."""
+    if not text:
+        return None
+
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    for i, ch in enumerate(text[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 async def enrich_drug_with_gemini(drug_info: DrugInfo) -> DrugInfo:
     """
     HYBRID APPROACH: Enrich missing drug information using Gemini's knowledge.
@@ -159,22 +179,23 @@ Example: {{"indications": ["Pain relief", "Fever reduction"], "side_effects": ["
         if not text:
             return drug_info
         
-        # Find JSON in response
-        json_match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
-        if json_match:
-            data = json.loads(json_match.group())
-            
-            # Update only missing fields
-            if not drug_info.indications and data.get("indications"):
-                drug_info.indications = data["indications"][:3]
-            if not drug_info.side_effects and data.get("side_effects"):
-                drug_info.side_effects = data["side_effects"][:5]
-            if not drug_info.dosage and data.get("dosage"):
-                drug_info.dosage = data["dosage"][:2]
-            if not drug_info.contraindications and data.get("contraindications"):
-                drug_info.contraindications = data["contraindications"][:3]
-            if not drug_info.interactions and data.get("interactions"):
-                drug_info.interactions = data["interactions"][:3]
+        json_str = extract_balanced_json(text)
+        if not json_str:
+            return drug_info
+
+        data = json.loads(json_str)
+
+        # Update only missing fields
+        if not drug_info.indications and data.get("indications"):
+            drug_info.indications = data["indications"][:3]
+        if not drug_info.side_effects and data.get("side_effects"):
+            drug_info.side_effects = data["side_effects"][:5]
+        if not drug_info.dosage and data.get("dosage"):
+            drug_info.dosage = data["dosage"][:2]
+        if not drug_info.contraindications and data.get("contraindications"):
+            drug_info.contraindications = data["contraindications"][:3]
+        if not drug_info.interactions and data.get("interactions"):
+            drug_info.interactions = data["interactions"][:3]
                 
     except Exception as e:
         logger.warning("Gemini enrichment failed: %s", e)
@@ -356,24 +377,33 @@ async def get_drug_info(
                 price=float(data.get("price")) if data.get("price") else None,
                 pack_size=data.get("pack_size"),
                 side_effects=[s.strip() for s in (data.get("side_effects") or "").split(",") if s.strip()],
-                indications=[data.get("therapeutic_class")] if data.get("therapeutic_class") else [],
+                # Do not treat "therapeutic_class" as "indications" (it produces junk like "allopathy").
+                # Leave indications empty so enrichment can provide real clinical uses.
+                indications=[],
                 substitutes=data.get("substitutes") or [],
                 therapeutic_class=data.get("therapeutic_class"),
                 action_class=data.get("action_class"),
             )
-            
-            if data.get("description"):
-                if not info.indications:
-                    info.indications = []
-                info.indications.append(data.get("description"))
-            
+
             if data.get("is_discontinued"):
                 info.warnings.append("This product is marked as DISCONTINUED.")
 
             # Enrich missing fields with LLM (optional)
             if enrich:
                 info = await enrich_drug_with_gemini(info)
-                cache.set(cache_key_full, info)
+                # Avoid "poisoning" the full cache if enrichment fails (e.g., transient AI outage).
+                if any(
+                    [
+                        bool(info.indications),
+                        bool(info.side_effects),
+                        bool(info.dosage),
+                        bool(info.contraindications),
+                        bool(info.interactions),
+                    ]
+                ):
+                    cache.set(cache_key_full, info)
+                else:
+                    cache.set(cache_key_basic, info)
             else:
                 cache.set(cache_key_basic, info)
 

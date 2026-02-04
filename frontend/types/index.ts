@@ -32,12 +32,17 @@ export interface DrugInfo {
   name: string;
   generic_name?: string;
   manufacturer?: string;
+  price_raw?: string;
+  pack_size?: string;
   indications?: string[];
   dosage?: string[];
   warnings?: string[];
   contraindications?: string[];
   side_effects?: string[];
   interactions?: string[];
+  substitutes?: string[];
+  therapeutic_class?: string;
+  action_class?: string;
 }
 
 export interface PillIdentification {
