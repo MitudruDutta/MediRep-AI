@@ -61,10 +61,12 @@ export function useAutoScroll(options: UseAutoScrollOptions = {}) {
 
     const atBottom = checkIsAtBottom(scrollRef.current);
 
-    setScrollState((prev) => ({
+    // If the user scrolls away from the bottom, disable auto-scroll so they can
+    // review earlier messages without being forced back down.
+    setScrollState({
       isAtBottom: atBottom,
-      autoScrollEnabled: atBottom ? true : prev.autoScrollEnabled,
-    }));
+      autoScrollEnabled: atBottom,
+    });
   }, [checkIsAtBottom]);
 
   useEffect(() => {

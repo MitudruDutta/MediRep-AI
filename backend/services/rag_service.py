@@ -56,17 +56,25 @@ class RAGService:
         context_parts = []
 
         try:
-            # Parallel search in both collections
-            drug_task = asyncio.to_thread(
-                qdrant_service.search_similar, query, top_k
-            )
-            qa_task = asyncio.to_thread(
-                qdrant_service.search_medical_qa, query, top_k
+            # Compute embedding once, reuse for both collections.
+            query_embedding = await asyncio.to_thread(
+                lambda: (qdrant_service.get_embedding_model().encode(query).tolist())
+                if qdrant_service.get_embedding_model()
+                else None
             )
 
-            drug_results, qa_results = await asyncio.gather(
-                drug_task, qa_task, return_exceptions=True
+            if not query_embedding:
+                return ""
+
+            # Parallel search in both collections using precomputed embedding
+            drug_task = asyncio.to_thread(
+                qdrant_service.search_similar_with_embedding, query_embedding, top_k
             )
+            qa_task = asyncio.to_thread(
+                qdrant_service.search_medical_qa_with_embedding, query_embedding, top_k
+            )
+
+            drug_results, qa_results = await asyncio.gather(drug_task, qa_task, return_exceptions=True)
 
             # Handle exceptions gracefully
             if isinstance(drug_results, Exception):

@@ -56,7 +56,12 @@ UPDATED SUMMARY:"""
 
 
 
-async def load_session_context(session_id: str, auth_token: str) -> Dict[str, Any]:
+async def load_session_context(
+    session_id: str,
+    auth_token: str,
+    summary: Optional[str] = None,
+    message_count: Optional[int] = None,
+) -> Dict[str, Any]:
     """
     Load compressed context for a session.
 
@@ -72,15 +77,19 @@ async def load_session_context(session_id: str, auth_token: str) -> Dict[str, An
         return {"summary": None, "recent_history": [], "message_count": 0}
 
     try:
-        # Get session with summary (non-blocking)
-        session = await asyncio.to_thread(
-            lambda: client.table("chat_sessions").select(
-                "context_summary, message_count"
-            ).eq("id", session_id).maybe_single().execute()
-        )
+        # Avoid redundant DB fetch if caller already has summary/count.
+        if summary is None or message_count is None:
+            session = await asyncio.to_thread(
+                lambda: client.table("chat_sessions").select(
+                    "context_summary, message_count"
+                ).eq("id", session_id).maybe_single().execute()
+            )
 
-        if not session.data:
-            return {"summary": None, "recent_history": [], "message_count": 0}
+            if not session.data:
+                return {"summary": None, "recent_history": [], "message_count": 0}
+
+            summary = session.data.get("context_summary")
+            message_count = session.data.get("message_count", 0)
 
         # Get last N exchanges (non-blocking)
         history_result = await asyncio.to_thread(
@@ -98,9 +107,9 @@ async def load_session_context(session_id: str, auth_token: str) -> Dict[str, An
             recent_history.append({"role": "assistant", "content": row["response"]})
 
         return {
-            "summary": session.data.get("context_summary"),
+            "summary": summary,
             "recent_history": recent_history,
-            "message_count": session.data.get("message_count", 0)
+            "message_count": int(message_count or 0)
         }
 
     except Exception as e:

@@ -132,34 +132,50 @@ def search_similar(query: str, limit: int = 5) -> List[Dict[str, Any]]:
 
     Returns list of {drug_id, drug_name, score} for lookup in Turso.
     """
-    client = get_client()
     model = get_embedding_model()
 
-    if not client or not model:
+    if not model:
         return []
 
     try:
         # Generate query embedding
         query_embedding = model.encode(query).tolist()
+        return search_similar_with_embedding(query_embedding, limit=limit)
+    except Exception as e:
+        logger.error(f"Qdrant search failed: {e}")
+        return []
 
-        # Search Qdrant using query_points (newer API)
-        # Fallback to search if query_points not available
-        try:
-            results = client.query_points(
-                collection_name=COLLECTION_NAME,
-                query=query_embedding,
-                limit=limit
-            )
-            hits = results.points
-        except AttributeError:
-            # Fallback for older qdrant-client versions
-            results = client.search(
-                collection_name=COLLECTION_NAME,
-                query_vector=query_embedding,
-                limit=limit
-            )
-            hits = results
 
+def _query_collection(collection_name: str, query_embedding: List[float], limit: int):
+    """Low-level query helper that reuses a precomputed embedding."""
+    client = get_client()
+    if not client:
+        return []
+
+    # Search Qdrant using query_points (newer API); fallback to search.
+    try:
+        results = client.query_points(
+            collection_name=collection_name,
+            query=query_embedding,
+            limit=limit
+        )
+        return results.points
+    except AttributeError:
+        return client.search(
+            collection_name=collection_name,
+            query_vector=query_embedding,
+            limit=limit
+        )
+
+
+def search_similar_with_embedding(query_embedding: List[float], limit: int = 5) -> List[Dict[str, Any]]:
+    """
+    Search for drugs similar to a precomputed embedding.
+
+    Returns list of {drug_id, drug_name, score} for lookup in Turso.
+    """
+    try:
+        hits = _query_collection(COLLECTION_NAME, query_embedding, limit)
         return [
             {
                 "drug_id": hit.payload.get("drug_id") if hit.payload else None,
@@ -172,7 +188,6 @@ def search_similar(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Qdrant search failed: {e}")
         return []
-
 
 def upsert_drug_embedding(drug_id: str, drug_name: str, text_for_embedding: str) -> bool:
     """
@@ -219,52 +234,47 @@ def search_medical_qa(query: str, limit: int = 5) -> List[Dict[str, Any]]:
 
     Returns list of {question, answer, question_type, score} for RAG context.
     """
-    client = get_client()
     model = get_embedding_model()
 
-    if not client or not model:
+    if not model:
         return []
 
     try:
         # Generate query embedding
         query_embedding = model.encode(query).tolist()
+        return search_medical_qa_with_embedding(query_embedding, limit=limit)
+    except Exception as e:
+        logger.warning("Medical QA search failed: %s", e)
+        return []
 
-        # Search medical_qa collection
-        try:
-            results = client.query_points(
-                collection_name=COLLECTION_MEDICAL_QA,
-                query=query_embedding,
-                limit=limit
-            )
-            hits = results.points
-        except AttributeError:
-            # Fallback for older qdrant-client versions
-            results = client.search(
-                collection_name=COLLECTION_MEDICAL_QA,
-                query_vector=query_embedding,
-                limit=limit
-            )
-            hits = results
-        except Exception as e:
-            # Collection might not exist yet
-            logger.warning("medical_qa collection search failed: %s", e)
-            return []
 
+def search_medical_qa_with_embedding(query_embedding: List[float], limit: int = 5) -> List[Dict[str, Any]]:
+    """
+    Search for medical Q&A pairs similar to a precomputed embedding.
+
+    Returns list of Q&A payload fields for RAG context + citation metadata.
+    """
+    try:
+        hits = _query_collection(COLLECTION_MEDICAL_QA, query_embedding, limit)
         return [
             {
                 "question": hit.payload.get("question", "") if hit.payload else "",
                 "answer": hit.payload.get("answer", "") if hit.payload else "",
                 "question_type": hit.payload.get("question_type", "") if hit.payload else "",
                 "question_focus": hit.payload.get("question_focus", "") if hit.payload else "",
+                "document_source": hit.payload.get("document_source", "") if hit.payload else "",
+                "umls_cui": hit.payload.get("umls_cui", "") if hit.payload else "",
+                "source": hit.payload.get("source", "") if hit.payload else "",
+                "type": hit.payload.get("type", "") if hit.payload else "",
                 "score": hit.score
             }
             for hit in hits
             if hit.payload
         ]
     except Exception as e:
-        logger.warning("Medical QA search failed: %s", e)
+        # Collection might not exist yet
+        logger.warning("medical_qa collection search failed: %s", e)
         return []
-
 
 def get_collection_info(collection_name: str = None) -> Optional[Dict[str, Any]]:
     """Get information about a collection (for debugging)."""

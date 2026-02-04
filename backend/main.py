@@ -1,4 +1,5 @@
 import os
+import asyncio
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -133,6 +134,17 @@ async def startup_event():
         logger.info("[AI] Gemini: CONFIGURED")
     else:
         logger.warning("[AI] Gemini: NOT CONFIGURED - Chat/Vision will return 503")
+
+    # Warm up slow singletons so the first chat request doesn't pay the cost.
+    # This trades a small startup hit for much faster first-response latency.
+    try:
+        from services import turso_service, qdrant_service
+        await asyncio.to_thread(turso_service.get_connection)
+        await asyncio.to_thread(qdrant_service.get_client)
+        await asyncio.to_thread(qdrant_service.get_embedding_model)
+        logger.info("[WARMUP] Turso/Qdrant/Embeddings: READY")
+    except Exception as e:
+        logger.warning("[WARMUP] Skipped/failed: %s", e)
 
     logger.info("=" * 60)
 

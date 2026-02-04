@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Message, PatientContext, WebSearchResult } from "@/types";
 import { sendMessage, getSessionMessages } from "@/lib/api";
 import { invalidateSessionsCache } from "@/hooks/useSessions";
@@ -12,6 +12,8 @@ export function useChat() {
   const [webSources, setWebSources] = useState<WebSearchResult[]>([]);
   // Track the count of messages loaded from session (not new)
   const loadedMessageCountRef = useRef<number>(0);
+  // AbortController for cancelling requests
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Load session from storage or props on mount
   useEffect(() => {
@@ -40,6 +42,14 @@ export function useChat() {
   };
 
   const send = async (content: string, patientContext?: PatientContext, webSearchMode: boolean = false, files?: File[]) => {
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new AbortController for this request
+    abortControllerRef.current = new AbortController();
+
     setIsGenerating(true);
     setWebSources([]); // Clear previous web sources
 
@@ -74,7 +84,15 @@ export function useChat() {
 
     try {
       // Send to backend with web search mode and images
-      const response = await sendMessage(content, patientContext, undefined, sessionId || undefined, webSearchMode, images);
+      const response = await sendMessage(
+        content,
+        patientContext,
+        undefined,
+        sessionId || undefined,
+        webSearchMode,
+        images,
+        abortControllerRef.current.signal
+      );
 
       // Handle new session
       if (!sessionId && response.session_id) {
@@ -102,18 +120,39 @@ export function useChat() {
 
       // Invalidate session cache so sidebar updates with new message count/timestamp
       invalidateSessionsCache();
-    } catch (error) {
-      console.error("Chat error:", error);
-      const errorMessage: Message = {
-        role: "assistant",
-        content: "Sorry, I encountered an error. Please try again.",
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+    } catch (error: any) {
+      // Don't show error if request was aborted by user
+      if (error?.name === 'AbortError') {
+        console.log("Request cancelled by user");
+        // Add a cancelled message indicator
+        const cancelledMessage: Message = {
+          role: "assistant",
+          content: "_Response cancelled_",
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, cancelledMessage]);
+      } else {
+        console.error("Chat error:", error);
+        const errorMessage: Message = {
+          role: "assistant",
+          content: "Sorry, I encountered an error. Please try again.",
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
     } finally {
       setIsGenerating(false);
+      abortControllerRef.current = null;
     }
   };
+
+  // Stop/cancel the current generation
+  const stop = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, []);
 
   const loadSession = async (id: string) => {
     setSessionId(id);
@@ -136,5 +175,5 @@ export function useChat() {
   // Backwards compatibility: isLoading is true when generating (not when loading history)
   const isLoading = isGenerating;
 
-  return { messages, isLoading, isGenerating, isLoadingHistory, suggestions, webSources, send, resetSession, loadSession, sessionId, isNewMessage };
+  return { messages, isLoading, isGenerating, isLoadingHistory, suggestions, webSources, send, stop, resetSession, loadSession, sessionId, isNewMessage };
 }

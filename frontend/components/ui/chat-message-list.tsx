@@ -22,9 +22,9 @@ const ChatMessageList = React.forwardRef<HTMLDivElement, ChatMessageListProps>(
     });
 
     return (
-      <div className="relative w-full h-full">
+      <div className={`relative w-full flex-1 min-h-0 ${className ?? ""}`}>
         <div
-          className={`flex flex-col w-full h-full p-4 overflow-y-auto ${className ?? ""}`}
+          className="flex flex-col w-full h-full p-4 overflow-y-auto"
           ref={scrollRef}
           onWheel={disableAutoScroll}
           onTouchMove={disableAutoScroll}

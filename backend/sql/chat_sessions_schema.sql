@@ -154,7 +154,8 @@ DECLARE
 BEGIN
     -- Convert session UUID to bigint for advisory lock
     -- This ensures only one insert per session at a time
-    lock_id := ('x' || substr(p_session_id::text, 1, 16))::bit(64)::bigint;
+    -- NOTE: UUID text contains hyphens; remove them before treating as hex.
+    lock_id := ('x' || substr(replace(p_session_id::text, '-', ''), 1, 16))::bit(64)::bigint;
 
     -- Acquire advisory lock for this session (released at end of transaction)
     PERFORM pg_advisory_xact_lock(lock_id);

@@ -82,10 +82,14 @@ export async function sendMessage(
   history?: Message[],
   sessionId?: string,
   webSearchMode: boolean = false,
-  images?: string[]
+  images?: string[],
+  signal?: AbortSignal
 ): Promise<ChatResponse> {
-  return authFetch<ChatResponse>(`${API_URL}/api/chat`, {
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(`${API_URL}/api/chat`, {
     method: "POST",
+    headers,
     body: JSON.stringify({
       message,
       patient_context: patientContext,
@@ -94,7 +98,10 @@ export async function sendMessage(
       web_search_mode: webSearchMode,
       images: images || []
     }),
+    signal, // AbortController signal for cancellation
   });
+
+  return handleResponse<ChatResponse>(response);
 }
 
 export async function searchDrugs(query: string) {

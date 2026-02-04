@@ -26,7 +26,6 @@ const SUGGESTIONS = [
 export default function ChatPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [webSearchMode, setWebSearchMode] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const {
     messages,
@@ -35,6 +34,7 @@ export default function ChatPage() {
     suggestions,
     webSources,
     send,
+    stop,
     resetSession,
     loadSession,
     sessionId,
@@ -55,10 +55,6 @@ export default function ChatPage() {
   }, [searchParams, loadSession, sessionId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isGenerating]);
-
-  useEffect(() => {
     const checkSize = () => setIsSidebarOpen(window.innerWidth >= 768);
     checkSize();
     window.addEventListener('resize', checkSize);
@@ -73,7 +69,7 @@ export default function ChatPage() {
   const showEmptyState = messages.length === 0 && !isGenerating && !isLoadingHistory;
 
   return (
-    <div className="h-[calc(100vh-4rem)] w-full flex bg-[color:var(--landing-paper)] overflow-hidden">
+    <div className="h-[100dvh] w-full flex bg-[color:var(--landing-paper)] overflow-hidden">
       {/* Sidebar */}
       <ChatSidebar
         isOpen={isSidebarOpen}
@@ -84,7 +80,7 @@ export default function ChatPage() {
       />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full min-w-0">
+      <div className="flex-1 flex flex-col h-full min-w-0 min-h-0">
         {/* Header */}
         <header className="shrink-0 h-14 border-b border-[color:var(--landing-border)] bg-[color:var(--landing-card-strong)] flex items-center px-4 gap-3">
           <Button
@@ -104,7 +100,7 @@ export default function ChatPage() {
         </header>
 
         {/* Chat Area */}
-        <div className="flex-1 overflow-hidden flex flex-col bg-white dark:bg-zinc-950">
+        <div className="flex-1 overflow-hidden flex flex-col bg-white dark:bg-zinc-950 min-h-0">
           {/* Loading History */}
           {isLoadingHistory && (
             <div className="flex-1 flex items-center justify-center">
@@ -135,6 +131,7 @@ export default function ChatPage() {
                 {/* Input */}
                 <PromptInputBox
                   onSend={handleSend}
+                  onStop={stop}
                   isLoading={isGenerating}
                   placeholder="Ask about medications..."
                   onSearchModeChange={setWebSearchMode}
@@ -159,7 +156,7 @@ export default function ChatPage() {
           {/* Messages */}
           {!showEmptyState && !isLoadingHistory && (
             <>
-              <ChatMessages className="flex-1 overflow-y-auto py-4">
+              <ChatMessages className="flex-1 min-h-0">
                 {messages.map((message, index) => (
                   <ChatMessage
                     key={index}
@@ -200,7 +197,6 @@ export default function ChatPage() {
                   </div>
                 )}
 
-                <div ref={messagesEndRef} />
               </ChatMessages>
 
               {/* Input Area */}
@@ -215,6 +211,7 @@ export default function ChatPage() {
 
                   <PromptInputBox
                     onSend={handleSend}
+                    onStop={stop}
                     isLoading={isGenerating}
                     placeholder="Message MediRep AI..."
                     onSearchModeChange={setWebSearchMode}

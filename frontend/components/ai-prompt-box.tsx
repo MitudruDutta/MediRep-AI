@@ -444,6 +444,7 @@ export const SUPPORTED_SPEECH_LANGUAGES = {
 
 interface PromptInputBoxProps {
   onSend?: (message: string, files?: File[], isSearchMode?: boolean) => void;
+  onStop?: () => void;
   isLoading?: boolean;
   placeholder?: string;
   className?: string;
@@ -451,7 +452,7 @@ interface PromptInputBoxProps {
   speechLanguage?: keyof typeof SUPPORTED_SPEECH_LANGUAGES;
 }
 export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref: React.Ref<HTMLDivElement>) => {
-  const { onSend = () => { }, isLoading = false, placeholder = "Type your message here...", className, onSearchModeChange, speechLanguage = "en" } = props;
+  const { onSend = () => { }, onStop, isLoading = false, placeholder = "Type your message here...", className, onSearchModeChange, speechLanguage = "en" } = props;
   const [input, setInput] = React.useState("");
   const [files, setFiles] = React.useState<File[]>([]);
   const [filePreviews, setFilePreviews] = React.useState<{ [key: string]: string }>({});
@@ -782,11 +783,18 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
                     : "bg-muted hover:bg-muted/80 text-foreground border border-border"
               )}
               onClick={() => {
-                if (isRecording) setIsRecording(false);
-                else if (hasContent) handleSubmit();
-                else setIsRecording(true);
+                if (isLoading) {
+                  // Stop generation
+                  onStop?.();
+                } else if (isRecording) {
+                  setIsRecording(false);
+                } else if (hasContent) {
+                  handleSubmit();
+                } else {
+                  setIsRecording(true);
+                }
               }}
-              disabled={isLoading && !hasContent}
+              disabled={false}
             >
               {isLoading ? (
                 <Square className="h-4 w-4 fill-current animate-pulse" />

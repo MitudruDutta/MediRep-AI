@@ -21,6 +21,7 @@ from services.context_service import (
     save_message_to_session,
 )
 from services.web_search_service import search_medical, format_web_results_for_llm, WebSearchResult
+from services.ocr_service import extract_prescription_text
 from middleware.auth import get_current_user, get_optional_user
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,51 @@ router = APIRouter()
 # Local limiter for chat endpoint (separate from global app limiter)
 limiter = Limiter(key_func=get_client_ip)
 
+
+async def _save_prescription(
+    user_id: str,
+    session_id: str,
+    image_data: str,
+    ocr_text: str,
+    auth_token: str
+) -> None:
+    """Save prescription image and OCR result to database (background task)."""
+    try:
+        # Get authenticated Supabase client for RLS
+        client = SupabaseService.get_auth_client(auth_token)
+
+        # Determine mime type from base64 header if present
+        mime_type = "image/jpeg"
+        if image_data.startswith("data:"):
+            mime_type = image_data.split(";")[0].split(":")[1]
+
+        # Clean base64 data
+        clean_image = image_data
+        if "base64," in image_data:
+            clean_image = image_data.split("base64,")[1]
+
+        # Insert into prescriptions table
+        result = await asyncio.to_thread(
+            lambda: client.table("prescriptions").insert({
+                "user_id": user_id,
+                "session_id": session_id,
+                "image_data": clean_image[:50000],  # Limit size (first 50k chars)
+                "image_mime_type": mime_type,
+                "raw_ocr_text": ocr_text[:5000],  # Limit OCR text
+                "processing_status": "completed",
+                "ocr_model": "gemini-vision",
+                "ocr_confidence": 0.85,
+                "processed_at": datetime.now(timezone.utc).isoformat()
+            }).execute()
+        )
+
+        if result.data:
+            logger.info("Prescription saved: %s", result.data[0].get("id"))
+        else:
+            logger.warning("Prescription save returned no data")
+
+    except Exception as e:
+        logger.error("Failed to save prescription: %s", e)
 
 
 def _detect_substitute_intent(message: str) -> bool:
@@ -78,7 +124,12 @@ async def chat_endpoint(
             raise HTTPException(status_code=503, detail="Session service unavailable")
 
         # Load compressed context + recent history
-        context_data_loaded = await load_session_context(session_id, auth_token)
+        context_data_loaded = await load_session_context(
+            session_id=session_id,
+            auth_token=auth_token,
+            summary=session.get("context_summary"),
+            message_count=session.get("message_count"),
+        )
 
         # Build history for LLM: recent exchanges from DB
         # (replaces client-sent history with server-side history)
@@ -97,7 +148,44 @@ async def chat_endpoint(
             history_for_llm.append(Message(role=h["role"], content=h["content"]))
 
         # ============================================================
-        # EXISTING WORKFLOW (unchanged from here)
+        # PRESCRIPTION OCR - Extract text from uploaded images
+        # ============================================================
+        ocr_context = ""
+
+        if chat_request.images:
+            logger.info("Processing %d image(s) for OCR", len(chat_request.images))
+
+            for i, image_b64 in enumerate(chat_request.images[:3]):  # Limit to 3 images
+                try:
+                    ocr_result = await extract_prescription_text(image_b64)
+
+                    if ocr_result.get("success") and ocr_result.get("text"):
+                        extracted_text = ocr_result["text"]
+                        logger.info("OCR extracted %d chars from image %d", len(extracted_text), i + 1)
+
+                        # Add to context for Gemini (with instruction to not repeat)
+                        ocr_context += f"\n\n[Prescription Context - Image {i + 1}]\n"
+                        ocr_context += extracted_text[:2000]  # Limit text length
+                        ocr_context += "\n[INSTRUCTION: Use this prescription data as context. Do NOT repeat or summarize the prescription details unless specifically asked. Answer the user's question directly using this context.]"
+
+                        # Save prescription to database (background task)
+                        asyncio.create_task(_save_prescription(
+                            user_id=user_id,
+                            session_id=session_id,
+                            image_data=image_b64,
+                            ocr_text=extracted_text,
+                            auth_token=auth_token
+                        ))
+                    else:
+                        # OCR failed or not available - Gemini will handle the image directly
+                        logger.info("OCR skipped for image %d: %s", i + 1, ocr_result.get("error", "unknown"))
+
+                except Exception as e:
+                    logger.warning("OCR failed for image %d: %s", i + 1, e)
+                    # Continue - Gemini can still process the image visually
+
+        # ============================================================
+        # EXISTING WORKFLOW
         # ============================================================
 
         # 1. Intent Planning & Entity Extraction (LLM Powered)
@@ -149,7 +237,8 @@ async def chat_endpoint(
             # Fetch drug info if any drug names present
             if plan.drug_names:
                 for drug in plan.drug_names[:1]:
-                    info = await get_drug_info(drug)
+                    # Fast path for chat: DB-only (avoid extra LLM/openFDA calls here).
+                    info = await get_drug_info(drug, enrich=False, allow_openfda=False)
                     if info:
                         context_data['drug_info'] = info
                         msg_context += f"\n\n[Database Info for {info.name}]\n"
@@ -189,13 +278,22 @@ async def chat_endpoint(
                 if any(kw in query_lower for kw in symptom_keywords):
                     effective_intent = "SYMPTOM"
 
-                # Hybrid search: drug_embeddings + medical_qa with intent-based weighting
-                rag_content = await rag_service.search_hybrid(
-                    query=chat_request.message,
-                    intent=effective_intent,
-                    top_k=5
+                # If we already have strong DB context for a drug/info query, skip extra RAG work.
+                # (Keeps behavior the same but avoids wasted latency on common INFO requests.)
+                has_db_context = bool(context_data.get("drug_info") or context_data.get("substitutes"))
+                should_run_rag = effective_intent == "SYMPTOM" or not (
+                    has_db_context and effective_intent in ("INFO", "SUBSTITUTE")
                 )
-                logger.info("Hybrid RAG context found: %s (intent: %s)", bool(rag_content), effective_intent)
+
+                if should_run_rag:
+                    rag_content = await rag_service.search_hybrid(
+                        query=chat_request.message,
+                        intent=effective_intent,
+                        top_k=5
+                    )
+                    logger.info("Hybrid RAG context found: %s (intent: %s)", bool(rag_content), effective_intent)
+                else:
+                    logger.info("RAG skipped (DB context present, intent=%s)", effective_intent)
 
                 # Fallback: If no hybrid matches, try direct text search in Turso
                 if not rag_content and (plan.intent == "GENERAL" or not plan.drug_names):
@@ -244,8 +342,14 @@ async def chat_endpoint(
                        chat_request.web_search_mode, bool(rag_content), bool(context_data.get('drug_info')))
 
         # 4. Generate Response
+        # Combine all context: user message + OCR text + drug/RAG context
+        full_message = chat_request.message
+        if ocr_context:
+            full_message += ocr_context
+        full_message += msg_context
+
         gemini_result = await generate_response(
-            message=chat_request.message + msg_context,  # Inject structured data
+            message=full_message,  # Inject structured data including OCR
             patient_context=chat_request.patient_context,
             history=history_for_llm,  # Use session history, not client history
             drug_info=context_data.get('drug_info'),

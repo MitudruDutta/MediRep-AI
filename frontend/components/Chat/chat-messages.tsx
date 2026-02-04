@@ -8,7 +8,7 @@ export interface ChatMessagesProps extends React.HTMLAttributes<HTMLDivElement> 
 
 export function ChatMessages({ children, className, ...props }: ChatMessagesProps) {
   return (
-    <ChatMessageList className={cn("flex-1", className)} {...props}>
+    <ChatMessageList className={cn("flex-1 min-h-0", className)} {...props}>
       {children}
     </ChatMessageList>
   )

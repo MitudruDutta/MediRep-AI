@@ -287,7 +287,12 @@ async def search_drugs(query: str, limit: int = 10) -> List[DrugSearchResult]:
     return results
 
 
-async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
+async def get_drug_info(
+    drug_name: str,
+    *,
+    enrich: bool = True,
+    allow_openfda: bool = True,
+) -> Optional[DrugInfo]:
     """
     Get detailed drug info using: Turso (exact match) → LLM enrichment.
     
@@ -295,15 +300,52 @@ async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
     """
     if not drug_name:
         return None
-    
-    cache_key = f"info:{drug_name.lower()}"
-    cached = cache.get(cache_key)
-    if cached:
-        return cached
+
+    # Cache separation:
+    # - "full" may include LLM enrichment / openFDA.
+    # - "basic" is DB-only and safe to compute quickly.
+    cache_key_full = f"info:full:{drug_name.lower()}"
+    cache_key_basic = f"info:basic:{drug_name.lower()}"
+
+    cached_full = cache.get(cache_key_full)
+    if cached_full:
+        return cached_full
+
+    if not enrich:
+        cached_basic = cache.get(cache_key_basic)
+        if cached_basic:
+            return cached_basic
     
     # 1. TURSO: Get drug data from database
     try:
         data = await asyncio.to_thread(turso_service.get_drug_by_name, drug_name)
+
+        # Fuzzy fallback: many user queries are generic names (e.g., "Paracetamol")
+        # while the DB may store branded/strength variants. Use Turso text search
+        # before hitting external APIs or LLM enrichment.
+        if not data:
+            candidates = await asyncio.to_thread(turso_service.search_drugs, drug_name, 5)
+            best = None
+            q = drug_name.strip().lower()
+
+            for c in candidates or []:
+                name = (c.get("name") or "").strip()
+                generic = (c.get("generic_name") or "").strip()
+                if generic and generic.strip().lower() == q:
+                    best = c
+                    break
+                if name and name.strip().lower() == q:
+                    best = c
+                    break
+                if name and name.strip().lower().startswith(q):
+                    best = c
+                    break
+
+            if not best and candidates:
+                best = candidates[0]
+
+            if best and best.get("name"):
+                data = await asyncio.to_thread(turso_service.get_drug_by_name, best["name"]) or best
         
         if data:
             info = DrugInfo(
@@ -327,60 +369,70 @@ async def get_drug_info(drug_name: str) -> Optional[DrugInfo]:
             
             if data.get("is_discontinued"):
                 info.warnings.append("This product is marked as DISCONTINUED.")
-            
-            # Enrich missing fields with LLM
-            info = await enrich_drug_with_gemini(info)
-            
-            cache.set(cache_key, info)
+
+            # Enrich missing fields with LLM (optional)
+            if enrich:
+                info = await enrich_drug_with_gemini(info)
+                cache.set(cache_key_full, info)
+            else:
+                cache.set(cache_key_basic, info)
+
             return info
             
     except Exception as e:
         logger.warning("Turso drug lookup failed: %s", e)
     
     # 2. openFDA: Fallback for international drugs
-    try:
-        escaped_name = escape_lucene_special_chars(drug_name)
-        async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
-            response = await client.get(
-                OPENFDA_LABEL_URL,
-                params={"search": f'openfda.brand_name:"{escaped_name}"', "limit": 1}
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("results"):
-                    result = data["results"][0]
-                    openfda = result.get("openfda", {})
-                    
-                    info = DrugInfo(
-                        name=openfda.get("brand_name", [drug_name])[0],
-                        generic_name=openfda.get("generic_name", [None])[0],
-                        manufacturer=openfda.get("manufacturer_name", [None])[0],
-                        indications=result.get("indications_and_usage", [])[:3],
-                        warnings=result.get("warnings", [])[:3],
-                        dosage=result.get("dosage_and_administration", [])[:2],
-                        contraindications=result.get("contraindications", [])[:3],
-                        side_effects=result.get("adverse_reactions", [])[:5],
-                    )
-                    
-                    # Enrich if still incomplete
-                    info = await enrich_drug_with_gemini(info)
-                    
-                    cache.set(cache_key, info)
-                    return info
-    except Exception as e:
-        logger.warning("openFDA lookup failed: %s", e)
+    if allow_openfda:
+        try:
+            escaped_name = escape_lucene_special_chars(drug_name)
+            async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
+                response = await client.get(
+                    OPENFDA_LABEL_URL,
+                    params={
+                        "search": f'openfda.brand_name:"{escaped_name}" OR openfda.generic_name:"{escaped_name}"',
+                        "limit": 1,
+                    }
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("results"):
+                        result = data["results"][0]
+                        openfda = result.get("openfda", {})
+
+                        info = DrugInfo(
+                            name=openfda.get("brand_name", [drug_name])[0],
+                            generic_name=openfda.get("generic_name", [None])[0],
+                            manufacturer=openfda.get("manufacturer_name", [None])[0],
+                            indications=result.get("indications_and_usage", [])[:3],
+                            warnings=result.get("warnings", [])[:3],
+                            dosage=result.get("dosage_and_administration", [])[:2],
+                            contraindications=result.get("contraindications", [])[:3],
+                            side_effects=result.get("adverse_reactions", [])[:5],
+                        )
+
+                        # Enrich if still incomplete
+                        if enrich:
+                            info = await enrich_drug_with_gemini(info)
+                            cache.set(cache_key_full, info)
+                        else:
+                            cache.set(cache_key_basic, info)
+                        return info
+        except Exception as e:
+            logger.warning("openFDA lookup failed: %s", e)
     
     # 3. LLM-only: Create info from LLM knowledge if not in any database
-    try:
-        info = DrugInfo(name=drug_name)
-        info = await enrich_drug_with_gemini(info)
-        
-        if info.indications or info.side_effects:  # LLM provided useful info
-            cache.set(cache_key, info)
-            return info
-    except Exception as e:
-        logger.warning("LLM fallback failed: %s", e)
+    if enrich:
+        try:
+            info = DrugInfo(name=drug_name)
+            info = await enrich_drug_with_gemini(info)
+            
+            if info.indications or info.side_effects:  # LLM provided useful info
+                cache.set(cache_key_full, info)
+                return info
+        except Exception as e:
+            logger.warning("LLM fallback failed: %s", e)
     
     return None
 
