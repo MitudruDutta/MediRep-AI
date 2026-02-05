@@ -5,7 +5,7 @@ Architecture:
 - Qdrant Collections:
   - drug_embeddings: Drug vectors (384 dims) linked to Turso
   - medical_qa: MedQuAD Q&A vectors (47k NIH pairs)
-- Turso: Drug structured data (250k+ Indian drugs)
+- Turso: Drug structured data (curated dataset)
 
 Hybrid Reranking:
 - Drug queries (price, dosage, info) → Boost drug_embeddings

@@ -62,7 +62,7 @@ MODE 2: PATIENT SPECIFIC ([Patient Context] present)
 
 KNOWLEDGE SOURCES (You may receive one or more):
 
-[Drug Database] - Indian drug data from our 250k+ database
+[Drug Database] - Indian drug data from our drug database
 - Contains: drug name, generic name, price, manufacturer, therapeutic class.
 - Use for pricing, brand availability, and Indian market info.
 - Cite as (Source: Database).
@@ -92,6 +92,14 @@ CONVERSATION STYLE:
 - Plain text only, no markdown, no bullet lists.
 - Keep under 250 words unless detail requested.
 """
+
+
+def _compose_system_prompt(system_prompt_prefix: str = "") -> str:
+    """Compose system prompt with an optional prefix (e.g., rep-mode instructions)."""
+    prefix = (system_prompt_prefix or "").strip()
+    if not prefix:
+        return SYSTEM_PROMPT
+    return f"{prefix}\n\n{SYSTEM_PROMPT}"
 
 
 def format_patient_context(context: Optional[PatientContext]) -> str:
@@ -246,7 +254,8 @@ async def _generate_response_with_groq(
     patient_context: Optional[PatientContext] = None,
     history: Optional[List[Message]] = None,
     drug_info: Optional[DrugInfo] = None,
-    rag_context: Optional[str] = None
+    rag_context: Optional[str] = None,
+    system_prompt_prefix: str = ""
 ) -> dict:
     """Generate response using Groq API as fallback."""
     logger.info("Using Groq API as fallback for response generation")
@@ -317,7 +326,7 @@ async def _generate_response_with_groq(
 
     response_text = await _call_groq_api(
         messages=formatted_messages,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=_compose_system_prompt(system_prompt_prefix),
         temperature=0.7
     )
 
@@ -409,7 +418,8 @@ async def generate_response(
     drug_info: Optional[DrugInfo] = None,
     rag_context: Optional[str] = None,
     images: Optional[List[str]] = None,
-    language: str = "auto"
+    language: str = "auto",
+    system_prompt_prefix: str = ""
 ) -> dict:
     """Generate a response using Gemini with RAG context."""
 
@@ -497,7 +507,7 @@ async def generate_response(
             user_message_text += message
         
         # Prepare content parts (Text + Images)
-        content_parts = [SYSTEM_PROMPT + "\n\n" + user_message_text]
+        content_parts = [_compose_system_prompt(system_prompt_prefix) + "\n\n" + user_message_text]
         
         if images:
             import base64
@@ -550,7 +560,8 @@ async def generate_response(
                 patient_context=patient_context,
                 history=history,
                 drug_info=drug_info,
-                rag_context=rag_context
+                rag_context=rag_context,
+                system_prompt_prefix=system_prompt_prefix
             )
         except Exception as groq_error:
             logger.error("Groq fallback also failed: %s", groq_error)
@@ -567,7 +578,8 @@ async def generate_response(
                 patient_context=patient_context,
                 history=history,
                 drug_info=drug_info,
-                rag_context=rag_context
+                rag_context=rag_context,
+                system_prompt_prefix=system_prompt_prefix
             )
         except Exception as groq_error:
             logger.error(f"Groq fallback also failed: {groq_error}", exc_info=True)

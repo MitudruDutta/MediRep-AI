@@ -101,9 +101,13 @@ MAX_RESPONSE_LENGTH = get_env_int("MAX_RESPONSE_LENGTH", 2000)
 if MAX_RESPONSE_LENGTH <= 0:
     raise ValueError(f"MAX_RESPONSE_LENGTH must be positive, got: {MAX_RESPONSE_LENGTH}")
 
-# openFDA URLs
-OPENFDA_LABEL_URL = "https://api.fda.gov/drug/label.json"
-OPENFDA_ENFORCEMENT_URL = "https://api.fda.gov/drug/enforcement.json"
+# External API base URLs (override via env for testing/mocking)
+OPENFDA_LABEL_URL = get_env_str("OPENFDA_LABEL_URL", "https://api.fda.gov/drug/label.json")
+OPENFDA_ENFORCEMENT_URL = get_env_str("OPENFDA_ENFORCEMENT_URL", "https://api.fda.gov/drug/enforcement.json")
+RXCLASS_BASE_URL = get_env_str("RXCLASS_BASE_URL", "https://rxnav.nlm.nih.gov/REST/rxclass")
+RXNORM_BASE_URL = get_env_str("RXNORM_BASE_URL", "https://rxnav.nlm.nih.gov/REST")
+PUBCHEM_BASE_URL = get_env_str("PUBCHEM_BASE_URL", "https://pubchem.ncbi.nlm.nih.gov/rest/pug")
+PUBCHEM_VIEW_BASE_URL = get_env_str("PUBCHEM_VIEW_BASE_URL", "https://pubchem.ncbi.nlm.nih.gov/rest/pug_view")
 
 # Turso Configuration (Drug Data Storage)
 TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL")

@@ -9,7 +9,7 @@ WORKFLOW:
 3. Return multiple possible matches with confidence scores
 
 Architecture:
-- Turso: Stores 250k+ drug records (name, price, etc.)
+- Turso: Stores drug records (name, price, etc.)
 - Qdrant: Stores vector embeddings for semantic search
 """
 import asyncio
@@ -17,6 +17,7 @@ import json
 import logging
 import base64
 import threading
+import re
 from typing import Optional, List
 from dataclasses import dataclass
 
@@ -24,7 +25,7 @@ import google.generativeai as genai
 from sentence_transformers import SentenceTransformer
 
 from config import GEMINI_API_KEY, GEMINI_MODEL, API_TIMEOUT
-from models import PillIdentification
+from models import PillIdentification, PillDrugMatch, PillScanResponse, DrugInfo
 
 logger = logging.getLogger(__name__)
 
@@ -288,8 +289,30 @@ async def query_drugs_by_features(features: PillFeatures) -> List[DrugMatch]:
     from services import turso_service, qdrant_service
     
     matches: List[DrugMatch] = []
+
+    def _is_ambiguous_imprint_code(imprint: Optional[str]) -> bool:
+        """
+        Heuristic: imprint like "M367" (short alphanumeric code with no spaces).
+
+        These codes are often region/manufacturer-specific and can map to multiple different
+        medications. If we can't match them via our database text search, vector search is
+        too error-prone and creates dangerous false positives.
+        """
+        if not imprint:
+            return False
+
+        s = re.sub(r"\s+", "", imprint).upper()
+        if not s or len(s) > 6:
+            return False
+        if not re.fullmatch(r"[A-Z0-9]+", s):
+            return False
+        has_alpha = any(ch.isalpha() for ch in s)
+        has_digit = any(ch.isdigit() for ch in s)
+        return has_alpha and has_digit
     
     try:
+        ambiguous_code = _is_ambiguous_imprint_code(features.imprint)
+
         # Strategy 1: Direct text search in Turso (for imprint)
         if features.imprint:
             imprint_clean = features.imprint.strip()
@@ -343,6 +366,12 @@ async def query_drugs_by_features(features: PillFeatures) -> List[DrugMatch]:
                 ))
 
         # Strategy 3: Vector similarity search in Qdrant
+        # If the imprint looks like an ambiguous short code and our DB text search found nothing,
+        # skip vector search to avoid high-confidence but wrong matches.
+        if ambiguous_code and not matches:
+            logger.info("Ambiguous imprint code '%s' with no DB match; skipping vector search", features.imprint)
+            return []
+
         if features.imprint or features.color or features.shape:
             search_text = " ".join(filter(None, [
                 features.imprint or "",
@@ -392,21 +421,24 @@ async def query_drugs_by_features(features: PillFeatures) -> List[DrugMatch]:
         return []
 
 
-async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentification:
+async def identify_pill(image_bytes: bytes, content_type: str) -> PillScanResponse:
     """
     Two-Step Pill Identification using REAL database:
     
     1. Extract visual features using Gemini Vision
-    2. Query indian_drugs (250k+ entries) for matches
+    2. Query indian_drugs table for matches
     
     Returns multiple possible matches with confidence scores.
+
+    NOTE: The frontend should NOT parse matches out of `description` text.
+    This function returns structured `matches` and (optionally) enriched `drug_info`.
     """
     try:
         # Step 1: Extract features from image
         features = await extract_pill_features(image_bytes, content_type)
         
         if not features.color and not features.imprint:
-            return PillIdentification(
+            return PillScanResponse(
                 name="Could Not Analyze",
                 confidence=0.0,
                 description="Unable to extract pill features. Please try with:\n"
@@ -414,14 +446,77 @@ async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentifica
                            "• White background\n"
                            "• Clear focus on the pill\n"
                            "• Imprint text facing camera"
+                ,
+                ocr_confidence=features.ocr_confidence,
+                matches=[],
             )
         
         # Step 2: Query database for matches
         matches = await query_drugs_by_features(features)
-        
+
+        response_matches = [
+            PillDrugMatch(
+                name=m.name,
+                generic_name=m.generic_name,
+                manufacturer=m.manufacturer,
+                price_raw=m.price_raw,
+                description=m.description,
+                match_score=max(0.0, min(float(m.match_score), 1.0)),
+                match_reason=m.match_reason,
+            )
+            for m in matches
+        ]
+
+        drug_info: Optional[DrugInfo] = None
+        drug_info_source: Optional[str] = None
+        drug_info_disclaimer: Optional[str] = None
+
+        async def _load_drug_info(query: str, *, enrich_timeout_s: float) -> Optional[DrugInfo]:
+            """Try to load drug info with enrichment; fall back to DB-only on timeout/failure."""
+            from services.drug_service import get_drug_info
+
+            q = (query or "").strip()
+            if not q:
+                return None
+
+            # Fast DB-only attempt first.
+            basic = await get_drug_info(q, enrich=False, allow_openfda=False)
+            if basic:
+                # Best effort enrichment (keep pill scan responsive).
+                try:
+                    enriched = await asyncio.wait_for(
+                        get_drug_info(q, enrich=True, allow_openfda=False),
+                        timeout=enrich_timeout_s,
+                    )
+                    return enriched or basic
+                except Exception:
+                    return basic
+
+            # No DB hit → LLM-only fallback (still bounded by timeout).
+            try:
+                return await asyncio.wait_for(
+                    get_drug_info(q, enrich=True, allow_openfda=False),
+                    timeout=enrich_timeout_s,
+                )
+            except Exception:
+                return None
+
         # Build response
-        if matches:
+        if response_matches:
             best_match = matches[0]
+
+            # Enriched drug info for the top match (DB + LLM enrichment).
+            drug_info = await _load_drug_info(best_match.name, enrich_timeout_s=8.0)
+            if drug_info:
+                drug_info_source = (
+                    "database"
+                    if (drug_info.manufacturer or drug_info.price_raw or drug_info.therapeutic_class or drug_info.action_class)
+                    else "llm"
+                )
+                drug_info_disclaimer = (
+                    "Important: This result is based on visual imprint matching. "
+                    "Always verify with the original packaging/strip or a pharmacist before use."
+                )
             
             description_parts = [
                 "[Extracted Features]",
@@ -452,17 +547,61 @@ async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentifica
                 "   Many pills look similar but contain different medications."
             ])
             
-            return PillIdentification(
-                name=f"Possible: {best_match.name}",
+            return PillScanResponse(
+                name=best_match.name,
                 confidence=best_match.match_score,
                 description="\n".join(description_parts),
                 color=features.color,
                 shape=features.shape,
-                imprint=features.imprint
+                imprint=features.imprint,
+                ocr_confidence=features.ocr_confidence,
+                matches=response_matches,
+                drug_info=drug_info,
+                drug_info_source=drug_info_source,  # type: ignore[arg-type]
+                drug_info_disclaimer=drug_info_disclaimer,
             )
         
         else:
-            # No matches found
+            # No matches found → fall back to LLM to provide a safe drug info card if possible.
+            def _is_ambiguous_imprint_code(imprint: Optional[str]) -> bool:
+                if not imprint:
+                    return False
+                s = re.sub(r"\s+", "", imprint).upper()
+                if not s or len(s) > 6:
+                    return False
+                if not re.fullmatch(r"[A-Z0-9]+", s):
+                    return False
+                has_alpha = any(ch.isalpha() for ch in s)
+                has_digit = any(ch.isdigit() for ch in s)
+                return has_alpha and has_digit
+
+            ambiguous_code = _is_ambiguous_imprint_code(features.imprint)
+
+            if not ambiguous_code:
+                fallback_query = features.imprint or features.generic_prediction or ""
+                drug_info = await _load_drug_info(fallback_query, enrich_timeout_s=10.0)
+                if drug_info:
+                    drug_info_source = (
+                        "database"
+                        if (drug_info.manufacturer or drug_info.price_raw or drug_info.therapeutic_class or drug_info.action_class)
+                        else "llm"
+                    )
+                    drug_info_disclaimer = (
+                        "Important: No confident database match was found. This is a best-effort AI summary "
+                        "based on the extracted imprint/features. Do not take unknown pills—verify with the "
+                        "original strip/packaging or a pharmacist."
+                    )
+            else:
+                # For imprint codes like "M367", do NOT guess content.
+                drug_info = None
+                drug_info_source = None
+                drug_info_disclaimer = (
+                    "Important: This imprint looks like a short code. We couldn't confidently identify this pill "
+                    "from our database. Imprint codes can map to multiple different medications—please verify using "
+                    "the original packaging/strip or consult a pharmacist."
+                )
+
+            # Keep description text for debugging/UX, but the UI should use structured fields.
             description_parts = [
                 "[Extracted Features]",
                 f"   - Imprint: {features.imprint or 'Not visible'}",
@@ -489,13 +628,28 @@ async def identify_pill(image_bytes: bytes, content_type: str) -> PillIdentifica
                 "   Please consult a pharmacist."
             ])
             
-            return PillIdentification(
-                name=f"{(features.color or 'Unknown').title()} {(features.shape or '').title()} Pill",
+            fallback_name = (
+                features.imprint
+                if features.imprint
+                else (
+                    f"Possible: {drug_info.name}"
+                    if drug_info and drug_info.name
+                    else f"{(features.color or 'Unknown').title()} {(features.shape or '').title()} Pill"
+                )
+            )
+
+            return PillScanResponse(
+                name=fallback_name,
                 confidence=0.0,
                 description="\n".join(description_parts),
                 color=features.color,
                 shape=features.shape,
-                imprint=features.imprint
+                imprint=features.imprint,
+                ocr_confidence=features.ocr_confidence,
+                matches=[],
+                drug_info=drug_info,
+                drug_info_source=drug_info_source,  # type: ignore[arg-type]
+                drug_info_disclaimer=drug_info_disclaimer,
             )
     
     except PillIdentificationError:

@@ -13,6 +13,13 @@ from services.gemini_service import generate_response, plan_intent
 from services.drug_service import get_drug_info, find_cheaper_substitutes
 from services.rag_service import rag_service
 from services.interaction_service import interaction_service
+from services.enhanced_context_service import (
+    build_enhanced_context,
+    detect_enhanced_intents,
+    get_pharma_rep_system_prompt,
+    handle_pharma_rep_command,
+)
+from services.pharma_rep_service import pharma_rep_service
 from services.supabase_service import SupabaseService
 from services.context_service import (
     load_session_context,
@@ -188,6 +195,32 @@ async def chat_endpoint(
         # EXISTING WORKFLOW
         # ============================================================
 
+        # 0. Handle pharma rep mode commands (no LLM call)
+        rep_command = await handle_pharma_rep_command(
+            chat_request.message,
+            user_id=user_id,
+            auth_token=auth_token
+        )
+        if rep_command and rep_command.get("is_command"):
+            response_text = rep_command.get("response", "")
+
+            # Persist command to history (best-effort); skip compression for commands.
+            asyncio.create_task(save_message_to_session(
+                user_id=user_id,
+                session_id=session_id,
+                message=chat_request.message,
+                response=response_text,
+                auth_token=auth_token,
+            ))
+
+            return ChatResponse(
+                response=response_text,
+                citations=[],
+                suggestions=["List companies", "Set rep mode [company]", "Exit rep mode"],
+                session_id=session_id,
+                web_sources=[],
+            )
+
         # 1. Intent Planning & Entity Extraction (LLM Powered)
         plan = await plan_intent(chat_request.message, history=history_for_llm)
         logger.info("Intent Plan: %s, Drugs: %s", plan.intent, plan.drug_names)
@@ -257,6 +290,28 @@ async def chat_endpoint(
                     msg_context += "\n\n[Drug Interactions Found]\n"
                     for inter in interactions[:3]:
                         msg_context += f"- {inter.drug1} + {inter.drug2}: {inter.severity} - {inter.description}\n"
+
+        # 2b. Enhanced Track2 context (MOA, comparison, insurance, rep-mode)
+        rep_company = await asyncio.to_thread(
+            pharma_rep_service.get_active_company_context,
+            user_id,
+            auth_token
+        )
+        enhanced_intents = detect_enhanced_intents(chat_request.message)
+        if enhanced_intents or rep_company:
+            try:
+                enhanced_context = await build_enhanced_context(
+                    message=chat_request.message,
+                    drug_name=plan.drug_names[0] if plan.drug_names else None,
+                    intents=enhanced_intents,
+                    auth_token=auth_token,
+                    rep_company=rep_company
+                )
+                if enhanced_context:
+                    msg_context += "\n\n" + enhanced_context
+                    logger.info("Enhanced context added: %d chars (intents=%s)", len(enhanced_context), enhanced_intents)
+            except Exception as e:
+                logger.warning("Enhanced context build failed: %s", e)
 
         # 3. RAG Search using Qdrant + Turso (Hybrid: drug_embeddings + medical_qa)
         rag_content = None
@@ -355,7 +410,8 @@ async def chat_endpoint(
             drug_info=context_data.get('drug_info'),
             rag_context=rag_content,
             images=chat_request.images,
-            language=chat_request.language  # Multi-language support
+            language=chat_request.language,  # Multi-language support
+            system_prompt_prefix=get_pharma_rep_system_prompt(rep_company),
         )
 
         response_text = gemini_result.get("response", "")

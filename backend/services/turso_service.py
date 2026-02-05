@@ -1,5 +1,5 @@
 """
-Turso Service - SQLite edge database for drug data (250k+ entries).
+Turso Service - SQLite edge database for drug data.
 
 Architecture:
 - Turso stores all drug records (name, generic, price, side_effects, etc.)
