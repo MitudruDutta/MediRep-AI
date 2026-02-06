@@ -125,6 +125,69 @@ def extract_balanced_json(text: str) -> Optional[str]:
     return None
 
 
+async def _enrich_drug_with_groq(drug_info: DrugInfo, missing_fields: List[str]) -> DrugInfo:
+    """Fallback enrichment using Groq."""
+    if not GROQ_API_KEY:
+        return drug_info
+        
+    prompt = f"""You are a clinical pharmacology expert. Provide BRIEF information for this drug.
+
+Drug: {drug_info.name}
+Generic Name: {drug_info.generic_name or 'Unknown'}
+
+I need the following information:
+{chr(10).join(f'- {field}' for field in missing_fields)}
+
+Return ONLY a valid JSON object with these keys (if asked):
+- indications: array of strings (max 3)
+- side_effects: array of strings (max 5)
+- dosage: array of dosing instructions (max 2)
+- contraindications: array of strings (max 3)
+- interactions: array of drug interaction warnings (max 3)
+- formula: string (e.g. C9H8O4)
+- smiles: string
+
+Example: {{"indications": ["Pain"], "formula": "C9H8O4"}}"""
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{GROQ_API_BASE}/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                json={
+                    "model": GROQ_MODEL or "llama3-70b-8192",
+                    "messages": [
+                        {"role": "system", "content": "Return valid JSON object only."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "response_format": {"type": "json_object"}
+                }
+            )
+            
+            if response.status_code == 200:
+                content = response.json()["choices"][0]["message"]["content"]
+                data = json.loads(content)
+                
+                if not drug_info.indications and data.get("indications"):
+                    drug_info.indications = data["indications"][:3]
+                if not drug_info.side_effects and data.get("side_effects"):
+                    drug_info.side_effects = data["side_effects"][:5]
+                if not drug_info.dosage and data.get("dosage"):
+                    drug_info.dosage = data["dosage"][:2]
+                if not drug_info.contraindications and data.get("contraindications"):
+                    drug_info.contraindications = data["contraindications"][:3]
+                if not drug_info.interactions and data.get("interactions"):
+                    drug_info.interactions = data["interactions"][:3]
+                if not drug_info.formula and data.get("formula"):
+                    drug_info.formula = data["formula"]
+                if not drug_info.smiles and data.get("smiles"):
+                    drug_info.smiles = data["smiles"]
+    except Exception as e:
+        logger.warning(f"Groq enrichment failed: {e}")
+        
+    return drug_info
+
+
 async def enrich_drug_with_gemini(drug_info: DrugInfo) -> DrugInfo:
     """
     HYBRID APPROACH: Enrich missing drug information using Gemini's knowledge.
@@ -148,6 +211,10 @@ async def enrich_drug_with_gemini(drug_info: DrugInfo) -> DrugInfo:
         missing_fields.append("contraindications")
     if not drug_info.interactions:
         missing_fields.append("major drug interactions")
+    if not drug_info.formula:
+        missing_fields.append("chemical formula")
+    if not drug_info.smiles:
+        missing_fields.append("SMILES structure")
     
     if not missing_fields:
         return drug_info  # Nothing to enrich
@@ -157,22 +224,24 @@ async def enrich_drug_with_gemini(drug_info: DrugInfo) -> DrugInfo:
 Drug: {drug_info.name}
 Generic Name: {drug_info.generic_name or 'Unknown'}
 
-I need the following information (be concise, 1-2 sentences each):
+I need the following information:
 {chr(10).join(f'- {field}' for field in missing_fields)}
 
-Return ONLY a valid JSON object with these keys (use exactly these names):
+Return ONLY a valid JSON object with these keys (if asked):
 - indications: array of strings (max 3)
 - side_effects: array of strings (max 5)
 - dosage: array of dosing instructions (max 2)
 - contraindications: array of strings (max 3)
 - interactions: array of drug interaction warnings (max 3)
+- formula: string (e.g. C9H8O4)
+- smiles: string
 
-Example: {{"indications": ["Pain relief", "Fever reduction"], "side_effects": ["Nausea", "Headache"]}}"""
+Example: {{"indications": ["Pain"], "formula": "C9H8O4"}}"""
 
     try:
         response = await asyncio.wait_for(
             asyncio.to_thread(model.generate_content, prompt),
-            timeout=15.0
+            timeout=30.0
         )
         
         text = (response.text or "").strip()
@@ -196,6 +265,11 @@ Example: {{"indications": ["Pain relief", "Fever reduction"], "side_effects": ["
             drug_info.contraindications = data["contraindications"][:3]
         if not drug_info.interactions and data.get("interactions"):
             drug_info.interactions = data["interactions"][:3]
+        
+        if not drug_info.formula and data.get("formula"):
+            drug_info.formula = data["formula"]
+        if not drug_info.smiles and data.get("smiles"):
+            drug_info.smiles = data["smiles"]
                 
     except Exception as e:
         logger.warning("Gemini enrichment failed: %s", e)

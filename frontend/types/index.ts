@@ -28,6 +28,57 @@ export interface DrugInteraction {
   recommendation?: string;
 }
 
+// Enhanced Drug Interaction Types (AUC-based Mathematics)
+export interface DrugChemistry {
+  name: string;
+  formula: string;  // e.g., "C9H8O4"
+  formula_display: string;  // Unicode subscript: "C₉H₈O₄"
+  smiles: string;
+  molecular_weight: number;
+  metabolism: string;
+}
+
+export interface InteractionMathematics {
+  auc_ratio_r: number;
+  inhibitor_concentration_um: number;
+  ki_value_um: number;
+  formula: string;
+  calculation: string;
+  severity: "none" | "minor" | "moderate" | "major";
+  mechanism: string;
+  affected_enzyme: string;
+}
+
+export interface MetabolicPathway {
+  victim_normal: string;
+  victim_inhibited: string;
+  result: string;
+  affected_metabolite_name?: string;
+  affected_metabolite_formula?: string;
+  affected_metabolite_smiles?: string;
+}
+
+export interface ReactionImage {
+  url: string;
+  prompt: string;
+  generated_at?: string;
+}
+
+export interface ClinicalImpact {
+  description: string;
+  recommendation: string;
+  severity: string;
+}
+
+export interface EnhancedInteraction {
+  victim_drug: DrugChemistry;
+  perpetrator_drug: DrugChemistry;
+  interaction_mathematics: InteractionMathematics;
+  metabolic_pathway: MetabolicPathway;
+  clinical_impact: ClinicalImpact;
+  reaction_image?: ReactionImage;
+}
+
 export interface DrugInfo {
   name: string;
   generic_name?: string;
@@ -43,6 +94,8 @@ export interface DrugInfo {
   substitutes?: string[];
   therapeutic_class?: string;
   action_class?: string;
+  formula?: string;
+  smiles?: string;
 }
 
 export interface PillIdentification {

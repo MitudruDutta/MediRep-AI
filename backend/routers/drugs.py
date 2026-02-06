@@ -1,18 +1,35 @@
 from fastapi import APIRouter, HTTPException, Depends, Path, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import List
+from typing import List, Optional
 import asyncio
 import logging
 
-from models import DrugInfo, DrugSearchResult, InteractionRequest, InteractionResponse, SavedDrug
+from models import DrugInfo, DrugSearchResult, InteractionRequest, InteractionResponse, SavedDrug, EnhancedInteractionRequest, EnhancedInteractionResponse
+from pydantic import BaseModel, Field
 from services.drug_service import search_drugs, get_drug_info, find_cheaper_substitutes
 from services.interaction_service import check_interactions
+from services.interaction_calculator import get_enhanced_interaction
+from services.image_generation_service import generate_reaction_image
 from services.supabase_service import SupabaseService
 from middleware.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 security = HTTPBearer()
+
+
+# Request/Response models for reaction image
+class ReactionImageRequest(BaseModel):
+    drug1: str = Field(..., min_length=1, max_length=100)
+    drug2: str = Field(..., min_length=1, max_length=100)
+    drug1_formula: Optional[str] = None
+    drug2_formula: Optional[str] = None
+    mechanism: Optional[str] = None
+
+
+class ReactionImageResponse(BaseModel):
+    url: Optional[str] = None
+    error: Optional[str] = None
 
 
 @router.get("/search", response_model=List[DrugSearchResult])
@@ -31,6 +48,18 @@ async def find_substitutes(
     """Find cheaper generic substitutes for a drug."""
     results = await find_cheaper_substitutes(drug_name)
     return results
+
+
+@router.get("/info", response_model=DrugInfo)
+async def get_drug_info_endpoint(
+    name: str = Query(..., min_length=1, description="Drug name"),
+    user = Depends(get_current_user)
+):
+    """Get detailed info for a drug, including chemical data."""
+    info = await get_drug_info(name, enrich=True)
+    if not info:
+        raise HTTPException(status_code=404, detail="Drug not found")
+    return info
 
 
 # FIXED: /saved routes BEFORE /{drug_name} to prevent route shadowing
@@ -108,6 +137,31 @@ async def get_saved_drugs(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.post("/interactions/enhanced", response_model=EnhancedInteractionResponse)
+async def enhanced_interaction_endpoint(request: EnhancedInteractionRequest):
+    """Get enhanced drug interaction analysis with AUC mathematics.
+    
+    Returns detailed pharmacokinetic analysis including:
+    - Chemical formulas and molecular data
+    - AUC ratio calculation (R = 1 + [I]/Ki)
+    - Metabolic pathway changes
+    - Clinical recommendations
+    """
+    result = await get_enhanced_interaction(
+        request.drug1,
+        request.drug2,
+        request.patient_context
+    )
+    
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No enhanced interaction data available for {request.drug1} and {request.drug2}. Try the standard /interactions endpoint."
+        )
+    
+    return result
+
+
 @router.post("/interactions", response_model=InteractionResponse)
 async def check_interactions_endpoint(request: InteractionRequest):
     """Check drug-drug interactions AND drug-patient interactions.
@@ -116,6 +170,39 @@ async def check_interactions_endpoint(request: InteractionRequest):
     """
     interactions = await check_interactions(request.drugs, request.patient_context)
     return InteractionResponse(interactions=interactions)
+
+
+@router.post("/reaction-image", response_model=ReactionImageResponse)
+async def generate_reaction_image_endpoint(request: ReactionImageRequest):
+    """Generate a chemical reaction image for drug interaction using Freepik AI.
+    
+    This endpoint generates a visual representation of the chemical interaction
+    between two drugs using the Freepik AI image generation API.
+    
+    Returns:
+        ReactionImageResponse with the generated image URL or error message.
+    """
+    try:
+        logger.info(f"Generating reaction image for {request.drug1} + {request.drug2}")
+        
+        url = await generate_reaction_image(
+            drug1=request.drug1,
+            drug2=request.drug2,
+            drug1_formula=request.drug1_formula or "",
+            drug2_formula=request.drug2_formula or "",
+            mechanism=request.mechanism
+        )
+        
+        if url:
+            logger.info(f"Successfully generated reaction image: {url[:100]}...")
+            return ReactionImageResponse(url=url)
+        else:
+            logger.warning("Freepik API returned no image URL")
+            return ReactionImageResponse(error="Failed to generate image. Check FREEPIK_API_KEY configuration.")
+            
+    except Exception as e:
+        logger.exception(f"Error generating reaction image: {e}")
+        return ReactionImageResponse(error=str(e))
 
 
 @router.get("/{drug_name}", response_model=DrugInfo)
@@ -130,4 +217,3 @@ async def get_drug_info_endpoint(
     if not info:
         raise HTTPException(status_code=404, detail="Drug not found")
     return info
-

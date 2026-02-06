@@ -114,6 +114,10 @@ class DrugInfo(BaseModel):
     side_effects: List[str] = Field(default_factory=list)
     interactions: List[str] = Field(default_factory=list)
     
+    # Chemical Info
+    formula: Optional[str] = None
+    smiles: Optional[str] = None
+    
     # India-specific fields
     indian_brands: List[str] = Field(default_factory=list)
     substitutes: List[str] = Field(default_factory=list)
@@ -150,6 +154,74 @@ class InteractionRequest(BaseModel):
 
 class InteractionResponse(BaseModel):
     interactions: List[DrugInteraction]
+
+
+# ============================================================================
+# ENHANCED DRUG INTERACTION MODELS (AUC-based Mathematics)
+# ============================================================================
+
+class DrugChemistry(BaseModel):
+    """Chemical information for a drug."""
+    name: str
+    formula: str  # e.g., "C9H8O4" for Aspirin
+    formula_display: str  # Unicode subscript format: "C₉H₈O₄"
+    smiles: str  # SMILES notation for structure
+    molecular_weight: float
+    metabolism: str  # e.g., "CYP2C9, hydrolysis"
+
+
+class InteractionMathematics(BaseModel):
+    """Mathematical parameters for drug interaction calculation."""
+    auc_ratio_r: float  # R = 1 + ([I] / Ki)
+    inhibitor_concentration_um: float  # [I] in μM
+    ki_value_um: float  # Ki in μM
+    formula: str  # "R = 1 + ([I] / Ki)"
+    calculation: str  # Full calculation string
+    severity: Literal["none", "minor", "moderate", "major"]
+    mechanism: str  # e.g., "Aspirin inhibits CYP2C9 metabolism of Warfarin"
+    affected_enzyme: str  # e.g., "CYP2C9"
+
+
+class MetabolicPathway(BaseModel):
+    """Metabolic pathway change visualization."""
+    victim_normal: str  # Normal metabolism pathway
+    victim_inhibited: str  # Inhibited pathway
+    result: str  # Clinical result
+    affected_metabolite_name: Optional[str] = None
+    affected_metabolite_formula: Optional[str] = None
+    affected_metabolite_smiles: Optional[str] = None
+
+
+class ReactionImage(BaseModel):
+    """Chemical reaction visualization image."""
+    url: str
+    prompt: str
+    generated_at: Optional[datetime] = None
+
+
+class ClinicalImpact(BaseModel):
+    """Clinical impact summary."""
+    description: str
+    recommendation: str
+    severity: str
+
+
+class EnhancedInteractionRequest(BaseModel):
+    """Request for enhanced drug interaction analysis."""
+    drug1: str = Field(..., min_length=1, max_length=100)
+    drug2: str = Field(..., min_length=1, max_length=100)
+    patient_context: Optional[PatientContext] = None
+
+
+class EnhancedInteractionResponse(BaseModel):
+    """Full enhanced interaction response with chemistry and mathematics."""
+    victim_drug: DrugChemistry
+    perpetrator_drug: DrugChemistry
+    interaction_mathematics: InteractionMathematics
+    metabolic_pathway: MetabolicPathway
+    clinical_impact: ClinicalImpact
+    reaction_image: Optional[ReactionImage] = None
+    reaction_image: Optional[ReactionImage] = None
 
 
 class PillIdentification(BaseModel):

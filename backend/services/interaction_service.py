@@ -67,12 +67,16 @@ SEVERITY CRITERIA:
 - moderate: May require monitoring or dose adjustment  
 - minor: Minimal clinical significance
 
-Return ONLY a valid JSON array. Empty array [] if no significant interactions.
+Return ONLY a valid JSON object with an "interactions" key containing the list.
+Empty list if no significant interactions.
 
-Example: [
-  {{"drug1": "warfarin", "drug2": "aspirin", "severity": "major", "description": "Increased bleeding risk", "recommendation": "Avoid combination"}},
-  {{"drug1": "ibuprofen", "drug2": "peptic ulcer", "severity": "major", "description": "NSAIDs exacerbate ulcers", "recommendation": "Avoid usage"}}
-]"""
+Example:
+{{
+  "interactions": [
+    {{"drug1": "warfarin", "drug2": "aspirin", "severity": "major", "description": "Increased bleeding risk", "recommendation": "Avoid combination"}},
+    {{"drug1": "ibuprofen", "drug2": "peptic ulcer", "severity": "major", "description": "NSAIDs exacerbate ulcers", "recommendation": "Avoid usage"}}
+  ]
+}}"""
 
 
 def sanitize_drug_name(name: str) -> str:
@@ -266,7 +270,7 @@ async def check_interactions(drugs: List[str], patient_context: Optional[Patient
         
         response = await asyncio.wait_for(
             asyncio.to_thread(model.generate_content, prompt),
-            timeout=API_TIMEOUT
+            timeout=30.0  # Increased timeout for complex interactions
         )
         
         try:

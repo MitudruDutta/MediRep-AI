@@ -4,17 +4,19 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, RefreshCw, Download, Loader2 } from "lucide-react";
-import { checkInteractions, saveDrug } from "@/lib/api";
-import { DrugInteraction } from "@/types";
+import { AlertTriangle, RefreshCw, Download, Loader2, FlaskConical, ImageIcon, Sparkles } from "lucide-react";
+import { checkInteractions, saveDrug, getEnhancedInteraction, getDrugInfo, generateReactionImage } from "@/lib/api";
+import { DrugInteraction, EnhancedInteraction } from "@/types";
 import { usePatientContext } from "@/lib/context/PatientContext";
 import dynamic from "next/dynamic";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   DrugSearchInput,
   DrugList,
   InteractionCard,
   InteractionList,
   InteractionSummary,
+  InteractionMathCard,
 } from "@/components/InteractionGraph";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
@@ -27,15 +29,76 @@ const severityColors = {
   minor: "#3b82f6",
 };
 
+// Helper to subcriptify formulas
+const toSubscript = (str: string) => {
+  const map: Record<string, string> = {
+    '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉'
+  };
+  return str.replace(/\d/g, (d) => map[d] || d);
+};
+
 export default function InteractionGraphWidget() {
   const [drugs, setDrugs] = useState<string[]>([]);
   const [interactions, setInteractions] = useState<DrugInteraction[]>([]);
   const [selectedInteraction, setSelectedInteraction] = useState<DrugInteraction | null>(null);
+  const [enhancedInteraction, setEnhancedInteraction] = useState<EnhancedInteraction | null>(null);
+  const [isLoadingEnhanced, setIsLoadingEnhanced] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { patientContext } = usePatientContext();
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<any>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 400 });
+  const nodeImages = useRef<Record<string, HTMLImageElement>>({});
+
+  // === NEW: Reaction Image State ===
+  const [reactionImageUrl, setReactionImageUrl] = useState<string | null>(null);
+  const [reactionImageLoading, setReactionImageLoading] = useState(false);
+  const [reactionImageError, setReactionImageError] = useState<string | null>(null);
+  // =================================
+
+  const [drugMetadata, setDrugMetadata] = useState<Record<string, { formula?: string; name?: string }>>({});
+
+  // Fetch drug metadata (formulas) dynamically
+  useEffect(() => {
+    drugs.forEach(async (drug) => {
+      const key = drug.toLowerCase().trim();
+      if (!drugMetadata[key]) {
+        try {
+          const info = await getDrugInfo(drug);
+          setDrugMetadata(prev => ({
+            ...prev,
+            [key]: {
+              formula: info.formula,
+              name: info.name // Corrected name from DB/AI
+            }
+          }));
+        } catch (e) {
+          console.error(`Failed to fetch info for ${drug}`, e);
+        }
+      }
+    });
+  }, [drugs]);
+
+  // Preload drug structure images
+  useEffect(() => {
+    drugs.forEach(drug => {
+      const key = drug.toLowerCase().trim();
+      const meta = drugMetadata[key];
+      // Use corrected name if available (fixes typos like 'parocetemol' -> 'Paracetamol')
+      const queryName = meta?.name || drug;
+
+      // We check if we already have an image FOR THIS KEY. 
+      // If we have a better name now, and the old image failed (naturalWidth=0) or doesn't exist, try again.
+      // Ideally we just overwrite with the better query if available.
+
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(queryName)}/PNG?record_type=2d&image_size=300x300`;
+      img.onload = () => {
+        nodeImages.current[key] = img;
+      };
+    });
+  }, [drugs, drugMetadata]);
 
   // Update dimensions on resize
   useEffect(() => {
@@ -50,18 +113,7 @@ export default function InteractionGraphWidget() {
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
-  // Configure force simulation for node separation
-  useEffect(() => {
-    if (graphRef.current) {
-      const fg = graphRef.current;
-      // Add collision force to keep nodes apart (minimum 60px between nodes)
-      // fg.d3Force('collision', forceCollide(60));
-      // Increase charge repulsion
-      fg.d3Force('charge')?.strength(-300);
-      // Set link distance
-      fg.d3Force('link')?.distance(180);
-    }
-  }, [drugs.length, interactions.length]);
+
 
   const addDrug = (drug: string) => {
     if (drug.trim() && !drugs.includes(drug.trim())) {
@@ -107,12 +159,85 @@ export default function InteractionGraphWidget() {
     fetchInteractions();
   }, [fetchInteractions]);
 
+  // === NEW: Auto-generate reaction image when we have drug interactions ===
+  useEffect(() => {
+    const generateImage = async () => {
+      // Need at least 2 drugs to generate image
+      if (drugs.length < 2) {
+        setReactionImageUrl(null);
+        setReactionImageError(null);
+        return;
+      }
+
+      // Use the first two drugs from the drugs list (these are guaranteed to be real drug names)
+      // This avoids using drug class names like "ACE Inhibitor" from interaction data
+      const drug1 = drugs[0];
+      const drug2 = drugs[1];
+
+      // Get formulas from metadata
+      const drug1Key = drug1.toLowerCase().trim();
+      const drug2Key = drug2.toLowerCase().trim();
+      const drug1Formula = drugMetadata[drug1Key]?.formula || "";
+      const drug2Formula = drugMetadata[drug2Key]?.formula || "";
+
+      // Find if there's an interaction between these two drugs
+      const relevantInteraction = interactions.find(
+        (i) =>
+          (i.drug1.toLowerCase() === drug1Key && i.drug2.toLowerCase() === drug2Key) ||
+          (i.drug1.toLowerCase() === drug2Key && i.drug2.toLowerCase() === drug1Key)
+      );
+
+      setReactionImageLoading(true);
+      setReactionImageError(null);
+
+      try {
+        const response = await generateReactionImage({
+          drug1,
+          drug2,
+          drug1_formula: drug1Formula,
+          drug2_formula: drug2Formula,
+          mechanism: relevantInteraction?.description?.slice(0, 100) || "Drug-Drug Interaction",
+        });
+
+        if (response.url) {
+          setReactionImageUrl(response.url);
+        } else if (response.error) {
+          setReactionImageError(response.error);
+        }
+      } catch (error) {
+        console.error("Failed to generate reaction image:", error);
+        setReactionImageError("Failed to generate image");
+      } finally {
+        setReactionImageLoading(false);
+      }
+    };
+
+    // Debounce to avoid rapid-fire requests
+    const timer = setTimeout(generateImage, 1500);
+    return () => clearTimeout(timer);
+  }, [drugs, interactions, drugMetadata]);
+  // ======================================================================
+
   const handleRefresh = async () => {
     console.log("Refresh clicked, drugs:", drugs);
     if (drugs.length >= 2) {
       await fetchInteractions();
     }
   };
+
+  // Fetch enhanced interaction with AUC mathematics
+  const fetchEnhancedInteraction = useCallback(async (drug1: string, drug2: string) => {
+    setIsLoadingEnhanced(true);
+    try {
+      const result = await getEnhancedInteraction(drug1, drug2, patientContext) as EnhancedInteraction;
+      setEnhancedInteraction(result);
+    } catch (error) {
+      console.log("Enhanced interaction not available for this pair");
+      setEnhancedInteraction(null);
+    } finally {
+      setIsLoadingEnhanced(false);
+    }
+  }, [patientContext]);
 
   const exportData = () => {
     console.log("Export clicked, drugs:", drugs, "interactions:", interactions);
@@ -168,44 +293,10 @@ export default function InteractionGraphWidget() {
 
     // If we have interactions but no direct drug-drug links, 
     // create links between drugs that share interactions (via patient context)
-    let links = directLinks;
-
-    if (directLinks.length === 0 && interactions.length > 0 && drugs.length >= 2) {
-      // Create links between all drug pairs with the highest severity from their interactions
-      const drugArray = drugs.map(d => d.toLowerCase().trim());
-      const pairLinks: typeof directLinks = [];
-
-      for (let i = 0; i < drugArray.length; i++) {
-        for (let j = i + 1; j < drugArray.length; j++) {
-          // Find interactions involving each drug
-          const drug1Interactions = interactions.filter(int =>
-            int.drug1.toLowerCase().trim() === drugArray[i] ||
-            int.drug2.toLowerCase().trim() === drugArray[i]
-          );
-          const drug2Interactions = interactions.filter(int =>
-            int.drug1.toLowerCase().trim() === drugArray[j] ||
-            int.drug2.toLowerCase().trim() === drugArray[j]
-          );
-
-          if (drug1Interactions.length > 0 || drug2Interactions.length > 0) {
-            // Get max severity from both drugs' interactions
-            const allRelevant = [...drug1Interactions, ...drug2Interactions];
-            const severity = allRelevant.some(i => i.severity === 'major') ? 'major' :
-              allRelevant.some(i => i.severity === 'moderate') ? 'moderate' : 'minor';
-
-            pairLinks.push({
-              source: drugArray[i],
-              target: drugArray[j],
-              color: severityColors[severity as keyof typeof severityColors],
-              severity: severity as 'major' | 'moderate' | 'minor',
-              description: `${allRelevant.length} interactions found via patient context`,
-              recommendation: 'Review individual interactions in the list',
-            });
-          }
-        }
-      }
-      links = pairLinks;
-    }
+    // If we have interactions but no direct drug-drug links, 
+    // we previously tried to link everything. This causes graph explosions.
+    // Now we strictly show direct drug-drug interactions.
+    const links = directLinks;
 
     // Pre-position nodes in a circle for better initial spread
     const radius = 120;
@@ -222,6 +313,23 @@ export default function InteractionGraphWidget() {
       links,
     };
   }, [drugs, interactions]);
+
+  // Configure force simulation and auto-zoom
+  useEffect(() => {
+    if (graphRef.current) {
+      const fg = graphRef.current;
+      // Start with a stronger repulsion to separate nodes
+      fg.d3Force('charge')?.strength(-400);
+      fg.d3Force('link')?.distance(200);
+
+      // Auto-zoom to fit all nodes with padding
+      setTimeout(() => {
+        if (graphRef.current) {
+          graphRef.current.zoomToFit(400, 50);
+        }
+      }, 500);
+    }
+  }, [graphData]);
 
   return (
     <div className="space-y-6">
@@ -340,108 +448,94 @@ export default function InteractionGraphWidget() {
                       return;
                     }
 
-                    const label = node.name;
-                    const nodeSize = 16;
-                    const fontSize = Math.max(10, 12 / globalScale);
+                    try {
+                      const label = node.name || node.id;
+                      const nodeSize = 32;
+                      const fontSize = Math.max(10, 12 / globalScale);
+                      const img = nodeImages.current[node.id];
 
-                    // Animated pulse effect (using time)
-                    const time = Date.now() / 1000;
-                    const pulse = Math.sin(time * 2 + node.x) * 0.15 + 1;
+                      ctx.beginPath();
 
-                    // Outer glow ring - animated
-                    const gradient1 = ctx.createRadialGradient(
-                      node.x, node.y, 0,
-                      node.x, node.y, nodeSize * 1.8 * pulse
-                    );
-                    gradient1.addColorStop(0, 'rgba(6, 182, 212, 0.4)');
-                    gradient1.addColorStop(0.5, 'rgba(99, 102, 241, 0.2)');
-                    gradient1.addColorStop(1, 'transparent');
+                      // Draw Node (Image or Sphere)
+                      if (img && img.complete && img.naturalWidth > 0) {
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.arc(node.x, node.y, nodeSize, 0, 2 * Math.PI);
+                        ctx.clip();
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                        ctx.fill();
+                        try {
+                          ctx.drawImage(img, node.x - nodeSize, node.y - nodeSize, nodeSize * 2, nodeSize * 2);
+                        } catch (e) { }
+                        ctx.restore();
+                        // Border
+                        ctx.beginPath();
+                        ctx.arc(node.x, node.y, nodeSize, 0, 2 * Math.PI);
+                        ctx.strokeStyle = '#38bdf8';
+                        ctx.lineWidth = 2 / globalScale;
+                        ctx.stroke();
+                      } else {
+                        // Fallback Sphere
+                        const time = Date.now() / 1000;
+                        const pulse = Math.sin(time * 2 + node.x) * 0.15 + 1;
+                        const gradient1 = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, nodeSize * 0.8 * pulse);
+                        gradient1.addColorStop(0, 'rgba(6, 182, 212, 0.4)');
+                        gradient1.addColorStop(1, 'transparent');
+                        ctx.fillStyle = gradient1;
+                        ctx.fill();
+                        const gradient2 = ctx.createRadialGradient(node.x - 5, node.y - 5, 2, node.x, node.y, nodeSize * 0.6);
+                        gradient2.addColorStop(0, '#67e8f9');
+                        gradient2.addColorStop(1, '#0e7490');
+                        ctx.fillStyle = gradient2;
+                        ctx.beginPath();
+                        ctx.arc(node.x, node.y, nodeSize * 0.6, 0, 2 * Math.PI);
+                        ctx.fill();
+                      }
 
-                    ctx.beginPath();
-                    ctx.arc(node.x, node.y, nodeSize * 1.8 * pulse, 0, 2 * Math.PI);
-                    ctx.fillStyle = gradient1;
-                    ctx.fill();
+                      // Label
+                      ctx.font = `600 ${fontSize}px Inter, system-ui, sans-serif`;
+                      const textWidth = ctx.measureText(label).width;
+                      const labelY = node.y + nodeSize + 8;
+                      const pillPadding = 6;
+                      const pillHeight = fontSize + 6;
 
-                    // Middle glow
-                    const gradient2 = ctx.createRadialGradient(
-                      node.x, node.y, 0,
-                      node.x, node.y, nodeSize * 1.3
-                    );
-                    gradient2.addColorStop(0, 'rgba(34, 211, 238, 0.6)');
-                    gradient2.addColorStop(1, 'rgba(99, 102, 241, 0.3)');
+                      // Background Pill (Safe Rect)
+                      ctx.beginPath();
+                      ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+                      // Use standard rect to avoid compatibility issues
+                      ctx.rect(
+                        node.x - textWidth / 2 - pillPadding,
+                        labelY - pillHeight / 2,
+                        textWidth + pillPadding * 2,
+                        pillHeight
+                      );
+                      ctx.fill();
+                      ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+                      ctx.lineWidth = 1;
+                      ctx.stroke();
 
-                    ctx.beginPath();
-                    ctx.arc(node.x, node.y, nodeSize * 1.3, 0, 2 * Math.PI);
-                    ctx.fillStyle = gradient2;
-                    ctx.fill();
+                      // Text
+                      ctx.textAlign = 'center';
+                      ctx.textBaseline = 'middle';
+                      ctx.fillStyle = '#f0f9ff';
+                      ctx.fillText(label, node.x, labelY);
 
-                    // Main node - gradient fill
-                    const gradient3 = ctx.createRadialGradient(
-                      node.x - nodeSize * 0.3, node.y - nodeSize * 0.3, 0,
-                      node.x, node.y, nodeSize
-                    );
-                    gradient3.addColorStop(0, '#67e8f9');
-                    gradient3.addColorStop(0.5, '#22d3ee');
-                    gradient3.addColorStop(1, '#0891b2');
-
-                    ctx.beginPath();
-                    ctx.arc(node.x, node.y, nodeSize, 0, 2 * Math.PI);
-                    ctx.fillStyle = gradient3;
-                    ctx.fill();
-
-                    // Inner highlight (3D effect)
-                    const highlight = ctx.createRadialGradient(
-                      node.x - nodeSize * 0.4, node.y - nodeSize * 0.4, 0,
-                      node.x, node.y, nodeSize
-                    );
-                    highlight.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
-                    highlight.addColorStop(0.3, 'rgba(255, 255, 255, 0.1)');
-                    highlight.addColorStop(1, 'transparent');
-
-                    ctx.beginPath();
-                    ctx.arc(node.x, node.y, nodeSize, 0, 2 * Math.PI);
-                    ctx.fillStyle = highlight;
-                    ctx.fill();
-
-                    // Border ring
-                    ctx.beginPath();
-                    ctx.arc(node.x, node.y, nodeSize, 0, 2 * Math.PI);
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-                    ctx.lineWidth = 2 / globalScale;
-                    ctx.stroke();
-
-                    // Drug label with background pill
-                    ctx.font = `600 ${fontSize}px Inter, system-ui, sans-serif`;
-                    const textWidth = ctx.measureText(label).width;
-                    const labelY = node.y + nodeSize + 14;
-                    const pillPadding = 8;
-                    const pillHeight = fontSize + 8;
-
-                    // Label background pill
-                    ctx.beginPath();
-                    const pillRadius = pillHeight / 2;
-                    ctx.roundRect(
-                      node.x - textWidth / 2 - pillPadding,
-                      labelY - pillHeight / 2,
-                      textWidth + pillPadding * 2,
-                      pillHeight,
-                      pillRadius
-                    );
-                    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-                    ctx.fill();
-                    ctx.strokeStyle = 'rgba(99, 102, 241, 0.5)';
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
-
-                    // Label text
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillStyle = '#e0f2fe';
-                    ctx.fillText(label, node.x, labelY);
+                      // Formula
+                      const meta = drugMetadata[label.toLowerCase().trim()];
+                      const formula = meta?.formula ? toSubscript(meta.formula) : null;
+                      if (formula) {
+                        const formulaFontSize = Math.max(9, 11 / globalScale);
+                        ctx.font = `700 ${formulaFontSize}px "Courier New", monospace`;
+                        ctx.fillStyle = '#67e8f9';
+                        ctx.fillText(formula, node.x, labelY + pillHeight);
+                      }
+                    } catch (err) {
+                      console.error("Node Render Error:", err);
+                    }
                   }}
                   nodePointerAreaPaint={(node: any, color, ctx) => {
                     ctx.beginPath();
-                    ctx.arc(node.x, node.y, 25, 0, 2 * Math.PI);
+                    ctx.arc(node.x, node.y, 40, 0, 2 * Math.PI);
                     ctx.fillStyle = color;
                     ctx.fill();
                   }}
@@ -547,13 +641,17 @@ export default function InteractionGraphWidget() {
                     return colors[link.severity] || colors.moderate;
                   }}
                   onLinkClick={(link: any) => {
+                    const drug1 = link.source.id || link.source;
+                    const drug2 = link.target.id || link.target;
                     setSelectedInteraction({
-                      drug1: link.source.id,
-                      drug2: link.target.id,
+                      drug1,
+                      drug2,
                       severity: link.severity,
                       description: link.description,
                       recommendation: link.recommendation,
                     });
+                    // Also try to fetch enhanced data
+                    fetchEnhancedInteraction(drug1, drug2);
                   }}
                   onNodeClick={(node: any) => {
                     // Find first interaction involving this drug
@@ -583,12 +681,123 @@ export default function InteractionGraphWidget() {
               </div>
             )}
 
+            {/* === Chemical Reaction Visualization (Freepik AI Generated) === */}
+            {drugs.length >= 2 && interactions.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-6"
+              >
+                <div className="bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900 rounded-xl border border-purple-500/30 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-purple-500/20 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-purple-500/20">
+                        <Sparkles className="h-4 w-4 text-purple-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-white">Chemical Reaction Formula</h3>
+                        <p className="text-[10px] text-purple-300/70">AI-Generated Molecular Visualization</p>
+                      </div>
+                    </div>
+                    {reactionImageLoading && (
+                      <div className="flex items-center gap-2 text-xs text-purple-300">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Generating...
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-4">
+                    {reactionImageLoading ? (
+                      <div className="flex flex-col items-center justify-center h-48 gap-3">
+                        <div className="relative">
+                          <div className="absolute inset-0 bg-purple-500/20 rounded-full animate-ping" />
+                          <FlaskConical className="h-10 w-10 text-purple-400 relative z-10" />
+                        </div>
+                        <p className="text-sm text-purple-300/80">Generating chemical reaction diagram...</p>
+                        <p className="text-xs text-slate-500">Using Freepik AI Image Generation</p>
+                      </div>
+                    ) : reactionImageUrl ? (
+                      <div className="relative group">
+                        <img
+                          src={reactionImageUrl}
+                          alt="Chemical Reaction Formula"
+                          className="w-full h-auto max-h-80 object-contain rounded-lg bg-white/5"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-lg" />
+                        <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <p className="text-xs text-white/80 text-center">
+                            Chemical reaction between {drugs[0]} and {drugs[1]}
+                          </p>
+                        </div>
+                      </div>
+                    ) : reactionImageError ? (
+                      <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
+                        <div className="p-3 rounded-full bg-red-500/10">
+                          <AlertTriangle className="h-8 w-8 text-red-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-red-400 font-medium">Image Generation Failed</p>
+                          <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                            {reactionImageError.includes("FREEPIK")
+                              ? "Please configure FREEPIK_API_KEY in backend .env file"
+                              : reactionImageError}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 border-purple-500/50 text-purple-300 hover:bg-purple-500/20"
+                          onClick={() => {
+                            setReactionImageError(null);
+                            // Re-trigger by updating a dependency
+                          }}
+                        >
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          Retry
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
+                        <div className="p-3 rounded-full bg-slate-700/50">
+                          <ImageIcon className="h-8 w-8 text-slate-400" />
+                        </div>
+                        <p className="text-sm text-slate-400">Chemical reaction image will appear here</p>
+                        <p className="text-xs text-slate-600">Add drugs with interactions to generate</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+            {/* ============================================================== */}
+
             {selectedInteraction && (
-              <div className="mt-4">
+              <div className="mt-4 space-y-4">
+                {/* Standard Interaction Card */}
                 <InteractionCard
                   interaction={selectedInteraction}
-                  onClose={() => setSelectedInteraction(null)}
+                  onClose={() => {
+                    setSelectedInteraction(null);
+                    setEnhancedInteraction(null);
+                  }}
                 />
+
+                {/* Enhanced Math Card (when available) */}
+                <AnimatePresence>
+                  {isLoadingEnhanced && (
+                    <div className="flex items-center justify-center p-4 bg-slate-800/50 rounded-lg">
+                      <Loader2 className="h-5 w-5 animate-spin text-cyan-400 mr-2" />
+                      <span className="text-sm text-slate-400">Loading pharmacokinetic data...</span>
+                    </div>
+                  )}
+                  {enhancedInteraction && !isLoadingEnhanced && (
+                    <InteractionMathCard
+                      interaction={enhancedInteraction}
+                      onClose={() => setEnhancedInteraction(null)}
+                    />
+                  )}
+                </AnimatePresence>
               </div>
             )}
           </CardContent>

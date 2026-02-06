@@ -138,6 +138,11 @@ if GROQ_API_KEY:
 else:
     logger.warning("GROQ_API_KEY not set. Groq fallback will be disabled.")
 
+# Freepik API Configuration (Chemical Reaction Image Generation)
+FREEPIK_API_KEY = os.getenv("FREEPIK_API_KEY")
+if not FREEPIK_API_KEY:
+    logger.warning("FREEPIK_API_KEY not set. Chemical reaction image generation will be disabled.")
+
 # NOTE: Speech-to-text now handled client-side via Web Speech API (no server-side API needed)
 
 # ============================================================================

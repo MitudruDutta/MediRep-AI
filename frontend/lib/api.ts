@@ -1,4 +1,4 @@
-import { PatientContext, Message, FDAAlertResponse, ChatResponse, SessionSummary } from "@/types";
+import { PatientContext, Message, FDAAlertResponse, ChatResponse, SessionSummary, DrugInfo } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -111,7 +111,7 @@ export async function searchDrugs(query: string) {
 
 export async function getDrugInfo(drugName: string) {
   const encodedName = encodeURIComponent(drugName);
-  return authFetch(`${API_URL}/api/drugs/${encodedName}`);
+  return authFetch<DrugInfo>(`${API_URL}/api/drugs/${encodedName}`);
 }
 
 export async function checkInteractions(drugs: string[], patientContext?: any) {
@@ -120,6 +120,53 @@ export async function checkInteractions(drugs: string[], patientContext?: any) {
     body: JSON.stringify({ drugs, patient_context: patientContext }),
   });
 }
+
+// === Enhanced Drug Interaction with AUC Mathematics ===
+export async function getEnhancedInteraction(
+  drug1: string,
+  drug2: string,
+  patientContext?: any
+) {
+  return authFetch(`${API_URL}/api/drugs/interactions/enhanced`, {
+    method: "POST",
+    body: JSON.stringify({
+      drug1,
+      drug2,
+      patient_context: patientContext,
+    }),
+  });
+}
+// =====================================================
+
+// === NEW: Reaction Image Generation API ===
+export interface ReactionImageRequest {
+  drug1: string;
+  drug2: string;
+  drug1_formula?: string;
+  drug2_formula?: string;
+  mechanism?: string;
+}
+
+export interface ReactionImageResponse {
+  url?: string;
+  error?: string;
+}
+
+export async function generateReactionImage(
+  request: ReactionImageRequest
+): Promise<ReactionImageResponse> {
+  try {
+    const response = await authFetch<ReactionImageResponse>(`${API_URL}/api/drugs/reaction-image`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+    return response;
+  } catch (error) {
+    console.error("Failed to generate reaction image:", error);
+    return { error: String(error) };
+  }
+}
+// ==========================================
 
 // === NEW: Price Compare API ===
 export async function comparePrices(drugName: string) {
