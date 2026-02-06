@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { Activity, Pill, AlertTriangle, TrendingUp } from "lucide-react";
+import { Activity, Pill, TrendingUp } from "lucide-react";
 import { PatientContext } from "@/types";
 
 interface PatientStatsProps {
@@ -11,8 +11,8 @@ interface PatientStatsProps {
 export function PatientStats({ patientContext }: PatientStatsProps) {
   const stats = [
     {
-      label: "Medical Conditions",
-      value: patientContext.conditions.length,
+      label: "Pre-Existing Diseases",
+      value: patientContext.preExistingDiseases.length,
       icon: Activity,
       color: "text-orange-600",
       bgColor: "bg-orange-100 dark:bg-orange-900",
@@ -25,15 +25,8 @@ export function PatientStats({ patientContext }: PatientStatsProps) {
       bgColor: "bg-green-100 dark:bg-green-900",
     },
     {
-      label: "Known Allergies",
-      value: patientContext.allergies.length,
-      icon: AlertTriangle,
-      color: "text-red-600",
-      bgColor: "bg-red-100 dark:bg-red-900",
-    },
-    {
       label: "Risk Factors",
-      value: patientContext.conditions.length + patientContext.allergies.length,
+      value: patientContext.preExistingDiseases.length,
       icon: TrendingUp,
       color: "text-blue-600",
       bgColor: "bg-blue-100 dark:bg-blue-900",
@@ -41,7 +34,7 @@ export function PatientStats({ patientContext }: PatientStatsProps) {
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {stats.map((stat, index) => (
         <Card key={index}>
           <CardContent className="p-6">

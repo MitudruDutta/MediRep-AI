@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { User, Activity, Pill, AlertTriangle } from "lucide-react";
+import { User, Activity, Pill } from "lucide-react";
 import { PatientContext } from "@/types";
 
 interface PatientSummaryProps {
@@ -58,25 +58,27 @@ export function PatientSummary({ patientContext }: PatientSummaryProps) {
 
       <Separator />
 
-      {/* Medical Conditions */}
+      {/* Pre-Existing Diseases */}
       <div>
         <div className="flex items-center gap-2 mb-3">
           <Activity className="h-5 w-5 text-orange-600" />
-          <h3 className="font-semibold text-lg">Medical Conditions</h3>
-          <Badge variant="secondary">{patientContext.conditions.length}</Badge>
+          <h3 className="font-semibold text-lg">Pre-Existing Diseases</h3>
+          <Badge variant="secondary" className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+            {patientContext.preExistingDiseases.length}
+          </Badge>
         </div>
-        {patientContext.conditions.length > 0 ? (
+        {patientContext.preExistingDiseases.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
-            {patientContext.conditions.map((condition, index) => (
+            {patientContext.preExistingDiseases.map((disease, index) => (
               <Card key={index} className="p-3 bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800">
                 <p className="text-sm font-medium text-orange-900 dark:text-orange-100">
-                  {condition}
+                  {disease}
                 </p>
               </Card>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground italic">No medical conditions recorded</p>
+          <p className="text-sm text-muted-foreground italic">No pre-existing diseases recorded</p>
         )}
       </div>
 
@@ -101,30 +103,6 @@ export function PatientSummary({ patientContext }: PatientSummaryProps) {
           </div>
         ) : (
           <p className="text-sm text-muted-foreground italic">No current medications</p>
-        )}
-      </div>
-
-      <Separator />
-
-      {/* Allergies */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <AlertTriangle className="h-5 w-5 text-red-600" />
-          <h3 className="font-semibold text-lg">Allergies</h3>
-          <Badge variant="destructive">{patientContext.allergies.length}</Badge>
-        </div>
-        {patientContext.allergies.length > 0 ? (
-          <div className="grid grid-cols-2 gap-2">
-            {patientContext.allergies.map((allergy, index) => (
-              <Card key={index} className="p-3 bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800">
-                <p className="text-sm font-medium text-red-900 dark:text-red-100">
-                  {allergy}
-                </p>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground italic">No known allergies</p>
         )}
       </div>
     </div>

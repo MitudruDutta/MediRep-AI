@@ -127,7 +127,7 @@ export default function InteractionGraphWidget() {
   };
 
   const fetchInteractions = useCallback(async () => {
-    const hasContext = patientContext && (patientContext.conditions?.length > 0 || patientContext.allergies?.length > 0);
+    const hasContext = patientContext && (patientContext.preExistingDiseases?.length > 0);
 
     if (drugs.length < 1 || (drugs.length < 2 && !hasContext)) {
       setInteractions([]);

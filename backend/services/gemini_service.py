@@ -108,16 +108,16 @@ def format_patient_context(context: Optional[PatientContext]) -> str:
         return ""
 
     parts = []
-    if context.age:
+    if context.age is not None:
         parts.append(f"Age: {context.age}")
+    if context.sex:
+        parts.append(f"Sex: {context.sex}")
     if context.weight:
         parts.append(f"Weight: {context.weight}kg")
-    if context.conditions:
-        parts.append(f"Conditions: {', '.join(context.conditions)}")
+    if context.pre_existing_diseases:
+        parts.append(f"Pre-existing diseases: {', '.join(context.pre_existing_diseases)}")
     if context.current_meds:
         parts.append(f"Current medications: {', '.join(context.current_meds)}")
-    if context.allergies:
-        parts.append(f"Allergies: {', '.join(context.allergies)}")
 
     if parts:
         return f"\n\n[Patient Context] {', '.join(parts)}"
@@ -627,22 +627,20 @@ INSTRUCTIONS:
    - Age (integer, 0 if unknown)
    - Sex (male, female, other)
    - Weight (float in kg, null/None if unknown)
-   - Medical Conditions (list of strings, e.g. "Diabetes", "Hypertension")
+   - Pre-existing Diseases (list of strings, e.g. "Diabetes", "Hypertension")
    - Current Medications (list of strings, e.g. "Metformin", "Amlodipine")
-   - Allergies (list of strings, e.g. "Peanuts", "Penicillin")
 
 2. Return JSON ONLY. Format:
 {{
   "age": int,
   "sex": "male"|"female"|"other",
   "weight": float|null,
-  "conditions": ["str"...],
-  "current_meds": ["str"...],
-  "allergies": ["str"...]
+  "pre_existing_diseases": ["str"...],
+  "current_meds": ["str"...]
 }}
 
 3. If information is missing, use empty lists or 0/null.
-4. Normalize drug names and conditions to standard medical title case.
+4. Normalize drug names and diseases to standard medical title case.
 """
 
         response = await asyncio.to_thread(
@@ -666,12 +664,11 @@ INSTRUCTIONS:
             age=data.get("age", 0),
             sex=data.get("sex", "male"),
             weight=data.get("weight"),
-            conditions=data.get("conditions", []),
-            current_meds=data.get("current_meds", []),
-            allergies=data.get("allergies", [])
+            pre_existing_diseases=data.get("pre_existing_diseases", []),
+            current_meds=data.get("current_meds", [])
         )
 
     except Exception as e:
         logger.error("Patient text analysis failed: %s", e)
         # Return empty context on failure
-        return PatientContext(age=0, sex="male", conditions=[], current_meds=[], allergies=[])
+        return PatientContext(age=0, sex="male", pre_existing_diseases=[], current_meds=[])

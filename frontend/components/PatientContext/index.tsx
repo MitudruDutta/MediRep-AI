@@ -21,9 +21,8 @@ export default function PatientContextComponent() {
       age: 0,
       sex: "male",
       weight: undefined,
-      conditions: [],
+      preExistingDiseases: [],
       currentMeds: [],
-      allergies: [],
     }
   );
 
@@ -37,9 +36,8 @@ export default function PatientContextComponent() {
       age: 0,
       sex: "male",
       weight: undefined,
-      conditions: [],
+      preExistingDiseases: [],
       currentMeds: [],
-      allergies: [],
     };
     setFormData(emptyData);
     setPatientContext(null);
@@ -143,9 +141,9 @@ export default function PatientContextComponent() {
               </p>
               <ul className="list-disc list-inside space-y-1 ml-2">
                 <li>Age-appropriate dosing</li>
-                <li>Drug-condition interactions</li>
+                <li>Drug-disease interactions</li>
                 <li>Current medication conflicts</li>
-                <li>Allergy warnings</li>
+                <li>Pre-existing condition warnings</li>
               </ul>
             </CardContent>
           </Card>

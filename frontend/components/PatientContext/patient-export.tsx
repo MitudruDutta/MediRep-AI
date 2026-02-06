@@ -28,19 +28,14 @@ export function PatientExport({ patientContext }: PatientExportProps) {
       `  Sex: ${patientContext.sex}`,
       `  Weight: ${patientContext.weight ? patientContext.weight + " kg" : "N/A"}`,
       "",
-      "Medical Conditions:",
-      patientContext.conditions.length > 0
-        ? patientContext.conditions.map((c) => `  - ${c}`).join("\n")
+      "Pre-Existing Diseases:",
+      patientContext.preExistingDiseases.length > 0
+        ? patientContext.preExistingDiseases.map((d: string) => `  - ${d}`).join("\n")
         : "  None recorded",
       "",
       "Current Medications:",
       patientContext.currentMeds.length > 0
-        ? patientContext.currentMeds.map((m) => `  - ${m}`).join("\n")
-        : "  None recorded",
-      "",
-      "Allergies:",
-      patientContext.allergies.length > 0
-        ? patientContext.allergies.map((a) => `  - ${a}`).join("\n")
+        ? patientContext.currentMeds.map((m: string) => `  - ${m}`).join("\n")
         : "  None recorded",
       "",
       "=".repeat(50),
@@ -82,15 +77,17 @@ export function PatientExport({ patientContext }: PatientExportProps) {
     doc.text(`Sex: ${patientContext.sex}`, 25, 62);
     doc.text(`Weight: ${patientContext.weight ? patientContext.weight + " kg" : "N/A"}`, 25, 69);
 
-    // Conditions
+    // Pre-Existing Diseases
     let yPos = 85;
     doc.setFontSize(14);
-    doc.text("Medical Conditions", 20, yPos);
+    doc.text("Pre-Existing Diseases", 20, yPos);
     yPos += 10;
     doc.setFontSize(12);
-    if (patientContext.conditions.length > 0) {
-      patientContext.conditions.forEach((c) => {
-        doc.text(`• ${c}`, 25, yPos);
+    if (patientContext.preExistingDiseases.length > 0) {
+      patientContext.preExistingDiseases.forEach((d: string) => {
+        doc.setTextColor(234, 88, 12); // Orange color for diseases
+        doc.text(`• ${d}`, 25, yPos);
+        doc.setTextColor(0, 0, 0); // Reset
         yPos += 7;
       });
     } else {
@@ -105,27 +102,8 @@ export function PatientExport({ patientContext }: PatientExportProps) {
     yPos += 10;
     doc.setFontSize(12);
     if (patientContext.currentMeds.length > 0) {
-      patientContext.currentMeds.forEach((m) => {
+      patientContext.currentMeds.forEach((m: string) => {
         doc.text(`• ${m}`, 25, yPos);
-        yPos += 7;
-      });
-    } else {
-      doc.text("None recorded", 25, yPos);
-      yPos += 7;
-    }
-
-    // Allergies
-    yPos += 10;
-    doc.setFontSize(14);
-    doc.text("Allergies", 20, yPos);
-    yPos += 10;
-    doc.setFontSize(12);
-    if (patientContext.allergies.length > 0) {
-      patientContext.allergies.forEach((a) => {
-        // Simple check for text overflow
-        doc.setTextColor(220, 38, 38); // Red color for allergies
-        doc.text(`• ${a}`, 25, yPos);
-        doc.setTextColor(0, 0, 0); // Reset
         yPos += 7;
       });
     } else {

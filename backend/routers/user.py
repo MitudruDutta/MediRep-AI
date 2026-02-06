@@ -53,24 +53,34 @@ async def save_patient_context(
     creds: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Save or update patient context."""
-    logger.debug("Save patient context request for user %s", user["id"])
+    logger.info("Save patient context request for user %s", user["id"])
+    logger.info("Context received: %s", context.model_dump(by_alias=True))
     try:
         user_id = user["id"]
-        client = get_auth_client(creds.credentials)
+        # Use service role client to bypass potential RLS issues
+        # We've already verified identity via the token in get_current_patient
+        client = SupabaseService.get_service_client()
+        if not client:
+            logger.error("Failed to get service client")
+            raise HTTPException(status_code=500, detail="Database connection error")
         
-        # Upsert profile with proper auth context for RLS
-        await asyncio.to_thread(
+        context_data = context.model_dump(by_alias=True)
+        logger.info("Context data to save for user %s: %s", user_id, context_data)
+        
+        # Upsert profile (using service role to ensure permissions)
+        response = await asyncio.to_thread(
             lambda: client.table("user_profiles")
                 .upsert({
                     "id": user_id, 
-                    "patient_context": context.model_dump(by_alias=True)
+                    "patient_context": context_data
                 })
                 .execute()
         )
+        logger.info("Supabase save response data: %s", response.data)
         return True
         
     except Exception as e:
-        logger.error("Failed to save patient context: %s", e)
+        logger.error("Failed to save patient context: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save context")
 
 

@@ -228,14 +228,14 @@ async def _check_interactions_groq(drugs: List[str], context_str: str) -> List[D
 
 async def check_interactions(drugs: List[str], patient_context: Optional[PatientContext] = None) -> List[DrugInteraction]:
     """
-    Check interactions using LLM, including patient context (conditions, allergies).
+    Check interactions using LLM, including patient context (pre-existing diseases).
     
     NO HARDCODED DATA - Uses Gemini for all interaction analysis.
     
     ⚠️ DISCLAIMER: This is clinical decision support only.
     Always verify with official sources and use clinical judgment.
     """
-    context_present = bool(patient_context and (patient_context.conditions or patient_context.allergies or patient_context.current_meds))
+    context_present = bool(patient_context and (patient_context.pre_existing_diseases or patient_context.current_meds))
     
     if len(drugs) < 1 and not context_present:
         return []
@@ -250,13 +250,11 @@ async def check_interactions(drugs: List[str], patient_context: Optional[Patient
     context_str = ""
     if patient_context:
         parts = []
-        if patient_context.conditions:
-            parts.append(f"Conditions: {', '.join(patient_context.conditions)}")
-        if patient_context.allergies:
-            parts.append(f"Allergies: {', '.join(patient_context.allergies)}")
+        if patient_context.pre_existing_diseases:
+            parts.append(f"Pre-existing Diseases: {', '.join(patient_context.pre_existing_diseases)}")
         if patient_context.current_meds:
             parts.append(f"Current Medications: {', '.join(patient_context.current_meds)}")
-        if patient_context.age:
+        if patient_context.age is not None:
             parts.append(f"Age: {patient_context.age}")
         
         if parts:

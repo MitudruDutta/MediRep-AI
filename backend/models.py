@@ -5,10 +5,10 @@ from datetime import datetime
 
 class PatientContext(BaseModel):
     age: Optional[int] = Field(None, ge=0, le=150)
+    sex: Optional[Literal["male", "female", "other"]] = None
     weight: Optional[float] = Field(None, ge=0, le=1000)
-    conditions: List[str] = Field(default_factory=list)
+    pre_existing_diseases: List[str] = Field(default_factory=list, alias="preExistingDiseases")
     current_meds: List[str] = Field(default_factory=list, alias="currentMeds")
-    allergies: List[str] = Field(default_factory=list)
 
     class Config:
         populate_by_name = True

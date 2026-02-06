@@ -16,15 +16,12 @@ interface PatientFormProps {
 }
 
 export function PatientForm({ formData, setFormData }: PatientFormProps) {
-  const [conditionInput, setConditionInput] = useState("");
+  const [diseaseInput, setDiseaseInput] = useState("");
   const [medInput, setMedInput] = useState("");
-  const [allergyInput, setAllergyInput] = useState("");
-
-
 
   const addItem = (
     value: string,
-    field: "conditions" | "currentMeds" | "allergies",
+    field: "preExistingDiseases" | "currentMeds",
     inputSetter: React.Dispatch<React.SetStateAction<string>>
   ) => {
     if (value.trim() && !formData[field].includes(value.trim())) {
@@ -38,7 +35,7 @@ export function PatientForm({ formData, setFormData }: PatientFormProps) {
 
   const removeItem = (
     index: number,
-    field: "conditions" | "currentMeds" | "allergies"
+    field: "preExistingDiseases" | "currentMeds"
   ) => {
     setFormData({
       ...formData,
@@ -86,7 +83,7 @@ export function PatientForm({ formData, setFormData }: PatientFormProps) {
           </Select>
         </div>
         <div>
-          <Label htmlFor="weight">Weight (kg)</Label>
+          <Label htmlFor="weight">Weight (kg) *</Label>
           <Input
             id="weight"
             type="number"
@@ -94,38 +91,38 @@ export function PatientForm({ formData, setFormData }: PatientFormProps) {
             onChange={(e) =>
               setFormData({ ...formData, weight: parseFloat(e.target.value) || undefined })
             }
-            placeholder="Optional"
+            placeholder="Enter weight"
             min="0"
             max="1000"
             step="0.1"
             className="mt-1"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            For weight-based dosing
+            Required for weight-based dosing
           </p>
         </div>
       </div>
 
-      {/* Medical Conditions */}
+      {/* Pre-Existing Diseases */}
       <div>
-        <Label>Medical Conditions</Label>
+        <Label className="text-base font-semibold">Pre-Existing Diseases / Existing Diseases</Label>
         <p className="text-xs text-muted-foreground mb-2">
-          Add existing medical conditions (e.g., diabetes, hypertension)
+          Add any existing medical conditions or diseases (e.g., diabetes, hypertension, asthma, heart disease)
         </p>
         <div className="flex gap-2">
           <Input
-            value={conditionInput}
-            onChange={(e) => setConditionInput(e.target.value)}
+            value={diseaseInput}
+            onChange={(e) => setDiseaseInput(e.target.value)}
             onKeyDown={(e) =>
               e.key === "Enter" &&
-              (e.preventDefault(), addItem(conditionInput, "conditions", setConditionInput))
+              (e.preventDefault(), addItem(diseaseInput, "preExistingDiseases", setDiseaseInput))
             }
-            placeholder="Type condition and press Enter"
+            placeholder="Type disease name and press Enter"
           />
           <Button
             size="icon"
             variant="outline"
-            onClick={() => addItem(conditionInput, "conditions", setConditionInput)}
+            onClick={() => addItem(diseaseInput, "preExistingDiseases", setDiseaseInput)}
             type="button"
           >
             <Plus className="h-4 w-4" />
@@ -133,33 +130,33 @@ export function PatientForm({ formData, setFormData }: PatientFormProps) {
         </div>
         <div className="flex flex-wrap gap-2 mt-3">
           <AnimatePresence mode="popLayout">
-            {formData.conditions.map((condition, index) => (
+            {formData.preExistingDiseases.map((disease, index) => (
               <motion.div
-                key={condition}
+                key={disease}
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.15 }}
               >
-                <Badge variant="secondary" className="gap-1 px-3 py-1">
-                  {condition}
+                <Badge variant="secondary" className="gap-1 px-3 py-1 bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+                  {disease}
                   <X
                     className="h-3 w-3 cursor-pointer hover:text-destructive transition-colors"
-                    onClick={() => removeItem(index, "conditions")}
+                    onClick={() => removeItem(index, "preExistingDiseases")}
                   />
                 </Badge>
               </motion.div>
             ))}
           </AnimatePresence>
-          {formData.conditions.length === 0 && (
-            <p className="text-sm text-muted-foreground italic">No conditions added</p>
+          {formData.preExistingDiseases.length === 0 && (
+            <p className="text-sm text-muted-foreground italic">No diseases added</p>
           )}
         </div>
       </div>
 
       {/* Current Medications */}
       <div>
-        <Label>Current Medications</Label>
+        <Label className="text-base font-semibold">Current Medications</Label>
         <p className="text-xs text-muted-foreground mb-2">
           List all medications currently being taken
         </p>
@@ -171,7 +168,7 @@ export function PatientForm({ formData, setFormData }: PatientFormProps) {
               e.key === "Enter" &&
               (e.preventDefault(), addItem(medInput, "currentMeds", setMedInput))
             }
-            placeholder="Type medication and press Enter"
+            placeholder="Type medication name and press Enter"
           />
           <Button
             size="icon"
@@ -204,57 +201,6 @@ export function PatientForm({ formData, setFormData }: PatientFormProps) {
           </AnimatePresence>
           {formData.currentMeds.length === 0 && (
             <p className="text-sm text-muted-foreground italic">No medications added</p>
-          )}
-        </div>
-      </div>
-
-      {/* Allergies */}
-      <div>
-        <Label>Allergies</Label>
-        <p className="text-xs text-muted-foreground mb-2">
-          Add known drug or substance allergies
-        </p>
-        <div className="flex gap-2">
-          <Input
-            value={allergyInput}
-            onChange={(e) => setAllergyInput(e.target.value)}
-            onKeyDown={(e) =>
-              e.key === "Enter" &&
-              (e.preventDefault(), addItem(allergyInput, "allergies", setAllergyInput))
-            }
-            placeholder="Type allergy and press Enter"
-          />
-          <Button
-            size="icon"
-            variant="outline"
-            onClick={() => addItem(allergyInput, "allergies", setAllergyInput)}
-            type="button"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-3">
-          <AnimatePresence mode="popLayout">
-            {formData.allergies.map((allergy, index) => (
-              <motion.div
-                key={allergy}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ duration: 0.15 }}
-              >
-                <Badge variant="destructive" className="gap-1 px-3 py-1">
-                  {allergy}
-                  <X
-                    className="h-3 w-3 cursor-pointer hover:text-white transition-colors"
-                    onClick={() => removeItem(index, "allergies")}
-                  />
-                </Badge>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          {formData.allergies.length === 0 && (
-            <p className="text-sm text-muted-foreground italic">No allergies added</p>
           )}
         </div>
       </div>

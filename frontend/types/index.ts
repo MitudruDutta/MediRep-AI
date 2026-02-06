@@ -2,9 +2,8 @@ export interface PatientContext {
   age: number;
   sex: "male" | "female" | "other";
   weight?: number;
-  conditions: string[];
+  preExistingDiseases: string[];
   currentMeds: string[];
-  allergies: string[];
 }
 
 export interface Message {

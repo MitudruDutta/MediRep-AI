@@ -87,19 +87,14 @@ export function PatientHistory({ onLoad }: PatientHistoryProps) {
                 {item.context.age} years, {item.context.sex}
               </p>
               <div className="flex flex-wrap gap-1">
-                {item.context.conditions.length > 0 && (
-                  <Badge variant="secondary" className="text-xs">
-                    {item.context.conditions.length} conditions
+                {item.context.preExistingDiseases && item.context.preExistingDiseases.length > 0 && (
+                  <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-800">
+                    {item.context.preExistingDiseases.length} diseases
                   </Badge>
                 )}
-                {item.context.currentMeds.length > 0 && (
+                {item.context.currentMeds && item.context.currentMeds.length > 0 && (
                   <Badge variant="default" className="text-xs">
                     {item.context.currentMeds.length} meds
-                  </Badge>
-                )}
-                {item.context.allergies.length > 0 && (
-                  <Badge variant="destructive" className="text-xs">
-                    {item.context.allergies.length} allergies
                   </Badge>
                 )}
               </div>

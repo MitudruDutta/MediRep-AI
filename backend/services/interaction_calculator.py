@@ -166,7 +166,7 @@ class DrugInteractionCalculator:
         context_str = ""
         if patient_context:
             parts = []
-            if patient_context.conditions: parts.append(f"Conditions: {', '.join(patient_context.conditions)}")
+            if patient_context.pre_existing_diseases: parts.append(f"Pre-existing Diseases: {', '.join(patient_context.pre_existing_diseases)}")
             if patient_context.age: parts.append(f"Age: {patient_context.age}")
             if parts: context_str = "Patient Context: " + "; ".join(parts)
 
