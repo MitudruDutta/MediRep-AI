@@ -47,12 +47,99 @@ class WebSearchResult(BaseModel):
     source: str
 
 
+# ============================================================================
+# TRACK 2 RESPONSE MODELS (Digital Medical Representative)
+# ============================================================================
+
+class InsuranceProcedureMatch(BaseModel):
+    """Single matched procedure from PM-JAY HBP."""
+    package_code: str
+    procedure_name: str
+    rate_inr: int
+    rate_display: str
+    category: Optional[str] = None
+    sub_category: Optional[str] = None
+    includes_implants: bool = False
+    special_conditions: Optional[str] = None
+    data_source: Optional[str] = None
+
+
+class InsuranceSchemeInfo(BaseModel):
+    """Insurance scheme metadata."""
+    scheme_code: str
+    scheme_name: str
+    source_url: Optional[str] = None
+    last_verified_at: Optional[str] = None
+
+
+class InsuranceContext(BaseModel):
+    """Insurance/reimbursement context for Track 2."""
+    query: Optional[str] = None
+    scheme: Optional[InsuranceSchemeInfo] = None
+    matched_procedure: Optional[InsuranceProcedureMatch] = None
+    other_matches: List[InsuranceProcedureMatch] = Field(default_factory=list)
+    no_match_reason: Optional[str] = None
+    note: Optional[str] = None
+
+
+class MoAContext(BaseModel):
+    """Mechanism of Action context for Track 2."""
+    drug_name: str
+    mechanism: Optional[str] = None
+    drug_class: Optional[str] = None
+    pharmacodynamics: Optional[str] = None
+    targets: List[str] = Field(default_factory=list)
+    sources: List[str] = Field(default_factory=list)
+
+
+class CompareAlternative(BaseModel):
+    """Alternative drug for comparison."""
+    name: str
+    generic_name: Optional[str] = None
+    therapeutic_class: Optional[str] = None
+    price_raw: Optional[str] = None
+
+
+class CompareContext(BaseModel):
+    """Therapeutic comparison context for Track 2."""
+    drug_name: str
+    therapeutic_class: Optional[str] = None
+    alternatives: List[CompareAlternative] = Field(default_factory=list)
+    comparison_factors: List[str] = Field(default_factory=list)
+    sources: List[str] = Field(default_factory=list)
+
+
+class RepModeContext(BaseModel):
+    """Pharma rep mode context for Track 2."""
+    active: bool = False
+    company_key: Optional[str] = None
+    company_name: Optional[str] = None
+    company_id: Optional[str] = None
+
+
+class Track2Data(BaseModel):
+    """
+    Structured Track 2 data for frontend rendering.
+    
+    Track 2 (Digital Medical Representative) provides:
+    - Scientific: MoA, therapeutic differentiation
+    - Administrative: insurance/reimbursement, package rates
+    """
+    insurance: Optional[InsuranceContext] = None
+    moa: Optional[MoAContext] = None
+    compare: Optional[CompareContext] = None
+    rep_mode: Optional[RepModeContext] = None
+    needs_web_search: bool = Field(False, description="If True, web search fallback is recommended for better results")
+    web_search_query: Optional[str] = Field(None, description="Suggested web search query when DB lookup fails")
+
+
 class ChatResponse(BaseModel):
     response: str
     citations: List[Citation] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
     session_id: str = Field(..., description="Session ID for this conversation")
     web_sources: List[WebSearchResult] = Field(default_factory=list, description="Web search results used")
+    track2: Optional[Track2Data] = Field(None, description="Structured Track 2 context (insurance, MoA, comparison, rep mode)")
 
 
 # ============================================================================

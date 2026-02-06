@@ -30,7 +30,9 @@ _PROCEDURE_STOPWORDS = {
     "insurance", "coverage", "covered", "reimbursement", "reimburse", "claim", "cashless",
     "package", "rate", "procedure", "cost", "price", "pricing", "how", "much",
     "for", "of", "the", "a", "an", "in", "on", "to", "and", "or", "is", "are",
-    "what", "whats", "tell", "me", "pls", "please",
+    "what", "whats", "tell", "me", "pls", "please", "does", "do", "did",
+    "under", "with", "without", "surgery", "operation", "treatment", "therapy",
+    "cover", "medicine", "medicines", "medication",
 }
 
 
@@ -81,29 +83,59 @@ class InsuranceService:
         limit: Optional[int] = None,
         auth_token: Optional[str] = None
     ) -> List[Dict]:
-        """Fetch package rates from Supabase."""
+        """Fetch package rates from Supabase using multi-stage fallback search."""
         client = self._get_client(auth_token)
         if not client:
             return []
 
-        try:
-            query = client.table("insurance_package_rates").select("*").eq("scheme_id", scheme_id)
+        # Helper to execute query
+        def run_query(filter_fn):
+            try:
+                q = client.table("insurance_package_rates").select("*").eq("scheme_id", scheme_id)
+                if category:
+                    q = q.ilike("category", f"%{category}%")
+                
+                q = filter_fn(q)
+                
+                if limit:
+                    q = q.limit(limit)
+                
+                return q.order("category").execute().data or []
+            except Exception as e:
+                logger.warning(f"Rate search attempt failed: {e}")
+                return []
 
-            if category:
-                query = query.ilike("category", f"%{category}%")
+        # Strategy 1: Explicit WFTS (Web Full Text Search)
+        # Good for exact phrases but strict on word forms
+        if procedure_search:
+            search_term = procedure_search.replace("%", " ").strip()
+            if len(search_term) >= 3:
+                results = run_query(lambda q: q.filter("procedure_name_normalized", "wfts", search_term))
+                if results: 
+                    return results
 
-            if procedure_search:
-                # Search in normalized procedure name
-                query = query.ilike("procedure_name_normalized", f"%{procedure_search.lower()}%")
+            # Strategy 2: "Brute Force" AND-match (All words must be present as substrings)
+            # "hip replacement" -> ILIKE %hip% AND ILIKE %replacement%
+            # This catches "Total Hip Replacement" when query is "hip replacement"
+            tokens = [t for t in search_term.split() if len(t) > 2] # Ignore tiny words
+            if tokens:
+                def build_and_query(q):
+                    for token in tokens:
+                        q = q.ilike("procedure_name_normalized", f"%{token}%")
+                    return q
+                
+                results = run_query(build_and_query)
+                if results:
+                    return results
 
-            if limit:
-                query = query.limit(limit)
+            # Strategy 3: REMOVED (OR-based matching)
 
-            result = query.order("category").execute()
-            return result.data or []
-        except Exception as e:
-            logger.error(f"Failed to fetch package rates: {e}")
+            # If we had a specific search term but found nothing, return EMPTY.
+            # Do NOT return random rows (Fallback) which confuses the user.
             return []
+
+        # Fallback: Only return generic list if NO search term was provided (browsing mode)
+        return run_query(lambda q: q)
 
     def _procedure_search_pattern(self, query: str) -> str:
         """Build an ILIKE pattern for procedure search from a free-form query."""
@@ -178,6 +210,15 @@ class InsuranceService:
         if len(result["schemes"]) > 1:
             result["comparison"] = self._generate_comparison(result["schemes"])
 
+        # Check if we got any procedure details - if not, flag for web search fallback
+        has_procedure_match = any(
+            s.get("procedure_details") and s["procedure_details"].get("matched_procedure")
+            for s in result["schemes"]
+        )
+        if procedure and not has_procedure_match:
+            result["needs_web_search"] = True
+            result["web_search_query"] = f"PM-JAY package rate for {procedure} India 2024"
+
         return result
 
     def _format_scheme_info(
@@ -232,8 +273,9 @@ class InsuranceService:
             "excluded_items": excluded_items,
             "drug_coverage": drug_coverage,
             "helpline": scheme.get("helpline"),
+            "helpline": scheme.get("helpline"),
             "website": scheme.get("website"),
-            "data_source": scheme.get("data_source"),
+            # data_source removed
             "source_url": scheme.get("source_url"),
             "last_verified": scheme.get("last_verified_at")
         }
@@ -243,7 +285,7 @@ class InsuranceService:
             info["drug_note"] = self._generate_drug_note(
                 drug_name,
                 drug_coverage,
-                data_source=scheme.get("data_source")
+                # data_source=scheme.get("data_source") # Removed per user request
             )
 
         # Check for procedure rates (PM-JAY specific)
@@ -318,9 +360,13 @@ class InsuranceService:
 
         if rates:
             def _fmt(r: Dict[str, Any]) -> Dict[str, Any]:
+                rate_value = r.get('rate_inr', 0)
+                rate_display = r.get("rate_display") or f"₹{rate_value:,}"
                 return {
                     "matched_procedure": r.get("procedure_name"),
-                    "pmjay_rate": r.get("rate_display") or f"Rs. {r.get('rate_inr', 0):,}",
+                    "pmjay_rate": rate_value,
+                    "rate_display": rate_display,
+                    "rate_display_bold": f"**{rate_display}**",  # For markdown formatting
                     "package_code": r.get("package_code"),
                     "category": f"{r.get('category', '')} - {r.get('sub_category', '')}".strip(" -"),
                     "includes_implants": r.get("includes_implants", False),
@@ -333,7 +379,7 @@ class InsuranceService:
                 "procedure": procedure,
                 "match_count": len(rates),
                 "other_matches": matches[1:],
-                "data_source": rates[0].get("data_source", "HBP"),
+                # Source hidden as per user request
                 "note": "Package rate from HBP master. Verify eligibility, documents, and hospital empanelment before claims."
             })
             return best
@@ -452,10 +498,10 @@ class InsuranceService:
 
             if scheme.get("procedure_details"):
                 proc = scheme["procedure_details"]
-                rate = proc.get("pmjay_rate", "N/A")
+                rate = proc.get("rate_display_bold") or proc.get("rate_display") or proc.get("pmjay_rate", "N/A")
                 matched = proc.get("matched_procedure") or ""
                 code = proc.get("package_code") or ""
-                lines.append(f"  Procedure Rate: {rate} (Code: {code})")
+                lines.append(f"  **Procedure Rate: {rate}** (Code: {code})")
                 if matched:
                     lines.append(f"  Matched: {matched}")
                 if proc.get("special_conditions"):

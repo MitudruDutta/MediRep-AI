@@ -12,6 +12,7 @@ import {
   ChatLoading,
 } from "@/components/Chat";
 import { ChatSidebar } from "@/components/Chat/ChatSidebar";
+import { RepModeBadge } from "@/components/Chat/RepModeBadge";
 import { PromptInputBox } from "@/components/ai-prompt-box";
 import { Bot, PanelLeftOpen, PanelLeftClose, Globe, ExternalLink, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,8 @@ export default function ChatPage() {
     resetSession,
     loadSession,
     sessionId,
-    isNewMessage
+    isNewMessage,
+    activeRepMode
   } = useChat();
 
   const { profile } = useProfile();
@@ -96,6 +98,15 @@ export default function ChatPage() {
               <Bot className="h-4 w-4 text-white" />
             </div>
             <span className="font-semibold text-sm text-[color:var(--landing-ink)]">MediRep AI</span>
+          </div>
+
+          <div className="ml-auto">
+            {activeRepMode && (
+              <RepModeBadge
+                repMode={activeRepMode}
+                onExit={() => handleSend("exit rep mode")}
+              />
+            )}
           </div>
         </header>
 

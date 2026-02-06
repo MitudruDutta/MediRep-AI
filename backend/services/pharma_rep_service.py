@@ -204,6 +204,20 @@ class PharmaRepService:
                 }).eq("user_id", user_id).eq("is_active", True).execute()
             except Exception as e:
                 logger.warning("Failed to end previous rep sessions: %s", e)
+                # Fallback: If 409 Conflict/Unique violation, it means there's a restrictive constraint
+                # prohibiting multiple inactive sessions. We delete old history to fix it.
+                if "409" in str(e) or "23505" in str(e) or "constraint" in str(e).lower():
+                    logger.info("Applying auto-fix: cleaning up old rep session history")
+                    try:
+                        # Delete all inactive sessions for this user to make room
+                        client.table("user_rep_sessions").delete().eq("user_id", user_id).eq("is_active", False).execute()
+                        # Retry the update
+                        client.table("user_rep_sessions").update({
+                            "is_active": False,
+                            "ended_at": now,
+                        }).eq("user_id", user_id).eq("is_active", True).execute()
+                    except Exception as retry_e:
+                        logger.error("Auto-fix failed: %s", retry_e)
 
             # Start new rep session
             try:

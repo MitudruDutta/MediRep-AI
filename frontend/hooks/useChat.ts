@@ -76,8 +76,9 @@ export function useChat() {
     // Add user message locally
     const userMessage: Message = {
       role: "user",
-      content: content + (files && files.length > 0 ? " [Image Uploaded]" : ""),
+      content: content,
       timestamp: new Date().toISOString(),
+      images: images.length > 0 ? images : undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -106,6 +107,7 @@ export function useChat() {
         content: response.response,
         citations: response.citations,
         timestamp: new Date().toISOString(),
+        track2: response.track2,
       };
       setMessages((prev) => [...prev, assistantMessage]);
 
@@ -175,5 +177,23 @@ export function useChat() {
   // Backwards compatibility: isLoading is true when generating (not when loading history)
   const isLoading = isGenerating;
 
-  return { messages, isLoading, isGenerating, isLoadingHistory, suggestions, webSources, send, stop, resetSession, loadSession, sessionId, isNewMessage };
+  // Determine if Rep Mode is active based on the last assistant message
+  const lastAssistantMessage = [...messages].reverse().find(m => m.role === "assistant");
+  const activeRepMode = lastAssistantMessage?.track2?.rep_mode;
+
+  return {
+    messages,
+    isLoading,
+    isGenerating,
+    isLoadingHistory,
+    suggestions,
+    webSources,
+    send,
+    stop,
+    resetSession,
+    loadSession,
+    sessionId,
+    isNewMessage,
+    activeRepMode
+  };
 }

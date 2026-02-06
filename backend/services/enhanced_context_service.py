@@ -199,7 +199,7 @@ async def build_enhanced_context(
     intents: Optional[Set[str]] = None,
     auth_token: Optional[str] = None,
     rep_company: Optional[Dict[str, Any]] = None
-) -> str:
+) -> tuple:
     """
     Build enhanced context for the LLM using all Track 2 features.
 
@@ -212,13 +212,25 @@ async def build_enhanced_context(
         rep_company: Active rep mode company context (if any)
 
     Returns:
-        Formatted context string to append to msg_context
+        Tuple of (formatted context string, Track2Data object)
     """
+    # Import models here to avoid circular imports
+    from models import (
+        Track2Data, InsuranceContext, InsuranceSchemeInfo, InsuranceProcedureMatch,
+        MoAContext, CompareContext, CompareAlternative, RepModeContext
+    )
+
     if intents is None:
         intents = detect_enhanced_intents(message)
 
+    # Initialize Track2Data components
+    track2_insurance = None
+    track2_moa = None
+    track2_compare = None
+    track2_rep_mode = None
+
     if not intents and not drug_name and not rep_company:
-        return ""
+        return "", Track2Data()
 
     context_parts = []
     tasks = []
@@ -261,6 +273,14 @@ async def build_enhanced_context(
         if rep_context:
             context_parts.append(rep_context)
 
+        # Build structured rep mode context
+        track2_rep_mode = RepModeContext(
+            active=True,
+            company_key=rep_company.get("company_key"),
+            company_name=rep_company.get("company_name"),
+            company_id=rep_company.get("company_id")
+        )
+
         company_key = rep_company.get("company_key", "")
         company_name = rep_company.get("company_name", "Company")
 
@@ -291,6 +311,10 @@ async def build_enhanced_context(
                 )
             ))
 
+    # Track web search fallback flags
+    needs_web_search = False
+    web_search_query = None
+
     # Execute all async tasks in parallel
     if tasks:
         results = await asyncio.gather(
@@ -308,16 +332,102 @@ async def build_enhanced_context(
                 formatted = moa_service.format_for_llm(result)
                 if formatted:
                     context_parts.append(formatted)
+                # Build structured MoA context
+                track2_moa = MoAContext(
+                    drug_name=drug_name or "",
+                    mechanism=result.get("mechanism_of_action"),
+                    drug_class=result.get("drug_class"),
+                    pharmacodynamics=result.get("pharmacodynamics"),
+                    targets=result.get("targets", []),
+                    sources=result.get("sources", [])
+                )
 
             elif intent_name == "COMPARE" and result:
                 formatted = therapeutic_comparison_service.format_for_llm(result)
                 if formatted:
                     context_parts.append(formatted)
+                # Build structured comparison context
+                alternatives = []
+                for alt in result.get("alternatives", [])[:5]:
+                    alternatives.append(CompareAlternative(
+                        name=alt.get("name", ""),
+                        generic_name=alt.get("generic_name"),
+                        therapeutic_class=alt.get("therapeutic_class"),
+                        price_raw=alt.get("price_raw")
+                    ))
+                track2_compare = CompareContext(
+                    drug_name=drug_name or "",
+                    therapeutic_class=result.get("therapeutic_class"),
+                    alternatives=alternatives,
+                    comparison_factors=result.get("comparison_factors", []),
+                    sources=result.get("sources", [])
+                )
 
             elif intent_name == "INSURANCE" and result:
                 formatted = insurance_service.format_for_llm(result)
                 if formatted:
                     context_parts.append(formatted)
+                # Build structured insurance context
+                scheme_info = None
+                matched_proc = None
+                other_matches = []
+
+                # Extract scheme info from first scheme in result
+                schemes = result.get("schemes", [])
+                if schemes:
+                    first_scheme = schemes[0]
+                    scheme_info = InsuranceSchemeInfo(
+                        scheme_code=first_scheme.get("scheme_short", ""),
+                        scheme_name=first_scheme.get("scheme_name", ""),
+                        source_url=first_scheme.get("source_url"),
+                        last_verified_at=first_scheme.get("last_verified")
+                    )
+                    # Extract procedure details if present
+                    proc_details = first_scheme.get("procedure_details", {})
+                    if proc_details and proc_details.get("matched_procedure"):
+                        matched_proc = InsuranceProcedureMatch(
+                            package_code=proc_details.get("package_code", ""),
+                            procedure_name=proc_details.get("matched_procedure", ""),
+                            rate_inr=proc_details.get("pmjay_rate", 0),
+                            rate_display=proc_details.get("rate_display") or f"₹{proc_details.get('pmjay_rate', 0):,}",
+                            category=proc_details.get("category"),
+                            sub_category=proc_details.get("sub_category"),
+                            includes_implants=proc_details.get("includes_implants", False),
+                            special_conditions=proc_details.get("special_conditions"),
+                            data_source=proc_details.get("data_source")
+                        )
+                    # Extract other matches
+                    for om in proc_details.get("other_matches", [])[:2]:
+                        other_matches.append(InsuranceProcedureMatch(
+                            package_code=om.get("package_code", ""),
+                            procedure_name=om.get("matched_procedure", ""),
+                            rate_inr=om.get("pmjay_rate", 0) if isinstance(om.get("pmjay_rate"), int) else 0,
+                            rate_display=om.get("rate_display") or om.get("pmjay_rate", ""),
+                            category=om.get("category"),
+                            sub_category=om.get("sub_category"),
+                            includes_implants=om.get("includes_implants", False),
+                            special_conditions=om.get("special_conditions"),
+                            data_source=om.get("data_source")
+                        ))
+
+                track2_insurance = InsuranceContext(
+                    query=procedure or _extract_procedure_query(message),
+                    scheme=scheme_info,
+                    matched_procedure=matched_proc,
+                    other_matches=other_matches,
+                    no_match_reason=result.get("error") if not matched_proc else None,
+                    note=result.get("note") or (
+                        "No exact package match found in database. Check NHA HBP portal for latest rates."
+                        if result.get("needs_web_search") else None
+                    )
+                )
+                
+                # Capture web search fallback flags
+                if result.get("needs_web_search"):
+                    needs_web_search = True
+                    web_search_query = result.get("web_search_query")
+                    web_search_note = f"\n[NOTE: No exact match in HBP database. Consider web search for: '{web_search_query}']"
+                    context_parts.append(web_search_note)
 
             elif intent_name == "PRODUCTS" and result:
                 company_name = rep_company.get("company_name", "Company") if rep_company else "Company"
@@ -337,7 +447,17 @@ async def build_enhanced_context(
                 if formatted:
                     context_parts.append(formatted)
 
-    return "\n".join(context_parts)
+    # Build final Track2Data object
+    track2_data = Track2Data(
+        insurance=track2_insurance,
+        moa=track2_moa,
+        compare=track2_compare,
+        rep_mode=track2_rep_mode,
+        needs_web_search=needs_web_search,
+        web_search_query=web_search_query
+    )
+
+    return "\n".join(context_parts), track2_data
 
 
 def _extract_drug_class(message: str) -> Optional[str]:
@@ -415,6 +535,12 @@ async def handle_pharma_rep_command(message: str, user_id: str, auth_token: str)
             company_query = msg_lower.split("set rep mode", 1)[1].strip()
         elif msg_lower.startswith("represent "):
             company_query = msg_lower.split("represent", 1)[1].strip()
+
+        # Handle "for" / "to" prepositions (e.g., "set rep mode for cipla")
+        if company_query.startswith("for "):
+            company_query = company_query[4:].strip()
+        elif company_query.startswith("to "):
+            company_query = company_query[3:].strip()
 
         if not company_query:
             companies = await asyncio.to_thread(pharma_rep_service.get_available_companies, auth_token)

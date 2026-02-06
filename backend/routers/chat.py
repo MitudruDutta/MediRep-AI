@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from slowapi import Limiter
 from limiter import get_client_ip
 
-from models import ChatRequest, ChatResponse, Message
+from models import ChatRequest, ChatResponse, Message, Track2Data, RepModeContext
 from services.gemini_service import generate_response, plan_intent
 from services.drug_service import get_drug_info, find_cheaper_substitutes
 from services.rag_service import rag_service
@@ -213,12 +213,31 @@ async def chat_endpoint(
                 auth_token=auth_token,
             ))
 
+            # Construct Track2Data for immediate frontend state update
+            track2_data = None
+            rep_data = rep_command.get("data", {})
+            
+            # Case 1: Activation Success
+            if rep_data and rep_data.get("success") and rep_data.get("company_key"):
+                track2_data = Track2Data(
+                    rep_mode=RepModeContext(
+                        active=True,
+                        company_key=rep_data.get("company_key"),
+                        company_name=rep_data.get("company")
+                    )
+                )
+            
+            # Case 2: Deactivation / Clear
+            elif "Deactivated" in response_text or "general mode" in response_text:
+                 track2_data = Track2Data(rep_mode=RepModeContext(active=False))
+
             return ChatResponse(
                 response=response_text,
                 citations=[],
                 suggestions=["List companies", "Set rep mode [company]", "Exit rep mode"],
                 session_id=session_id,
                 web_sources=[],
+                track2=track2_data
             )
 
         # 1. Intent Planning & Entity Extraction (LLM Powered)
@@ -233,6 +252,7 @@ async def chat_endpoint(
 
         context_data = {}
         msg_context = ""
+        track2_data = None
 
         # Extract drug name from history if not in current message
         drug_from_history = None
@@ -300,7 +320,7 @@ async def chat_endpoint(
         enhanced_intents = detect_enhanced_intents(chat_request.message)
         if enhanced_intents or rep_company:
             try:
-                enhanced_context = await build_enhanced_context(
+                enhanced_context, track2_data = await build_enhanced_context(
                     message=chat_request.message,
                     drug_name=plan.drug_names[0] if plan.drug_names else None,
                     intents=enhanced_intents,
@@ -309,9 +329,12 @@ async def chat_endpoint(
                 )
                 if enhanced_context:
                     msg_context += "\n\n" + enhanced_context
-                    logger.info("Enhanced context added: %d chars (intents=%s)", len(enhanced_context), enhanced_intents)
+                    logger.info("Enhanced context added: %d chars (intents=%s, track2=%s)", 
+                               len(enhanced_context), enhanced_intents, 
+                               "present" if track2_data else "none")
             except Exception as e:
                 logger.warning("Enhanced context build failed: %s", e)
+                track2_data = None
 
         # 3. RAG Search using Qdrant + Turso (Hybrid: drug_embeddings + medical_qa)
         rag_content = None
@@ -454,6 +477,7 @@ async def chat_endpoint(
             suggestions=suggestions,
             session_id=session_id,
             web_sources=web_sources_response,
+            track2=track2_data,
         )
 
     except ValueError as e:

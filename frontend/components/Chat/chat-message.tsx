@@ -8,6 +8,8 @@ import Markdown from "react-markdown"
 import { motion } from "framer-motion"
 import { useAnimatedText } from "@/components/ui/animated-text"
 import remarkGfm from "remark-gfm"
+import { ReimbursementCard } from "./ReimbursementCard"
+import { EvidencePanel } from "./EvidencePanel"
 
 export interface ChatMessageProps {
   message: Message
@@ -29,7 +31,17 @@ export function ChatMessage({ message, index, isNewMessage = false }: ChatMessag
         transition={{ duration: 0.2 }}
         className="flex justify-end px-4 py-3"
       >
-        <div className="max-w-[85%] md:max-w-[70%]">
+        <div className="max-w-[85%] md:max-w-[70%] flex flex-col gap-2 items-end">
+          {message.images && message.images.length > 0 && (
+            <div className="flex flex-wrap gap-2 justify-end">
+              {message.images.map((img, idx) => (
+                <div key={idx} className="relative w-40 h-40 rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 shadow-sm bg-zinc-100 dark:bg-zinc-800">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={img} alt="User upload" className="object-cover w-full h-full" />
+                </div>
+              ))}
+            </div>
+          )}
           <div className="bg-[color:var(--landing-clay)] text-white px-4 py-3 rounded-2xl rounded-br-md shadow-sm">
             <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{renderedContent}</p>
           </div>
@@ -37,6 +49,8 @@ export function ChatMessage({ message, index, isNewMessage = false }: ChatMessag
       </motion.div>
     )
   }
+
+  const track2 = message.track2
 
   return (
     <motion.div
@@ -97,6 +111,16 @@ export function ChatMessage({ message, index, isNewMessage = false }: ChatMessag
             </div>
           </div>
 
+          {/* Track 2: Insurance/Reimbursement Card */}
+          {track2?.insurance && (
+            <ReimbursementCard data={track2.insurance} />
+          )}
+
+          {/* Track 2: Evidence Panel (MoA + Comparison) */}
+          {track2 && (track2.moa || track2.compare) && (
+            <EvidencePanel track2={track2} />
+          )}
+
           {/* Citations */}
           {message.citations && message.citations.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -119,3 +143,4 @@ export function ChatMessage({ message, index, isNewMessage = false }: ChatMessag
     </motion.div>
   )
 }
+

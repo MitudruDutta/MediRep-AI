@@ -11,6 +11,8 @@ export interface Message {
   content: string;
   citations?: Citation[];
   timestamp: string;
+  track2?: Track2Data;
+  images?: string[];
 }
 
 export interface Citation {
@@ -127,12 +129,85 @@ export interface WebSearchResult {
   source: string;
 }
 
+// ============================================================================
+// TRACK 2 TYPES (Digital Medical Representative)
+// ============================================================================
+
+export interface InsuranceProcedureMatch {
+  package_code: string;
+  procedure_name: string;
+  rate_inr: number;
+  rate_display: string;
+  category?: string;
+  sub_category?: string;
+  includes_implants: boolean;
+  special_conditions?: string;
+  data_source?: string;
+}
+
+export interface InsuranceSchemeInfo {
+  scheme_code: string;
+  scheme_name: string;
+  source_url?: string;
+  last_verified_at?: string;
+}
+
+export interface InsuranceContext {
+  query?: string;
+  scheme?: InsuranceSchemeInfo;
+  matched_procedure?: InsuranceProcedureMatch;
+  other_matches: InsuranceProcedureMatch[];
+  no_match_reason?: string;
+  note?: string;
+}
+
+export interface MoAContext {
+  drug_name: string;
+  mechanism?: string;
+  drug_class?: string;
+  pharmacodynamics?: string;
+  targets: string[];
+  sources: string[];
+}
+
+export interface CompareAlternative {
+  name: string;
+  generic_name?: string;
+  therapeutic_class?: string;
+  price_raw?: string;
+}
+
+export interface CompareContext {
+  drug_name: string;
+  therapeutic_class?: string;
+  alternatives: CompareAlternative[];
+  comparison_factors: string[];
+  sources: string[];
+}
+
+export interface RepModeContext {
+  active: boolean;
+  company_key?: string;
+  company_name?: string;
+  company_id?: string;
+}
+
+export interface Track2Data {
+  insurance?: InsuranceContext;
+  moa?: MoAContext;
+  compare?: CompareContext;
+  rep_mode?: RepModeContext;
+  needs_web_search?: boolean;
+  web_search_query?: string;
+}
+
 export interface ChatResponse {
   response: string;
   citations?: Citation[];
   suggestions?: string[];
   session_id: string;
   web_sources?: WebSearchResult[];
+  track2?: Track2Data;
 }
 
 export interface SessionSummary {
