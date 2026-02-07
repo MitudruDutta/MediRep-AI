@@ -1,17 +1,31 @@
 <div align="center">
+  <img src="frontend/public/logo.svg" alt="MediRep AI" width="72" height="72" />
+  <h1>MediRep AI</h1>
+  <p><strong>Next-Gen Medical Representative Intelligence</strong><br/>
+  High-fidelity drug information, strict context enforcement, and clinical decision support.</p>
+</div>
 
-<img src="frontend/public/logo.svg" alt="MediRep AI" width="72" height="72" />
+---
 
-# MediRep AI
+**MediRep AI** is a dual-engine medical intelligence platform designed for clinicians, pharmacists, and patients. It combines **FDA-verified data** with a massive **Indian Medicines Database (250k+ drugs)** and uses strict AI guardrails to prevent hallucinations in critical contexts like insurance reimbursement or mechanism of action (MOA) analysis.
 
-**AI-powered drug intelligence + verified pharmacist marketplace.**
+> **Disclaimer:** MediRep AI is for informational purposes only and is **not medical advice**. Always verify against authoritative sources.
 
-<p>
-  <a href="#features">Features</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#deployment">Deployment</a>
-</p>
+## 🌟 Key Capabilities
+
+### 🧠 Strict Context Enforcement ("Track 2")
+Unlike generic chatbots, MediRep AI operates in enforced modes:
+- **Insurance Mode**: Answers ONLY questions about PMJAY, package rates, and reimbursement.
+- **MOA Mode**: Answers ONLY deep pharmacology, pathways, and receptor mechanics.
+- **Rep Mode**: Simulates brand-specific detailing, restricted to a company's actual portfolio.
+
+### 💊 Dual-Source Drug Intelligence
+- **Global**: openFDA integration for US-approved labels and enforcement reports.
+- **Regional**: Dedicated Turso database for 250,000+ Indian brand/generic medicines, pricing, and substitutes.
+
+### ⚡ "Clinical Speed" Interface
+- **Voice-First**: Real-time consultation via ElevenLabs.
+- **Visual Intelligence**: Identify pills via camera and visualize drug interactions with force-directed graphs.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square)
 ![React](https://img.shields.io/badge/React-19-61dafb?style=flat-square)
@@ -36,15 +50,14 @@ drug facts, interactions, safety alerts, pill identification, price comparison, 
 
 | Feature                    | Description                                               | Status  |
 | -------------------------- | --------------------------------------------------------- | ------- |
-| 💬 **AI Chat**             | Natural language medical Q&A with context awareness       | ✅ Live |
-| 💊 **Drug Search**         | Search 100,000+ drugs via openFDA database                | ✅ Live |
+| 💬 **AI Chat**             | Context-aware Q&A with **Insurance** and **MOA** strict modes | ✅ Live |
+| 💊 **Drug Search**         | Access 250,000+ brand/generic drugs (Indian Database)     | ✅ Live |
 | ⚡ **Clinical Speed**       | Optimized workflow for rapid evidence-based answers       | ✅ Live |
 | 🧑‍⚕️ **Pharmacist Market**   | Connect with verified pharmacists for consultations       | ✅ Live |
 | ⚠️ **Interaction Checker** | AI-powered drug-drug interaction analysis                 | ✅ Live |
-| 🎙️ **Voice Mode**          | Speech-to-text search & consultations (ElevenLabs)        | ✅ Live |
+| 🎙️ **Voice Mode**          | Speech-to-text with mode-specific voice responses         | ✅ Live |
 | 📸 **Pill Scanner**        | Vision AI to identify pills from camera photos            | ✅ Live |
-| 🚨 **FDA Alerts**          | Real-time recalls, warnings, and safety alerts            | ✅ Live |
-| 🔍 **RAG System**          | Context-aware responses using vector embeddings           | ✅ Live |
+| 🏢 **Pharma Rep Mode**     | Simulate detailed brand representative interactions       | ✅ Live |
 
 ## Quick start
 
@@ -153,7 +166,7 @@ Once the backend is running, you can explore and test all endpoints using:
 3. **API Call** → FastAPI backend receives request
 4. **Service Layer** → Appropriate service processes the request:
    - **Chat**: Gemini AI + RAG Service (vector similarity search)
-   - **Voice**: ElevenLabs API for high-accuracy transcription
+   - **Voice**: API for high-accuracy transcription
    - **Drug Search**: openFDA API + caching
    - **Interactions**: Gemini AI analysis
    - **Pill ID**: Gemini Vision API
@@ -169,7 +182,7 @@ Once the backend is running, you can explore and test all endpoints using:
 | **Frontend**      | Next.js 16, React 19, TypeScript                |
 | **Styling**       | Tailwind CSS 4, Shadcn UI, Framer Motion, GSAP  |
 | **AI Engine**     | Google Gemini 2.5 Flash                         |
-| **Voice AI**      | ElevenLabs                                      |
+| **Voice AI**      | API                                      |
 | **Backend**       | FastAPI (Python 3.10+)                          |
 | **Database**      | Supabase (PostgreSQL + pgvector)                |
 | **Auth**          | Supabase Auth (JWT)                             |
