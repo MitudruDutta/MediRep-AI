@@ -15,7 +15,7 @@ import { Bot, Loader2 } from "lucide-react";
 export default function ChatWidget() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { messages, isGenerating, isLoadingHistory, suggestions, send, isNewMessage } = useChat();
+  const { messages, isGenerating, isLoadingHistory, suggestions, send, stop, isNewMessage } = useChat();
   const { patientContext } = usePatientContext();
 
   useEffect(() => {
@@ -42,7 +42,7 @@ export default function ChatWidget() {
 
         {!isLoadingHistory && messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center p-6">
-            <div className="h-12 w-12 rounded-xl bg-[color:var(--landing-moss)] flex items-center justify-center mb-3 shadow-sm">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[color:var(--landing-moss)] shadow-sm">
               <Bot className="h-6 w-6 text-white" />
             </div>
             <p className="text-zinc-500 text-sm text-center">
@@ -79,6 +79,7 @@ export default function ChatWidget() {
 
         <PromptInputBox
           onSend={handleSend}
+          onStop={stop}
           isLoading={isGenerating}
           placeholder="Message MediRep AI..."
         />

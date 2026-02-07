@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Message, PatientContext, WebSearchResult } from "@/types";
+import { Message, PatientContext, WebSearchResult, ChatResponse } from "@/types";
 import { sendMessage, getSessionMessages } from "@/lib/api";
 import { invalidateSessionsCache } from "@/hooks/useSessions";
 
@@ -41,7 +41,12 @@ export function useChat() {
     }
   };
 
-  const send = async (content: string, patientContext?: PatientContext, webSearchMode: boolean = false, files?: File[]) => {
+  const send = async (
+    content: string,
+    patientContext?: PatientContext,
+    webSearchMode: boolean = false,
+    files?: File[]
+  ): Promise<ChatResponse | null> => {
     // Cancel any existing request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -122,9 +127,10 @@ export function useChat() {
 
       // Invalidate session cache so sidebar updates with new message count/timestamp
       invalidateSessionsCache();
-    } catch (error: any) {
+      return response;
+    } catch (error: unknown) {
       // Don't show error if request was aborted by user
-      if (error?.name === 'AbortError') {
+      if (error instanceof DOMException && error.name === "AbortError") {
         console.log("Request cancelled by user");
         // Add a cancelled message indicator
         const cancelledMessage: Message = {
@@ -142,6 +148,7 @@ export function useChat() {
         };
         setMessages((prev) => [...prev, errorMessage]);
       }
+      return null;
     } finally {
       setIsGenerating(false);
       abortControllerRef.current = null;

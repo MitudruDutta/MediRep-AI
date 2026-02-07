@@ -1,1 +1,1 @@
-export { RealtimeVoice } from "./RealtimeVoice";
+export { VoiceCallOverlay } from "./VoiceCallOverlay";

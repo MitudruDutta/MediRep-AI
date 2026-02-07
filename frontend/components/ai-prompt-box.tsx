@@ -175,23 +175,32 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
 }) => {
   const [time, setTime] = React.useState(0);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const hasStartedRef = React.useRef(false);
+  const timeRef = React.useRef(0);
+
+  timeRef.current = time;
 
   React.useEffect(() => {
     if (isRecording) {
-      onStartRecording();
+      if (!hasStartedRef.current) {
+        hasStartedRef.current = true;
+        onStartRecording();
+      }
       timerRef.current = setInterval(() => setTime((t) => t + 1), 1000);
-    } else {
+    } else if (hasStartedRef.current) {
+      hasStartedRef.current = false;
+      onStopRecording(timeRef.current);
+      setTime(0);
+    }
+
+    return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
-      onStopRecording(time);
-      setTime(0);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isRecording, time, onStartRecording, onStopRecording]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRecording]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -550,7 +559,12 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
   // Web Speech API - Client-side speech recognition (FREE, instant, no server)
   // Supports Indian languages: Hindi, Tamil, Telugu, Bengali, Marathi, Gujarati, Punjabi, Kannada, Malayalam, Odia
   const recognitionRef = React.useRef<any>(null);
+  const isRecordingRef = React.useRef(false);
+  const networkRetryRef = React.useRef(0);
   const [speechSupported, setSpeechSupported] = React.useState(true);
+
+  // Keep ref in sync for use in speech recognition callbacks
+  isRecordingRef.current = isRecording;
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
@@ -563,6 +577,8 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
         recognition.lang = SUPPORTED_SPEECH_LANGUAGES[speechLanguage] || "en-IN";
 
         recognition.onresult = (event: any) => {
+          // Reset retry counter on successful result
+          networkRetryRef.current = 0;
           let finalTranscript = "";
           for (let i = event.resultIndex; i < event.results.length; ++i) {
             if (event.results[i].isFinal) {
@@ -575,14 +591,33 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
         };
 
         recognition.onerror = (event: any) => {
-          console.error("Speech recognition error:", event.error);
           if (event.error === "not-allowed") {
             alert("Microphone access denied. Please allow microphone access and try again.");
+            setIsRecording(false);
+          } else if (event.error === "aborted") {
+            // Silently ignore - caused by stop() or React StrictMode
+          } else if (event.error === "network") {
+            networkRetryRef.current += 1;
+            if (networkRetryRef.current > 3) {
+              setIsRecording(false);
+            }
+            // Otherwise onend will auto-restart
+          } else {
+            console.error("Speech recognition error:", event.error);
+            setIsRecording(false);
           }
-          setIsRecording(false);
         };
 
         recognition.onend = () => {
+          // Auto-restart if user is still recording and retries not exhausted
+          if (isRecordingRef.current && recognitionRef.current && networkRetryRef.current <= 3) {
+            setTimeout(() => {
+              if (isRecordingRef.current && recognitionRef.current) {
+                try { recognitionRef.current.start(); } catch {}
+              }
+            }, 300);
+            return;
+          }
           setIsRecording(false);
         };
 
@@ -599,10 +634,11 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
       return;
     }
     if (recognitionRef.current) {
+      networkRetryRef.current = 0;
       try {
         recognitionRef.current.start();
-      } catch (err) {
-        console.error("Failed to start speech recognition:", err);
+      } catch {
+        // Already started - safe to ignore (e.g., React StrictMode double-invoke)
       }
     }
   };
@@ -611,11 +647,10 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
-      } catch (err) {
-        console.error("Failed to stop speech recognition:", err);
+      } catch {
+        // Already stopped - safe to ignore
       }
     }
-    console.log(`Stopped recording after ${duration} seconds`);
     setIsRecording(false);
   };
 

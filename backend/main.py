@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 from config import ALLOWED_ORIGINS, PORT, RESEND_API_KEY, ADMIN_EMAILS, GEMINI_API_KEY
-from routers import chat, drugs, vision, user, marketplace, pharmacist, consultations, admin
+from routers import chat, drugs, vision, user, marketplace, pharmacist, consultations, admin, voice
 
 # Rate Limiting
 from limiter import limiter
@@ -156,6 +156,7 @@ async def health_check():
 
 # Mount routers
 app.include_router(chat.router, prefix="/api", tags=["Chat"])
+app.include_router(voice.router, prefix="/api/voice", tags=["Voice"])
 app.include_router(drugs.router, prefix="/api/drugs", tags=["Drugs"])
 app.include_router(vision.router, prefix="/api/vision", tags=["Vision"])
 app.include_router(user.router, prefix="/api/user", tags=["User"])

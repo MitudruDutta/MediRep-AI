@@ -132,6 +132,10 @@ if not QDRANT_URL or not QDRANT_API_KEY:
 # Groq Configuration (Fallback for Gemini)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+GROQ_STT_MODEL = os.getenv("GROQ_STT_MODEL", "whisper-large-v3-turbo")
+GROQ_TTS_MODEL = os.getenv("GROQ_TTS_MODEL", "playai-tts")
+GROQ_TTS_VOICE = os.getenv("GROQ_TTS_VOICE", "Fritz-PlayAI")
+GROQ_TTS_RESPONSE_FORMAT = os.getenv("GROQ_TTS_RESPONSE_FORMAT", "wav")
 
 if GROQ_API_KEY:
     logger.info("Groq API configured as fallback for Gemini")

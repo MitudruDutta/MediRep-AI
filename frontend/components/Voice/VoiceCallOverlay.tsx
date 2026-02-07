@@ -10,6 +10,7 @@ interface VoiceCallOverlayProps {
   isOpen: boolean;
   onClose: () => void;
   onTranscript?: (text: string) => void;
+  onVoiceTurn?: (text: string) => Promise<string | null> | string | null;
 }
 
 function formatDuration(seconds: number) {
@@ -120,7 +121,7 @@ function AudioBars({ audioLevel, state }: { audioLevel: number; state: VoiceStat
       {Array.from({ length: barCount }).map((_, i) => {
         const distance = Math.abs(i - barCount / 2) / (barCount / 2);
         const baseHeight = isActive ? (1 - distance * 0.7) * audioLevel : 0.05;
-        const randomOffset = Math.sin(i * 0.8 + Date.now() * 0.003) * 0.3;
+        const randomOffset = Math.sin(i * 0.8 + audioLevel * 12) * 0.3;
         const height = Math.max(0.05, Math.min(1, baseHeight + (isActive ? randomOffset * audioLevel : 0)));
 
         return (
@@ -191,7 +192,7 @@ function TranscriptBubble({ role, text }: { role: "user" | "assistant"; text: st
   );
 }
 
-export function VoiceCallOverlay({ isOpen, onClose, onTranscript }: VoiceCallOverlayProps) {
+export function VoiceCallOverlay({ isOpen, onClose, onTranscript, onVoiceTurn }: VoiceCallOverlayProps) {
   const {
     state,
     isConnected,
@@ -199,10 +200,11 @@ export function VoiceCallOverlay({ isOpen, onClose, onTranscript }: VoiceCallOve
     currentTranscript,
     duration,
     audioLevel,
+    errorMessage,
     connect,
     disconnect,
     clearMessages,
-  } = useVoiceCall({ onTranscript });
+  } = useVoiceCall({ onTranscript, onVoiceTurn });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -320,7 +322,7 @@ export function VoiceCallOverlay({ isOpen, onClose, onTranscript }: VoiceCallOve
               {isConnected
                 ? "Speak naturally. MediRep will respond with voice."
                 : state === "error"
-                  ? "Voice server unavailable. Make sure the server is running on port 8998."
+                  ? errorMessage || "Voice is unavailable in this browser right now. Check mic permission and try Chrome/Edge."
                   : "Start a voice conversation with MediRep AI"
               }
             </p>

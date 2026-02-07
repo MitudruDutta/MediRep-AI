@@ -108,19 +108,7 @@ export interface PillIdentification {
   imprint?: string;
 }
 
-export interface FDAAlert {
-  id: string;
-  severity: "info" | "warning" | "recall";
-  title: string;
-  description: string;
-  date: string | null;
-  lot_numbers: string[];
-}
 
-export interface FDAAlertResponse {
-  drug_name: string;
-  alerts: FDAAlert[];
-}
 
 export interface WebSearchResult {
   title: string;

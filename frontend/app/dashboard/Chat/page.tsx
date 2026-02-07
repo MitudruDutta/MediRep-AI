@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useChat } from "@/hooks/useChat";
 import { useProfile } from "@/hooks/useProfile";
 import { usePatientContext } from "@/lib/context/PatientContext";
@@ -70,10 +70,16 @@ export default function ChatPage() {
     await send(message, patientContext || undefined, isSearchMode || false, files);
   };
 
+  const handleVoiceTurn = useCallback(async (transcript: string): Promise<string | null> => {
+    const response = await send(transcript, patientContext || undefined, webSearchMode);
+    const assistant = (response?.response || "").trim();
+    return assistant || null;
+  }, [patientContext, send, webSearchMode]);
+
   const showEmptyState = messages.length === 0 && !isGenerating && !isLoadingHistory;
 
   return (
-    <div className="h-[100dvh] w-full flex bg-[color:var(--landing-paper)] overflow-hidden">
+    <div className="h-dvh w-full flex bg-(--landing-paper) overflow-hidden">
       {/* Sidebar */}
       <ChatSidebar
         isOpen={isSidebarOpen}
@@ -86,20 +92,20 @@ export default function ChatPage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-full min-w-0 min-h-0">
         {/* Header */}
-        <header className="shrink-0 h-14 border-b border-[color:var(--landing-border)] bg-[color:var(--landing-card-strong)] flex items-center px-4 gap-3">
+        <header className="shrink-0 h-14 border-b border-(--landing-border) bg-(--landing-card-strong) flex items-center px-4 gap-3">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="h-8 w-8 text-[color:var(--landing-muted)] hover:text-[color:var(--landing-ink)]"
+            className="h-8 w-8 text-(--landing-muted) hover:text-(--landing-ink)"
           >
             {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
           </Button>
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-[color:var(--landing-moss)] flex items-center justify-center">
+            <div className="h-7 w-7 rounded-lg bg-(--landing-moss) flex items-center justify-center">
               <Bot className="h-4 w-4 text-white" />
             </div>
-            <span className="font-semibold text-sm text-[color:var(--landing-ink)]">MediRep AI</span>
+            <span className="font-semibold text-sm text-(--landing-ink)">MediRep AI</span>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
@@ -117,7 +123,7 @@ export default function ChatPage() {
           {/* Loading History */}
           {isLoadingHistory && (
             <div className="flex-1 flex items-center justify-center">
-              <div className="flex items-center gap-2 text-[color:var(--landing-muted)]">
+              <div className="flex items-center gap-2 text-(--landing-muted)">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 <span className="text-sm">Loading conversation...</span>
               </div>
@@ -130,13 +136,13 @@ export default function ChatPage() {
               <div className="max-w-xl w-full space-y-8">
                 {/* Welcome */}
                 <div className="text-center space-y-3">
-                  <div className="h-14 w-14 rounded-2xl bg-[color:var(--landing-moss)] flex items-center justify-center mx-auto shadow-lg">
+                  <div className="h-14 w-14 rounded-2xl bg-(--landing-moss) flex items-center justify-center mx-auto shadow-lg">
                     <Sparkles className="h-7 w-7 text-white" />
                   </div>
-                  <h1 className="text-2xl font-bold text-[color:var(--landing-ink)]">
+                  <h1 className="text-2xl font-bold text-(--landing-ink)">
                     Hi {userName}!
                   </h1>
-                  <p className="text-[color:var(--landing-muted)] text-sm max-w-sm mx-auto">
+                  <p className="text-(--landing-muted) text-sm max-w-sm mx-auto">
                     Ask me about medications, drug interactions, dosages, or help identifying pills.
                   </p>
                 </div>
@@ -157,7 +163,7 @@ export default function ChatPage() {
                     <button
                       key={i}
                       onClick={() => handleSend(s.prompt)}
-                      className="px-3 py-2 text-sm rounded-xl border border-[color:var(--landing-border)] text-[color:var(--landing-muted)] hover:text-[color:var(--landing-ink)] hover:border-[color:var(--landing-border-strong)] hover:bg-[color:var(--landing-card)] transition-all"
+                      className="px-3 py-2 text-sm rounded-xl border border-(--landing-border) text-(--landing-muted) hover:text-(--landing-ink) hover:border-(--landing-border-strong) hover:bg-(--landing-card) transition-all"
                     >
                       {s.label}
                     </button>
@@ -189,8 +195,8 @@ export default function ChatPage() {
                       <div className="w-8" /> {/* Spacer for alignment */}
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <Globe className="w-3.5 h-3.5 text-[color:var(--landing-muted)]" />
-                          <span className="text-xs font-medium text-[color:var(--landing-muted)] uppercase tracking-wide">Sources</span>
+                          <Globe className="w-3.5 h-3.5 text-(--landing-muted)" />
+                          <span className="text-xs font-medium text-(--landing-muted) uppercase tracking-wide">Sources</span>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {webSources.map((source, i) => (
@@ -201,7 +207,7 @@ export default function ChatPage() {
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-zinc-600 dark:text-zinc-400 transition-colors border border-zinc-200 dark:border-zinc-700"
                             >
-                              <span className="truncate max-w-[140px]">{source.source}</span>
+                              <span className="truncate max-w-35">{source.source}</span>
                               <ExternalLink className="w-3 h-3 shrink-0" />
                             </a>
                           ))}
@@ -246,6 +252,7 @@ export default function ChatPage() {
       <VoiceCallOverlay
         isOpen={isVoiceCallOpen}
         onClose={() => setIsVoiceCallOpen(false)}
+        onVoiceTurn={handleVoiceTurn}
       />
     </div>
   );

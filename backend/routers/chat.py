@@ -38,6 +38,16 @@ router = APIRouter()
 # Local limiter for chat endpoint (separate from global app limiter)
 limiter = Limiter(key_func=get_client_ip)
 
+VOICE_MODE_PREFIX = """[VOICE MODE]
+Response will be read aloud via TTS. Rules:
+- Max ~100 words unless user asks for detail
+- Natural conversational sentences, no lists or bullets
+- NEVER reference UI: no "click", "enable Search mode", "toggle", "share"
+- No markdown, no URLs, no citations in text
+- If drug name seems misspelled/misheard, suggest closest match
+- End with a short spoken follow-up question
+"""
+
 
 async def _save_prescription(
     user_id: str,
@@ -566,7 +576,11 @@ async def chat_endpoint(
     auth_token = user.token
     
     # Do not log message content (PHI/PII risk).
-    logger.info("Chat request received. web_search_mode=%s", chat_request.web_search_mode)
+    logger.info(
+        "Chat request received. web_search_mode=%s, voice_mode=%s",
+        chat_request.web_search_mode,
+        chat_request.voice_mode,
+    )
     
     try:
         # ============================================================
@@ -822,11 +836,17 @@ async def chat_endpoint(
                         msg_context += f"- {s.name}{price_info}{mfg_info}\n"
                 else:
                     if not chat_request.web_search_mode:
-                        response_text = (
-                            f"I couldn't find verified cheaper substitutes for {drug_name} "
-                            "in the current database. If you want, enable Search mode for live market options "
-                            "or share specific alternatives and I can compare them."
-                        )
+                        if chat_request.voice_mode:
+                            response_text = (
+                                f"I couldn't find verified cheaper substitutes for {drug_name} in my current database. "
+                                "I can check live market options now if you want. Should I proceed?"
+                            )
+                        else:
+                            response_text = (
+                                f"I couldn't find verified cheaper substitutes for {drug_name} "
+                                "in the current database. If you want, enable Search mode for live market options "
+                                "or share specific alternatives and I can compare them."
+                            )
                         asyncio.create_task(save_message_to_session(
                             user_id=user_id,
                             session_id=session_id,
@@ -837,7 +857,7 @@ async def chat_endpoint(
                         return ChatResponse(
                             response=response_text,
                             citations=[],
-                            suggestions=[
+                            suggestions=[] if chat_request.voice_mode else [
                                 f"Compare {drug_name} with a specific alternative",
                                 "Enable Search mode for live options",
                                 "Show generic name and dosing equivalent"
@@ -855,10 +875,16 @@ async def chat_endpoint(
                         "Do not fabricate exact prices/manufacturers, and do not output raw URLs in the main answer.]"
                     )
             else:
-                response_text = (
-                    "Please specify the exact medicine and strength (for example: Augmentin 625 mg) "
-                    "so I can check verified cheaper substitutes."
-                )
+                if chat_request.voice_mode:
+                    response_text = (
+                        "Please tell me the exact medicine name and strength, for example Augmentin 625 mg, "
+                        "and I will check cheaper substitutes. Which medicine should I check?"
+                    )
+                else:
+                    response_text = (
+                        "Please specify the exact medicine and strength (for example: Augmentin 625 mg) "
+                        "so I can check verified cheaper substitutes."
+                    )
                 asyncio.create_task(save_message_to_session(
                     user_id=user_id,
                     session_id=session_id,
@@ -869,7 +895,7 @@ async def chat_endpoint(
                 return ChatResponse(
                     response=response_text,
                     citations=[],
-                    suggestions=[
+                    suggestions=[] if chat_request.voice_mode else [
                         "Give cheaper substitutes for Augmentin 625",
                         "Compare two specific alternatives",
                         "Show generic equivalent"
@@ -1136,10 +1162,16 @@ async def chat_endpoint(
         if is_freshness_query and not web_results:
             as_of_dt = datetime.now(timezone.utc)
             as_of_label = f"{as_of_dt.strftime('%B')} {as_of_dt.day}, {as_of_dt.year}"
-            response_text = (
-                f"I couldn't verify a current update from live authoritative sources as of {as_of_label}. "
-                "Please retry in Search mode shortly."
-            )
+            if chat_request.voice_mode:
+                response_text = (
+                    f"As of {as_of_label}, I couldn't verify a current update from live authoritative sources. "
+                    "I can try a live web check now if you want."
+                )
+            else:
+                response_text = (
+                    f"I couldn't verify a current update from live authoritative sources as of {as_of_label}. "
+                    "Please retry in Search mode shortly."
+                )
             asyncio.create_task(save_message_to_session(
                 user_id=user_id,
                 session_id=session_id,
@@ -1151,7 +1183,7 @@ async def chat_endpoint(
             return ChatResponse(
                 response=response_text,
                 citations=[],
-                suggestions=[
+                suggestions=[] if chat_request.voice_mode else [
                     "Retry this query in Search mode",
                     "Ask for guidance by country (e.g., US or India)",
                     "Ask for sources to review directly"
@@ -1168,6 +1200,14 @@ async def chat_endpoint(
             full_message += ocr_context
         full_message += msg_context
 
+        prefix_parts = []
+        rep_prefix = get_pharma_rep_system_prompt(rep_company)
+        if rep_prefix:
+            prefix_parts.append(rep_prefix)
+        if chat_request.voice_mode:
+            prefix_parts.append(VOICE_MODE_PREFIX)
+        effective_system_prefix = "\n\n".join(prefix_parts)
+
         gemini_result = await generate_response(
             message=full_message,  # Inject structured data including OCR
             patient_context=chat_request.patient_context,
@@ -1176,12 +1216,14 @@ async def chat_endpoint(
             rag_context=rag_content,
             images=chat_request.images,
             language=chat_request.language,  # Multi-language support
-            system_prompt_prefix=get_pharma_rep_system_prompt(rep_company),
+            system_prompt_prefix=effective_system_prefix,
         )
 
         response_text = gemini_result.get("response", "")
         citations = gemini_result.get("citations", [])
         suggestions = gemini_result.get("suggestions", [])
+        if chat_request.voice_mode:
+            suggestions = []
 
         # Guardrail: when live substitute results exist, avoid returning stale "no substitutes" fallback text.
         if substitute_needs_live_search and web_results and _is_substitute_fallback_response(response_text):

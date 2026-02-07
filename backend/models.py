@@ -37,6 +37,7 @@ class ChatRequest(BaseModel):
     web_search_mode: bool = Field(False, description="Force web search for this query")
     images: List[str] = Field(default_factory=list, description="List of base64 encoded images")
     language: str = Field("auto", description="Language code (en, hi, ta, te, bn, mr, gu, pa, kn, ml, or) or 'auto' for detection")
+    voice_mode: bool = Field(False)
 
 
 class WebSearchResult(BaseModel):
@@ -142,6 +143,20 @@ class ChatResponse(BaseModel):
     session_id: str = Field(..., description="Session ID for this conversation")
     web_sources: List[WebSearchResult] = Field(default_factory=list, description="Web search results used")
     track2: Optional[Track2Data] = Field(None, description="Structured Track 2 context (insurance, MoA, comparison, rep mode)")
+
+
+# ============================================================================
+# VOICE MODELS
+# ============================================================================
+
+class VoiceTranscribeResponse(BaseModel):
+    text: str = Field(default="")
+
+
+class VoiceTtsRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=400)
+    voice: Optional[str] = None
+    response_format: Literal["wav", "mp3"] = "wav"
 
 
 # ============================================================================

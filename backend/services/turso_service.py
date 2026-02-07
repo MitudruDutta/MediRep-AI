@@ -112,15 +112,18 @@ def search_drugs(query: str, limit: int = 10) -> List[Dict[str, Any]]:
         # Clean the query - remove spaces between brand and strength
         query_clean = query.strip()
         
-        # Strategy 1: Direct LIKE search
+        # Strategy 1: Direct LIKE search (prefer names starting with query)
         rs = conn.execute(
             """
             SELECT id, name, generic_name, manufacturer, price_raw, description
             FROM drugs
             WHERE name LIKE ? OR generic_name LIKE ?
+            ORDER BY
+                CASE WHEN LOWER(name) LIKE LOWER(? || '%') THEN 0 ELSE 1 END,
+                LENGTH(name)
             LIMIT ?
             """,
-            (f"%{query_clean}%", f"%{query_clean}%", limit)
+            (f"%{query_clean}%", f"%{query_clean}%", query_clean, limit)
         )
         
         for row in rs.rows:

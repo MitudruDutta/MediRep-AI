@@ -16,14 +16,14 @@ import {
 import { ExportFormat } from "@/components/ExportSummary/export-format-selector";
 import { ExportOptionsData } from "@/components/ExportSummary/export-options";
 import { ExportHistoryItem } from "@/components/ExportSummary/export-history";
-import { DrugInteraction, FDAAlert } from "@/types";
-import { getSavedDrugs, checkInteractions, getFDAAlerts, getPatientContext } from "@/lib/api";
+import { DrugInteraction } from "@/types";
+import { getSavedDrugs, checkInteractions, getPatientContext } from "@/lib/api";
 
 export default function ExportSummaryWidget() {
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>("json");
   const [isLoading, setIsLoading] = useState(false);
   const [exportHistory, setExportHistory] = useState<ExportHistoryItem[]>([]);
-  
+
   const [exportOptions, setExportOptions] = useState<ExportOptionsData>({
     includeDrugInfo: true,
     includeInteractions: true,
@@ -37,7 +37,6 @@ export default function ExportSummaryWidget() {
   const [exportData, setExportData] = useState({
     drugs: [] as any[],
     interactions: [] as DrugInteraction[],
-    alerts: [] as FDAAlert[],
     savedDrugs: [] as any[],
   });
 
@@ -46,19 +45,19 @@ export default function ExportSummaryWidget() {
     const loadData = async () => {
       try {
         setIsLoading(true);
-        
+
         // 1. Get Saved Drugs
         const saved = await getSavedDrugs();
         let currentSaved = [];
-        
+
         if (Array.isArray(saved)) {
-           currentSaved = saved;
-           setExportData(prev => ({ ...prev, savedDrugs: saved }));
+          currentSaved = saved;
+          setExportData(prev => ({ ...prev, savedDrugs: saved }));
         }
 
         if (currentSaved.length === 0) {
-            setIsLoading(false);
-            return;
+          setIsLoading(false);
+          return;
         }
 
         const drugNames = currentSaved.map(d => d.drug_name);
@@ -66,25 +65,18 @@ export default function ExportSummaryWidget() {
         // 2. Get Patient Context (for interaction checking)
         let patientContext = null;
         try {
-            patientContext = await getPatientContext();
-        } catch(e) { console.warn("No patient context found"); }
+          patientContext = await getPatientContext();
+        } catch (e) { console.warn("No patient context found"); }
 
         // 3. Fetch Interactions
         try {
-            const interactionRes: any = await checkInteractions(drugNames, patientContext);
-            if (interactionRes && interactionRes.interactions) {
-                setExportData(prev => ({ ...prev, interactions: interactionRes.interactions }));
-            }
+          const interactionRes: any = await checkInteractions(drugNames, patientContext);
+          if (interactionRes && interactionRes.interactions) {
+            setExportData(prev => ({ ...prev, interactions: interactionRes.interactions }));
+          }
         } catch (e) { console.error("Interaction fetch failed", e); }
 
-        // 4. Fetch FDA Alerts (Parallel)
-        try {
-            const alertPromises = drugNames.map(name => getFDAAlerts(name).catch(() => ({ alerts: [] })));
-            const alertResults = await Promise.all(alertPromises);
-            const allAlerts = alertResults.flatMap((res: any) => res.alerts || []);
-            
-            setExportData(prev => ({ ...prev, alerts: allAlerts }));
-        } catch (e) { console.error("Alert fetch failed", e); }
+
 
       } catch (e) {
         console.error("Failed to load export data:", e);
@@ -92,7 +84,7 @@ export default function ExportSummaryWidget() {
         setIsLoading(false);
       }
     };
-    
+
     // Only fetch if authenticated (simple check: if we have tokens)
     // For now, just run it.
     loadData();
@@ -108,7 +100,7 @@ export default function ExportSummaryWidget() {
 
   const handleExport = () => {
     setIsLoading(true);
-    
+
     try {
       const filteredData: any = {};
 
@@ -118,9 +110,7 @@ export default function ExportSummaryWidget() {
       if (exportOptions.includeInteractions) {
         filteredData.interactions = exportData.interactions;
       }
-      if (exportOptions.includeAlerts) {
-        filteredData.alerts = exportData.alerts;
-      }
+
       if (exportOptions.includeSavedDrugs) {
         filteredData.savedDrugs = exportData.savedDrugs;
       }
@@ -131,7 +121,6 @@ export default function ExportSummaryWidget() {
         filteredData.metadata = {
           totalDrugs: exportData.drugs.length,
           totalInteractions: exportData.interactions.length,
-          totalAlerts: exportData.alerts.length,
           exportFormat: selectedFormat,
         };
       }
@@ -197,7 +186,7 @@ export default function ExportSummaryWidget() {
 
   const generateCSV = (data: any) => {
     let csv = "";
-    
+
     if (data.drugs) {
       csv += "Drug Name,Generic Name,Manufacturer\n";
       data.drugs.forEach((drug: any) => {
@@ -214,19 +203,13 @@ export default function ExportSummaryWidget() {
       csv += "\n";
     }
 
-    if (data.alerts) {
-      csv += "Alert ID,Severity,Title,Description,Date\n";
-      data.alerts.forEach((alert: any) => {
-        csv += `"${alert.id}","${alert.severity}","${alert.title}","${alert.description}","${alert.date || ""}"\n`;
-      });
-    }
 
     return csv;
   };
 
   const generateXML = (data: any) => {
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<export>\n';
-    
+
     if (data.drugs) {
       xml += '  <drugs>\n';
       data.drugs.forEach((drug: any) => {
@@ -283,7 +266,6 @@ export default function ExportSummaryWidget() {
   const stats = {
     drugCount: exportData.drugs.length,
     interactionCount: exportData.interactions.length,
-    alertCount: exportData.alerts.length,
     savedDrugCount: exportData.savedDrugs.length,
   };
 
@@ -298,16 +280,16 @@ export default function ExportSummaryWidget() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => window.location.reload()}
           >
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh Data
           </Button>
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             onClick={handleExport}
             disabled={isLoading}
           >
@@ -350,11 +332,10 @@ export default function ExportSummaryWidget() {
             options={exportOptions}
             onOptionsChange={setExportOptions}
           />
-          
+
           <ExportSummaryCard
             drugs={exportData.drugs.map(d => d.name)}
             interactions={exportData.interactions}
-            alerts={exportData.alerts}
           />
         </div>
 

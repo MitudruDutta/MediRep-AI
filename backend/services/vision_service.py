@@ -325,11 +325,19 @@ async def query_drugs_by_features(features: PillFeatures) -> List[DrugMatch]:
             for row in turso_results:
                 name_lower = row.get("name", "").lower()
                 imprint_lower = imprint_clean.lower()
-                
-                if imprint_lower in name_lower or name_lower in imprint_lower:
-                    score = 0.9
-                else:
+                imprint_first_word = imprint_lower.split()[0] if imprint_lower else ""
+
+                if name_lower.startswith(imprint_lower):
+                    # "dolo 650mg tablet" starts with "dolo 650" → best match
+                    score = 0.95
+                elif imprint_first_word and name_lower.startswith(imprint_first_word):
+                    # Name starts with the brand word "dolo" → strong match
+                    score = 0.85
+                elif imprint_lower in name_lower or name_lower in imprint_lower:
+                    # Substring only (e.g., "Aeldolo" contains "dolo") → weak
                     score = 0.6
+                else:
+                    score = 0.5
                 
                 matches.append(DrugMatch(
                     name=row.get("name", "Unknown"),

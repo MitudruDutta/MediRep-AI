@@ -1,1 +1,1 @@
-from . import chat, drugs, vision
+from . import chat, drugs, vision, voice

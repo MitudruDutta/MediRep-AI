@@ -1,4 +1,4 @@
-import { PatientContext, Message, FDAAlertResponse, ChatResponse, SessionSummary, DrugInfo } from "@/types";
+import { PatientContext, Message, ChatResponse, SessionSummary, DrugInfo } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -6,15 +6,16 @@ const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").rep
 /**
  * Get authentication headers with the current user's access token
  */
-async function getAuthHeaders(): Promise<HeadersInit> {
+async function getAuthHeaders(includeJsonContentType: boolean = true): Promise<HeadersInit> {
   const supabase = createClient();
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
+  const headers: HeadersInit = {};
+  if (includeJsonContentType) {
+    headers["Content-Type"] = "application/json";
+  }
 
   if (session?.access_token) {
     headers["Authorization"] = `Bearer ${session.access_token}`;
@@ -83,7 +84,8 @@ export async function sendMessage(
   sessionId?: string,
   webSearchMode: boolean = false,
   images?: string[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  voiceMode?: boolean
 ): Promise<ChatResponse> {
   const headers = await getAuthHeaders();
 
@@ -96,12 +98,63 @@ export async function sendMessage(
       history: [], // Backend uses DB history now; sending empty to save bandwidth
       session_id: sessionId,
       web_search_mode: webSearchMode,
-      images: images || []
+      images: images || [],
+      voice_mode: voiceMode || false,
     }),
     signal, // AbortController signal for cancellation
   });
 
   return handleResponse<ChatResponse>(response);
+}
+
+export async function transcribeVoiceAudio(
+  audioBlob: Blob,
+  language: string = "auto"
+): Promise<string> {
+  const headers = await getAuthHeaders(false);
+  const formData = new FormData();
+  const fileType = audioBlob.type || "audio/webm";
+  const extension = fileType.includes("mp4")
+    ? "mp4"
+    : fileType.includes("ogg")
+      ? "ogg"
+      : fileType.includes("wav")
+        ? "wav"
+        : "webm";
+
+  formData.append("file", audioBlob, `voice_input.${extension}`);
+  formData.append("language", language);
+
+  const response = await fetch(`${API_URL}/api/voice/transcribe`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  const data = await handleResponse<{ text: string }>(response);
+  return (data.text || "").trim();
+}
+
+export async function synthesizeVoiceAudio(
+  text: string,
+  responseFormat: "wav" | "mp3" = "wav"
+): Promise<Blob> {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${API_URL}/api/voice/tts`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      text,
+      response_format: responseFormat,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `TTS failed: ${response.statusText}`);
+  }
+
+  return response.blob();
 }
 
 export async function searchDrugs(query: string) {
@@ -224,10 +277,7 @@ export async function identifyPill(imageFile: File) {
   return handleResponse(response);
 }
 
-export async function getFDAAlerts(drugName: string): Promise<FDAAlertResponse> {
-  const encodedName = encodeURIComponent(drugName);
-  return authFetch<FDAAlertResponse>(`${API_URL}/api/alerts/${encodedName}`);
-}
+
 
 export async function getSessionMessages(sessionId: string): Promise<Message[]> {
   const messages = await authFetch<any[]>(`${API_URL}/api/sessions/${sessionId}/messages`);

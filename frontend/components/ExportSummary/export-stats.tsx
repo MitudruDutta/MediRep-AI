@@ -8,17 +8,15 @@ import { cn } from "@/lib/utils";
 export interface ExportStatsProps {
   drugCount: number;
   interactionCount: number;
-  alertCount: number;
   savedDrugCount: number;
   className?: string;
 }
 
-export function ExportStats({ 
-  drugCount, 
-  interactionCount, 
-  alertCount, 
+export function ExportStats({
+  drugCount,
+  interactionCount,
   savedDrugCount,
-  className 
+  className
 }: ExportStatsProps) {
   const stats = [
     {
@@ -34,13 +32,6 @@ export function ExportStats({
       icon: AlertTriangle,
       color: "text-yellow-500",
       bgColor: "bg-yellow-500/10",
-    },
-    {
-      label: "Alerts",
-      value: alertCount,
-      icon: Shield,
-      color: "text-red-500",
-      bgColor: "bg-red-500/10",
     },
     {
       label: "Saved",
