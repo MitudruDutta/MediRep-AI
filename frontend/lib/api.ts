@@ -85,7 +85,8 @@ export async function sendMessage(
   webSearchMode: boolean = false,
   images?: string[],
   signal?: AbortSignal,
-  voiceMode?: boolean
+  voiceMode?: boolean,
+  chatMode?: string
 ): Promise<ChatResponse> {
   const headers = await getAuthHeaders();
 
@@ -100,6 +101,7 @@ export async function sendMessage(
       web_search_mode: webSearchMode,
       images: images || [],
       voice_mode: voiceMode || false,
+      chat_mode: chatMode || "normal",
     }),
     signal, // AbortController signal for cancellation
   });
@@ -321,6 +323,10 @@ export async function clearRepModeStatus(): Promise<{ success: boolean; message?
     method: "POST",
     body: JSON.stringify({}),
   });
+}
+
+export async function getAvailableCompanies(): Promise<{ companies: { key: string; name: string; focus: string }[] }> {
+  return authFetch<{ companies: { key: string; name: string; focus: string }[] }>(`${API_URL}/api/user/rep-mode/companies`);
 }
 
 export async function setRepModeStatus(company: string): Promise<RepModeContext> {

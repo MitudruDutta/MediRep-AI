@@ -321,26 +321,10 @@ def _is_pmjay_package_rate_request(message: str) -> bool:
 
 
 def _is_insurance_like_query(message: str) -> bool:
-    """Detect insurance/reimbursement/admin asks, including common shorthand misspellings."""
-    msg = (message or "").lower()
-    if not msg:
-        return False
-
-    scheme_markers = (
-        "pmjay", "pm-jay", "pmj", "pm jai", "ayushman",
-        "cghs", "esi", "esic", "hbp",
-    )
-    insurance_markers = (
-        "insurance", "coverage", "covered", "reimbursement", "reimburse",
-        "package rate", "package code", "tariff", "claim", "cashless", "scheme",
-    )
-    if any(m in msg for m in insurance_markers):
-        return True
-    if any(m in msg for m in scheme_markers) and any(
-        k in msg for k in ("rate", "package", "code", "replacement", "surgery", "procedure", "hip", "knee", "coverage")
-    ):
-        return True
-    return False
+    """Detect insurance/reimbursement/admin asks using centralized logic."""
+    from services.enhanced_context_service import detect_enhanced_intents
+    intents = detect_enhanced_intents(message)
+    return "INSURANCE" in intents
 
 
 def _render_pmjay_package_rate_answer(insurance_ctx, user_message: str) -> Optional[str]:
@@ -767,12 +751,62 @@ async def chat_endpoint(
         # 1. Intent Planning & Entity Extraction (LLM Powered)
         plan = await plan_intent(chat_request.message, history=intent_history_for_llm)
         logger.info("Intent Plan: %s, Drugs: %s", plan.intent, plan.drug_names)
+        
         enhanced_intents = detect_enhanced_intents(chat_request.message)
-        is_insurance_query = ("INSURANCE" in enhanced_intents) or _is_insurance_like_query(chat_request.message)
+        logger.info(f"[DEBUG] Initial Enhanced Intents: {enhanced_intents}")
+        
+        regex_insurance_check = _is_insurance_like_query(chat_request.message)
+        logger.info(f"[DEBUG] _is_insurance_like_query regex check: {regex_insurance_check}")
+        
+        is_insurance_query = ("INSURANCE" in enhanced_intents) or regex_insurance_check
+        logger.info(f"[DEBUG] Final is_insurance_query: {is_insurance_query}")
+        
         if is_insurance_query:
             enhanced_intents.add("INSURANCE")
+        
         is_freshness_query = _is_freshness_sensitive_query(chat_request.message)
         is_moa_query = "MOA" in enhanced_intents
+
+        # ============================================================
+        # STRICT MODE ENFORCEMENT
+        # ============================================================
+        mode = (chat_request.chat_mode or "normal").lower()
+        
+        if mode == "insurance":
+            # Strict rejection of non-insurance queries
+            if not is_insurance_query:
+                return ChatResponse(
+                    response="[Active Mode: Insurance]\n\nI can only answer questions about **PM-JAY, Health Insurance, Reimbursement, and Package Rates** in this mode.\n\nPlease switch to **Default Chat** for clinical queries or diagnosis.",
+                    session_id=session_id
+                )
+        
+        elif mode == "moa":
+            # Strict rejection of insurance queries in MOA mode
+            if is_insurance_query:
+                return ChatResponse(
+                    response="[Active Mode: Mechanism of Action]\n\nI am focused on **Pharmacology and Molecular Mechanisms**. I cannot verify insurance coverage or prices in this mode.\n\nPlease switch to **Insurance Mode** for reimbursement queries.",
+                    session_id=session_id
+                )
+        
+        elif mode.startswith("rep"):
+            # Strict Rep Mode: Reject generic irrelevant chitchat if possible, 
+            # but usually Reps need to answer "price" or "availability".
+            # We strictly block "Competitor Promotion" or "Diagnosis" if easy to detect,
+            # but usually the system prompt handles this best. 
+            pass
+
+        # Use strict mode to override intent if needed
+        if mode == "insurance":
+            # Force intent to optimize for insurance RAG
+            enhanced_intents.add("INSURANCE")
+        
+        if mode == "moa":
+            # Force MOA intent
+            enhanced_intents.add("MOA")
+
+        # ============================================================
+        
+        # Guardrail: insurance/admin package-rate questions should not be routed into
 
         # Guardrail: insurance/admin package-rate questions should not be routed into
         # substitute flow even if planner misclassifies intent from prior drug context.

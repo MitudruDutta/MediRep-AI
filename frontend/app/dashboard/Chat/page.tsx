@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useChat } from "@/hooks/useChat";
 import { useProfile } from "@/hooks/useProfile";
 import { usePatientContext } from "@/lib/context/PatientContext";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   ChatMessages,
   ChatMessage,
@@ -15,20 +15,65 @@ import { ChatSidebar } from "@/components/Chat/ChatSidebar";
 import { RepModeBadge } from "@/components/Chat/RepModeBadge";
 import { PromptInputBox } from "@/components/ai-prompt-box";
 import { VoiceCallOverlay } from "@/components/Voice/VoiceCallOverlay";
-import { Bot, PanelLeftOpen, PanelLeftClose, Globe, ExternalLink, Loader2, Sparkles } from "lucide-react";
+import { Bot, PanelLeftOpen, PanelLeftClose, Globe, ExternalLink, Loader2, Sparkles, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const SUGGESTIONS = [
-  { label: "Drug interactions", prompt: "Check interactions between Aspirin and Warfarin" },
-  { label: "Side effects", prompt: "What are the common side effects of Metformin?" },
-  { label: "Dosage info", prompt: "What is the standard dosage for Amoxicillin?" },
-  { label: "Identify pill", prompt: "Help me identify a pill based on its physical appearance" },
-];
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { getAvailableCompanies } from "@/lib/api";
+
+const MODE_SUGGESTIONS = {
+  normal: [
+    { label: "Drug interactions", prompt: "Check interactions between Aspirin and Warfarin" },
+    { label: "Side effects", prompt: "What are the common side effects of Metformin?" },
+    { label: "Dosage info", prompt: "What is the standard dosage for Amoxicillin?" },
+    { label: "Identify pill", prompt: "Help me identify a pill based on its physical appearance" },
+  ],
+  insurance: [
+    { label: "Check PMJAY Rates", prompt: "What is the PMJAY package rate for Angioplasty?" },
+    { label: "Coverage Check", prompt: "Is Hip Replacement covered under PMJAY?" },
+    { label: "Reimbursement", prompt: "How do I claim reimbursement for Cataract surgery?" },
+    { label: "Package Code", prompt: "Find the package code for Knee Replacement" },
+  ],
+  moa: [
+    { label: "Explain Mechanism", prompt: "Explain the mechanism of action of Ozempic" },
+    { label: "Pathway", prompt: "Describe the molecular pathway of Metformin" },
+    { label: "Pharmacology", prompt: "What is the pharmacokinetics of Atorvastatin?" },
+    { label: "Compare MOA", prompt: "Compare the MOA of ACE inhibitors vs ARBs" },
+  ],
+  rep: [
+    { label: "Product Portfolio", prompt: "List your top respiratory products" },
+    { label: "Brand Benefits", prompt: "Why should I prescribe your brand over the generic?" },
+    { label: "Comp. Differentiators", prompt: "How is your product better than the competitor?" },
+    { label: "Support Programs", prompt: "What patient support programs do you offer?" },
+  ]
+};
+
+const getSuggestions = (mode: string, company?: string) => {
+  if (mode === "rep" && company) {
+    return [
+      { label: `${company} Portfolio`, prompt: `List top products for ${company}` },
+      { label: `Prescribe ${company}`, prompt: `Why should I prescribe ${company} products?` },
+      { label: `${company} Support`, prompt: `What support programs does ${company} offer?` },
+      { label: "Clinical Evidence", prompt: "Show clinical evidence for key products" },
+    ];
+  }
+  return MODE_SUGGESTIONS[mode as keyof typeof MODE_SUGGESTIONS] || MODE_SUGGESTIONS.normal;
+};
 
 export default function ChatPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [webSearchMode, setWebSearchMode] = useState(false);
   const [isVoiceCallOpen, setIsVoiceCallOpen] = useState(false);
+  const [chatMode, setChatMode] = useState<string>("normal");
+  const [companies, setCompanies] = useState<{ key: string; name: string }[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState<string>("");
+  const router = useRouter();
 
   const {
     messages,
@@ -65,16 +110,37 @@ export default function ChatPage() {
     return () => window.removeEventListener('resize', checkSize);
   }, []);
 
+  useEffect(() => {
+    if (chatMode === "rep" && companies.length === 0) {
+      getAvailableCompanies().then((data) => {
+        if (data?.companies) {
+          setCompanies(data.companies);
+        }
+      }).catch(console.error);
+    }
+  }, [chatMode, companies.length]);
+
   const handleSend = async (message: string, files?: File[], isSearchMode?: boolean) => {
     if (!message.trim() && (!files || files.length === 0)) return;
-    await send(message, patientContext || undefined, isSearchMode || false, files);
+
+    // Pass chatMode and company override if applicable
+    let modeContext = chatMode;
+    if (chatMode === "rep" && selectedCompany) {
+      modeContext = `rep:${selectedCompany}`;
+    }
+
+    await send(message, patientContext || undefined, isSearchMode || false, files, false, modeContext);
   };
 
   const handleVoiceTurn = useCallback(async (transcript: string): Promise<string | null> => {
-    const response = await send(transcript, patientContext || undefined, webSearchMode, undefined, true);
+    let modeContext = chatMode;
+    if (chatMode === "rep" && selectedCompany) {
+      modeContext = `rep:${selectedCompany}`;
+    }
+    const response = await send(transcript, patientContext || undefined, webSearchMode, undefined, true, modeContext);
     const assistant = (response?.response || "").trim();
     return assistant || null;
-  }, [patientContext, send, webSearchMode]);
+  }, [patientContext, send, webSearchMode, chatMode, selectedCompany]);
 
   const showEmptyState = messages.length === 0 && !isGenerating && !isLoadingHistory;
 
@@ -96,6 +162,16 @@ export default function ChatPage() {
           <Button
             variant="ghost"
             size="icon"
+            onClick={() => router.push("/dashboard")}
+            className="h-8 w-8 text-(--landing-muted) hover:text-(--landing-ink) mr-1"
+            title="Back to Dashboard"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="h-8 w-8 text-(--landing-muted) hover:text-(--landing-ink)"
           >
@@ -109,6 +185,36 @@ export default function ChatPage() {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+
+            {/* Company Selector (Only in Rep Mode) */}
+            {chatMode === "rep" && (
+              <Select value={selectedCompany} onValueChange={setSelectedCompany}>
+                <SelectTrigger className="w-[160px] h-8 text-xs bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <SelectValue placeholder="Select Company" />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  {companies.map((c) => (
+                    <SelectItem key={c.key} value={c.name}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {/* Mode Selector */}
+            <Select value={chatMode} onValueChange={setChatMode}>
+              <SelectTrigger className="w-[140px] h-8 text-xs bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+                <SelectValue placeholder="Mode" />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="normal">Default Chat</SelectItem>
+                <SelectItem value="insurance">Insurance</SelectItem>
+                <SelectItem value="moa">Mechanism (MOA)</SelectItem>
+                <SelectItem value="rep">Rep Mode</SelectItem>
+              </SelectContent>
+            </Select>
+
             {activeRepMode && (
               <RepModeBadge
                 repMode={activeRepMode}
@@ -159,7 +265,7 @@ export default function ChatPage() {
 
                 {/* Suggestions */}
                 <div className="flex flex-wrap justify-center gap-2">
-                  {SUGGESTIONS.map((s, i) => (
+                  {getSuggestions(chatMode, selectedCompany).map((s, i) => (
                     <button
                       key={i}
                       onClick={() => handleSend(s.prompt)}

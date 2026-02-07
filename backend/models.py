@@ -38,6 +38,7 @@ class ChatRequest(BaseModel):
     images: List[str] = Field(default_factory=list, description="List of base64 encoded images")
     language: str = Field("auto", description="Language code (en, hi, ta, te, bn, mr, gu, pa, kn, ml, or) or 'auto' for detection")
     voice_mode: bool = Field(False)
+    chat_mode: Optional[str] = Field("normal", description="Chat mode: normal, insurance, moa, rep, rep:Company")
 
 
 class WebSearchResult(BaseModel):

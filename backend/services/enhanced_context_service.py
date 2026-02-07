@@ -191,34 +191,47 @@ def detect_enhanced_intents(message: str) -> Set[str]:
     msg_lower = message.lower()
     intents = set()
 
+    # Helper for word-boundary check
+    def has_keyword_regex(text: str, keywords: Set[str], label: str) -> bool:
+        for k in keywords:
+            # Use strict word boundary for standard keywords
+            # For multi-word phrases, boundaries apply to the whole phrase start/end
+            pattern = r"\b" + re.escape(k) + r"\b"
+            if re.search(pattern, text):
+                logger.info(f"[DEBUG] Intent {label} matched keyword: '{k}'")
+                return True
+        return False
+
     # Check for MOA intent
-    if any(kw in msg_lower for kw in MOA_KEYWORDS):
+    if has_keyword_regex(msg_lower, MOA_KEYWORDS, "MOA"):
         intents.add("MOA")
 
     # Check for comparison intent
-    if any(kw in msg_lower for kw in COMPARE_KEYWORDS):
+    if has_keyword_regex(msg_lower, COMPARE_KEYWORDS, "COMPARE"):
         intents.add("COMPARE")
 
     # Check for insurance intent
-    if any(kw in msg_lower for kw in INSURANCE_KEYWORDS):
+    if has_keyword_regex(msg_lower, INSURANCE_KEYWORDS, "INSURANCE"):
         intents.add("INSURANCE")
 
     # Check for pharma rep mode intent
-    if any(kw in msg_lower for kw in PHARMA_REP_KEYWORDS):
+    if has_keyword_regex(msg_lower, PHARMA_REP_KEYWORDS, "PHARMA_REP"):
         intents.add("PHARMA_REP")
 
-    # Check for product lookup intent (useful when in rep mode)
-    if any(kw in msg_lower for kw in PRODUCT_KEYWORDS):
+    # Check for product lookup intent
+    if has_keyword_regex(msg_lower, PRODUCT_KEYWORDS, "PRODUCTS"):
         intents.add("PRODUCTS")
 
-    # Check for support program intent (useful when in rep mode)
-    if any(kw in msg_lower for kw in SUPPORT_KEYWORDS):
+    # Check for support program intent
+    if has_keyword_regex(msg_lower, SUPPORT_KEYWORDS, "SUPPORT"):
         intents.add("SUPPORT")
 
-    # Check for drug class listing intent (e.g., "list all ACE inhibitors")
-    if any(kw in msg_lower for kw in CLASS_LIST_KEYWORDS):
+    # Check for drug class listing intent
+    start_pattern = r"\b(" + "|".join(re.escape(k) for k in CLASS_LIST_KEYWORDS) + r")\b"
+    if re.search(start_pattern, msg_lower):
         # Also verify a drug class name is mentioned
-        if any(cls in msg_lower for cls in DRUG_CLASS_NAMES):
+        class_pattern = r"\b(" + "|".join(re.escape(k) for k in DRUG_CLASS_NAMES) + r")\b"
+        if re.search(class_pattern, msg_lower):
             intents.add("CLASS_LIST")
 
     return intents

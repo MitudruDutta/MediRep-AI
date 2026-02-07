@@ -196,6 +196,21 @@ async def clear_rep_mode_status(
         raise HTTPException(status_code=500, detail="Failed to clear rep mode")
 
 
+@router.get("/rep-mode/companies")
+async def get_available_companies_endpoint(
+    current_user: object = Depends(get_current_user)
+):
+    """Get list of available pharma companies for rep mode."""
+    try:
+        companies = await asyncio.to_thread(
+            pharma_rep_service.get_available_companies,
+            current_user.token,
+        )
+        return {"companies": companies}
+    except Exception as e:
+        logger.error("Failed to get available companies: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to get available companies")
+
 @router.post("/rep-mode/set")
 async def set_rep_mode_status(
     body: RepModeSetRequest,

@@ -118,7 +118,8 @@ export function useChat() {
     patientContext?: PatientContext,
     webSearchMode: boolean = false,
     files?: File[],
-    voiceMode: boolean = false
+    voiceMode: boolean = false,
+    chatMode: string = "normal"
   ): Promise<ChatResponse | null> => {
     // Cancel any existing request
     if (abortControllerRef.current) {
@@ -161,17 +162,49 @@ export function useChat() {
 
     setMessages((prev) => [...prev, userMessage]);
 
+    // Prepare message with context based on mode
+    // Prepare message with context based on mode
+    let messageToSend = content;
+    if (chatMode === "insurance") {
+      messageToSend = `[SYSTEM: ACTIVATING INSURANCE MODE. You are an expert in health insurance, PMJAY schemes, and reimbursement.
+IMPORTANT: You must ONLY answer questions related to insurance, coverage, package rates, and claims.
+If the user asks about unrelated topics (like diagnosis, treatment, or general chitchat), politely refuse and guide them back to insurance topics.
+Do not provide medical advice or MOA details in this mode.] ${content}`;
+    } else if (chatMode === "moa") {
+      messageToSend = `[SYSTEM: ACTIVATING MOA MODE. You are an expert in Pharmacology and Molecular Mechanisms.
+IMPORTANT: You must ONLY answer questions related to Mechanism of Action (MOA), pharmacokinetics, pharmacodynamics, and molecular pathways.
+If the user asks about insurance, general checkups, or pricing, politely refuse and guide them back to scientific pharmacology topics.
+Focus on receptors, enzymes, and pathway inhibition.] ${content}`;
+    } else if (chatMode === "rep") {
+      // Generic rep mode
+      messageToSend = `[SYSTEM: ACTIVATING REP MODE. You are a Medical Representative.
+IMPORTANT: You must ONLY answer questions related to product promotion, brand benefits, and handling objections.
+If possible, mention general pharmaceutical products.
+Do not get into deep diagnostics or insurance schemes unless they support the product pitch.] ${content}`;
+    } else if (chatMode.startsWith("rep:")) {
+      // Specific company rep mode
+      const company = chatMode.split(":")[1];
+      messageToSend = `[SYSTEM: ACTIVATING BRAND REP MODE for ${company}.
+IMPORTANT: You are exclusively representing ${company}.
+1. PROMOTE ONLY ${company} products.
+2. If asked about competitors, pivot back to ${company}'s advantages.
+3. USE DATA from the database (focus areas, products) to answer.
+4. REFUSE to answer general questions irrelevant to ${company}'s portfolio or medical domain.
+5. BE PROFESSIONAL but PERSUASIVE.] ${content}`;
+    }
+
     try {
       // Send to backend with web search mode and images
       const response = await sendMessage(
-        content,
+        messageToSend,
         patientContext,
         undefined,
         sessionId || undefined,
         webSearchMode,
         images,
         abortControllerRef.current.signal,
-        voiceMode
+        voiceMode,
+        chatMode || "normal" // Pass chatMode explicitly
       );
 
       // Handle new session
