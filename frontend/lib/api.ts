@@ -1,4 +1,4 @@
-import { PatientContext, Message, ChatResponse, SessionSummary, DrugInfo } from "@/types";
+import { PatientContext, Message, ChatResponse, SessionSummary, DrugInfo, RepModeContext } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -303,6 +303,30 @@ export async function renameSession(sessionId: string, title: string) {
   return authFetch(`${API_URL}/api/sessions/${sessionId}`, {
     method: "PATCH",
     body: JSON.stringify({ title }),
+  });
+}
+
+export async function getRepModeStatus(): Promise<RepModeContext> {
+  try {
+    return await authFetch<RepModeContext>(`${API_URL}/api/user/rep-mode`);
+  } catch (error) {
+    // Non-critical endpoint: fail closed to "inactive" so chat UI still works.
+    console.warn("Rep mode status unavailable, defaulting to inactive:", error);
+    return { active: false };
+  }
+}
+
+export async function clearRepModeStatus(): Promise<{ success: boolean; message?: string }> {
+  return authFetch<{ success: boolean; message?: string }>(`${API_URL}/api/user/rep-mode/clear`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function setRepModeStatus(company: string): Promise<RepModeContext> {
+  return authFetch<RepModeContext>(`${API_URL}/api/user/rep-mode/set`, {
+    method: "POST",
+    body: JSON.stringify({ company }),
   });
 }
 

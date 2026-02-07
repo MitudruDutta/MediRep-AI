@@ -43,6 +43,58 @@ class PharmaRepService:
                 return value
         return value
 
+    def _normalize_company_text(self, value: Optional[str]) -> str:
+        """Normalize company text for robust fuzzy matching."""
+        if not value:
+            return ""
+        cleaned = value.lower().replace("_", " ").replace("-", " ").strip()
+        cleaned = " ".join(cleaned.split())
+        return cleaned
+
+    def _strip_legal_suffixes(self, value: str) -> str:
+        """Remove common legal suffixes from company names for matching."""
+        if not value:
+            return ""
+        suffixes = {
+            "ltd", "limited", "inc", "corp", "corporation", "co", "company", "plc", "llc", "pvt", "private"
+        }
+        words = [w for w in value.split() if w not in suffixes]
+        return " ".join(words).strip()
+
+    def _build_manufacturer_aliases(self, company_key: str, company_name: str) -> List[str]:
+        """Build safe aliases for manufacturer matching (avoid overly-broad tokens like 'sun')."""
+        key_norm = self._normalize_company_text(company_key)
+        name_norm = self._normalize_company_text(company_name)
+        name_core = self._strip_legal_suffixes(name_norm)
+
+        aliases: List[str] = []
+        for candidate in (key_norm, name_norm, name_core):
+            if not candidate:
+                continue
+            # Keep aliases that are specific enough:
+            # - multi-word aliases are allowed
+            # - single-word aliases must be at least 5 chars
+            if (" " in candidate) or len(candidate) >= 5:
+                aliases.append(candidate)
+
+        # De-duplicate while preserving order
+        seen = set()
+        out: List[str] = []
+        for alias in aliases:
+            if alias and alias not in seen:
+                seen.add(alias)
+                out.append(alias)
+        return out
+
+    def _is_manufacturer_match(self, manufacturer: Optional[str], aliases: List[str]) -> bool:
+        """Strict manufacturer match guardrail to prevent token-hallucinated portfolio leakage."""
+        if not manufacturer:
+            return False
+        m = self._normalize_company_text(manufacturer)
+        if not m:
+            return False
+        return any(alias in m for alias in aliases if alias)
+
     def _therapeutic_keywords(self, therapeutic_area: Optional[str]) -> List[str]:
         """Map a broad therapeutic area to robust matching keywords."""
         if not therapeutic_area:
@@ -142,7 +194,7 @@ class PharmaRepService:
                 self._company_cache[company["company_key"]] = company
                 return company
 
-            # Try partial match on company name
+            # Try partial match on company name (raw input)
             result = client.table("pharma_companies").select(
                 "*, pharma_support_programs(*)"
             ).ilike("company_name", f"%{company_key}%").eq("is_active", True).execute()
@@ -151,6 +203,27 @@ class PharmaRepService:
                 company = result.data[0]
                 self._company_cache[company["company_key"]] = company
                 return company
+
+            # Try normalized-name matching (handles inputs like "sun_pharmaceutical_industries_ltd")
+            normalized = self._normalize_company_text(company_key)
+            if normalized:
+                result = client.table("pharma_companies").select(
+                    "*, pharma_support_programs(*)"
+                ).ilike("company_name", f"%{normalized}%").eq("is_active", True).execute()
+                if result.data and len(result.data) > 0:
+                    company = result.data[0]
+                    self._company_cache[company["company_key"]] = company
+                    return company
+
+                normalized_core = self._strip_legal_suffixes(normalized)
+                if normalized_core and normalized_core != normalized:
+                    result = client.table("pharma_companies").select(
+                        "*, pharma_support_programs(*)"
+                    ).ilike("company_name", f"%{normalized_core}%").eq("is_active", True).execute()
+                    if result.data and len(result.data) > 0:
+                        company = result.data[0]
+                        self._company_cache[company["company_key"]] = company
+                        return company
 
             return None
         except Exception as e:
@@ -402,26 +475,27 @@ class PharmaRepService:
                 logger.warning("Turso connection not available for product lookup")
                 return []
 
-            # Build search terms from company name
+            # Build strict manufacturer aliases from company metadata.
             company_name = company_data.get("company_name", "")
-            # Extract variations: "Cipla Limited" -> ["cipla", "Cipla", "Cipla Limited"]
-            company_short = company_name.split()[0] if company_name else company_key
+            manufacturer_aliases = self._build_manufacturer_aliases(company_key, company_name)
+            if not manufacturer_aliases:
+                logger.warning("No safe manufacturer aliases for %s", company_key)
+                return []
 
             # Query with multiple name variations.
             # Pull action_class + description so therapeutic matching can use fallback scoring.
             select_clause = """
                 SELECT DISTINCT name, generic_name, therapeutic_class, action_class, description, price_raw, price, manufacturer
             """
-            manufacturer_where = """
+            manufacturer_filters = " OR ".join(
+                ["LOWER(COALESCE(manufacturer, '')) LIKE LOWER(?)" for _ in manufacturer_aliases]
+            )
+            manufacturer_where = f"""
                 FROM drugs
-                WHERE (
-                    LOWER(COALESCE(manufacturer, '')) LIKE LOWER(?)
-                    OR LOWER(COALESCE(manufacturer, '')) LIKE LOWER(?)
-                    OR LOWER(COALESCE(manufacturer, '')) LIKE LOWER(?)
-                )
+                WHERE ({manufacturer_filters})
                 AND COALESCE(is_discontinued, 0) = 0
             """
-            base_params: List[Any] = [f"%{company_key}%", f"%{company_short}%", f"%{company_name}%"]
+            base_params: List[Any] = [f"%{alias}%" for alias in manufacturer_aliases]
 
             def _rows_to_products(rows) -> List[Dict[str, Any]]:
                 return [
@@ -467,6 +541,7 @@ class PharmaRepService:
                 )
                 rs = conn.execute(query, [*base_params, *filter_params, max(limit * 4, 40)])
                 products = _rows_to_products(rs.rows)
+                products = [p for p in products if self._is_manufacturer_match(p.get("manufacturer"), manufacturer_aliases)]
                 logger.info("Product lookup stage1 (manufacturer+area) for %s: %d rows", company_key, len(products))
 
             if not products:
@@ -476,6 +551,7 @@ class PharmaRepService:
                     [*base_params, max(limit * 12, 120)]
                 )
                 broader = _rows_to_products(rs.rows)
+                broader = [p for p in broader if self._is_manufacturer_match(p.get("manufacturer"), manufacturer_aliases)]
                 logger.info("Product lookup stage2 (manufacturer broad) for %s: %d rows", company_key, len(broader))
                 if area_keywords:
                     ranked = sorted(
@@ -491,40 +567,11 @@ class PharmaRepService:
                     products = broader
 
             if not products:
-                # Stage 3 fallback: some datasets miss manufacturer values.
-                # Use company token in product text fields, then apply same therapeutic ranking.
-                brand_where = """
-                    FROM drugs
-                    WHERE (
-                        LOWER(COALESCE(name, '')) LIKE LOWER(?)
-                        OR LOWER(COALESCE(generic_name, '')) LIKE LOWER(?)
-                        OR LOWER(COALESCE(description, '')) LIKE LOWER(?)
-                    )
-                    AND COALESCE(is_discontinued, 0) = 0
-                """
-                brand_params: List[Any] = [
-                    f"%{company_short}%",
-                    f"%{company_short}%",
-                    f"%{company_short}%",
-                ]
-                rs = conn.execute(
-                    select_clause + brand_where + " ORDER BY name LIMIT ?",
-                    [*brand_params, max(limit * 12, 120)]
+                logger.info(
+                    "No manufacturer-verified products found for %s (aliases=%s)",
+                    company_key,
+                    manufacturer_aliases,
                 )
-                broader = _rows_to_products(rs.rows)
-                logger.info("Product lookup stage3 (brand-token fallback) for %s: %d rows", company_key, len(broader))
-                if area_keywords:
-                    ranked = sorted(
-                        (
-                            (self._score_product_match(p, area_keywords), p)
-                            for p in broader
-                        ),
-                        key=lambda x: x[0],
-                        reverse=True
-                    )
-                    products = [p for score, p in ranked if score > 0]
-                else:
-                    products = broader
 
             products = products[:limit]
 
@@ -688,11 +735,16 @@ Remember: You represent {company_name}, but patient safety and clinical accuracy
         lines = [
             f"\n[{company_name} Products from Database]",
             "[INSTRUCTION: Use ONLY the product names listed below for company portfolio answers. "
-            "Do NOT add unlisted brands, competitor products, doses, or prices.]"
+            "Do NOT add unlisted brands, competitor products, doses, or prices. "
+            "These rows are manufacturer-verified.]"
         ]
         for p in products[:10]:  # Limit to 10 products in context
             price = p.get('price_raw') or f"Rs. {p.get('price', 'N/A')}"
-            lines.append(f"- {p.get('name')}: {p.get('generic_name', 'N/A')} | {p.get('therapeutic_class', 'N/A')} | {price}")
+            lines.append(
+                f"- {p.get('name')}: {p.get('generic_name', 'N/A')} | "
+                f"{p.get('therapeutic_class', 'N/A')} | {price} | "
+                f"Manufacturer: {p.get('manufacturer', 'N/A')}"
+            )
 
         if len(products) > 10:
             lines.append(f"  ... and {len(products) - 10} more products")

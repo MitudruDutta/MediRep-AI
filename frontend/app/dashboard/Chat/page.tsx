@@ -71,7 +71,7 @@ export default function ChatPage() {
   };
 
   const handleVoiceTurn = useCallback(async (transcript: string): Promise<string | null> => {
-    const response = await send(transcript, patientContext || undefined, webSearchMode);
+    const response = await send(transcript, patientContext || undefined, webSearchMode, undefined, true);
     const assistant = (response?.response || "").trim();
     return assistant || null;
   }, [patientContext, send, webSearchMode]);

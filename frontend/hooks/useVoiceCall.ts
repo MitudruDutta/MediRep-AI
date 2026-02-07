@@ -43,10 +43,11 @@ declare global {
 }
 
 const SPEECH_CHUNK_MAX_CHARS = 900;
-const BACKEND_TTS_CHUNK_MAX_CHARS = 280;
-const BACKEND_STT_TIMESLICE_MS = 4500;
-const BACKEND_STT_MIN_BLOB_BYTES = 5000;
-const BACKEND_STT_MIN_AUDIO_LEVEL = 0.02;
+const BACKEND_TTS_CHUNK_MAX_CHARS = 340;
+const BACKEND_STT_TIMESLICE_MS = 2200;
+const BACKEND_STT_MIN_BLOB_BYTES = 2500;
+const BACKEND_STT_MIN_AUDIO_LEVEL = 0.008;
+const USE_BROWSER_STT = false;
 
 function cleanForSpeech(raw: string): string {
   let text = (raw || "").trim();
@@ -136,7 +137,10 @@ export function useVoiceCall(options: UseVoiceCallOptions = {}) {
   const shouldRestartRef = useRef(false);
   const sessionIdRef = useRef<string | null>(null);
   const transcribeBusyRef = useRef(false);
+  const pendingTranscribeBlobRef = useRef<Blob | null>(null);
+  const previousAudioChunkRef = useRef<Blob | null>(null);
   const lastTranscriptRef = useRef("");
+  const lastTranscriptAtRef = useRef(0);
   const audioLevelRef = useRef(0);
   const sendDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -179,6 +183,7 @@ export function useVoiceCall(options: UseVoiceCallOptions = {}) {
       await new Promise<void>((resolve) => {
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
+        audio.preload = "auto";
         const cleanup = () => {
           URL.revokeObjectURL(url);
           resolve();
@@ -189,17 +194,7 @@ export function useVoiceCall(options: UseVoiceCallOptions = {}) {
       });
     };
 
-    for (const chunk of chunks) {
-      if (!isConnectedRef.current) break;
-
-      try {
-        const backendAudio = await synthesizeVoiceAudio(chunk, "wav");
-        await playBackendAudio(backendAudio);
-        continue;
-      } catch {
-        // Fall back to browser speech synthesis if backend TTS fails.
-      }
-
+    const speakWithBrowser = async (chunk: string) => {
       await new Promise<void>((resolve) => {
         const utterance = new SpeechSynthesisUtterance(chunk);
         if (preferredVoice) {
@@ -236,6 +231,26 @@ export function useVoiceCall(options: UseVoiceCallOptions = {}) {
           finish();
         }
       });
+    };
+
+    const backendAudioChunks = await Promise.all(
+      chunks.map(async (chunk) => {
+        try {
+          return await synthesizeVoiceAudio(chunk, "mp3");
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    for (let i = 0; i < chunks.length; i++) {
+      if (!isConnectedRef.current) break;
+      const backendAudio = backendAudioChunks[i];
+      if (backendAudio) {
+        await playBackendAudio(backendAudio);
+      } else {
+        await speakWithBrowser(chunks[i]);
+      }
     }
   }, [stopSpeech, updateState]);
 
@@ -366,21 +381,32 @@ export function useVoiceCall(options: UseVoiceCallOptions = {}) {
   const processBackendAudioChunk = useCallback(async (blob: Blob) => {
     if (!isConnectedRef.current) return;
     if (stateRef.current !== "listening") return;
-    if (transcribeBusyRef.current) return;
+    if (transcribeBusyRef.current) {
+      pendingTranscribeBlobRef.current = blob;
+      return;
+    }
     if (blob.size < BACKEND_STT_MIN_BLOB_BYTES) return;
-    if (audioLevelRef.current < BACKEND_STT_MIN_AUDIO_LEVEL) return;
-
-    // Skip backend STT if browser recognition is active (it's faster and free)
-    if (recognitionRef.current) return;
 
     transcribeBusyRef.current = true;
     try {
       const transcript = (await transcribeVoiceAudio(blob, "auto")).trim();
       if (!transcript || transcript.length < 3) return;
 
-      const normalized = transcript.toLowerCase();
-      if (normalized === lastTranscriptRef.current) return;
+      const normalized = transcript
+        .toLowerCase()
+        .replace(/[^\w\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!normalized) return;
+      const now = Date.now();
+      const previous = lastTranscriptRef.current;
+      const isRepeat =
+        normalized === previous ||
+        (previous && normalized.includes(previous)) ||
+        (previous && previous.includes(normalized));
+      if (isRepeat && (now - lastTranscriptAtRef.current) < 7000) return;
       lastTranscriptRef.current = normalized;
+      lastTranscriptAtRef.current = now;
 
       await handleFinalTranscript(transcript);
     } catch {
@@ -388,6 +414,11 @@ export function useVoiceCall(options: UseVoiceCallOptions = {}) {
       // Browser STT (if available) continues working independently.
     } finally {
       transcribeBusyRef.current = false;
+      const pending = pendingTranscribeBlobRef.current;
+      pendingTranscribeBlobRef.current = null;
+      if (pending && isConnectedRef.current && stateRef.current === "listening") {
+        void processBackendAudioChunk(pending);
+      }
     }
   }, [handleFinalTranscript]);
 
@@ -422,7 +453,18 @@ export function useVoiceCall(options: UseVoiceCallOptions = {}) {
 
     recorder.ondataavailable = (event: BlobEvent) => {
       if (!event.data || event.data.size <= 0) return;
-      void processBackendAudioChunk(event.data);
+      // Use overlap window (previous + current chunk) for better word-boundary recognition.
+      const previous = previousAudioChunkRef.current;
+      previousAudioChunkRef.current = event.data;
+      if (!previous) return;
+
+      // Skip obvious silence windows early to reduce noisy transcribe calls.
+      if (audioLevelRef.current < BACKEND_STT_MIN_AUDIO_LEVEL) return;
+
+      const combined = new Blob([previous, event.data], {
+        type: event.data.type || "audio/webm",
+      });
+      void processBackendAudioChunk(combined);
     };
 
     recorder.onerror = () => {
@@ -481,7 +523,9 @@ export function useVoiceCall(options: UseVoiceCallOptions = {}) {
       const source = audioContext.createMediaStreamSource(stream);
       source.connect(analyser);
 
-      const SpeechRecognition = (window.SpeechRecognition || window.webkitSpeechRecognition) as SpeechRecognitionCtor | undefined;
+      const SpeechRecognition = USE_BROWSER_STT
+        ? (window.SpeechRecognition || window.webkitSpeechRecognition) as SpeechRecognitionCtor | undefined
+        : undefined;
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
@@ -549,6 +593,8 @@ export function useVoiceCall(options: UseVoiceCallOptions = {}) {
 
       isConnectedRef.current = true;
       shouldRestartRef.current = true;
+      previousAudioChunkRef.current = null;
+      pendingTranscribeBlobRef.current = null;
       setIsConnected(true);
       setDuration(0);
       updateState("listening");
@@ -604,6 +650,8 @@ export function useVoiceCall(options: UseVoiceCallOptions = {}) {
     cleanupAudio();
 
     recognitionRef.current = null;
+    previousAudioChunkRef.current = null;
+    pendingTranscribeBlobRef.current = null;
 
     setIsConnected(false);
     setDuration(0);

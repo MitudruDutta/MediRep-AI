@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Message, PatientContext, WebSearchResult, ChatResponse } from "@/types";
-import { sendMessage, getSessionMessages } from "@/lib/api";
+import { Message, PatientContext, WebSearchResult, ChatResponse, RepModeContext } from "@/types";
+import { sendMessage, getSessionMessages, getRepModeStatus, clearRepModeStatus, setRepModeStatus } from "@/lib/api";
 import { invalidateSessionsCache } from "@/hooks/useSessions";
 
 export function useChat() {
@@ -10,19 +10,69 @@ export function useChat() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [webSources, setWebSources] = useState<WebSearchResult[]>([]);
+  const [activeRepMode, setActiveRepMode] = useState<RepModeContext | undefined>(undefined);
   // Track the count of messages loaded from session (not new)
   const loadedMessageCountRef = useRef<number>(0);
   // AbortController for cancelling requests
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const refreshRepMode = useCallback(async () => {
+    try {
+      const repMode = await getRepModeStatus();
+      if (repMode?.active) {
+        setActiveRepMode(repMode);
+      } else {
+        setActiveRepMode(undefined);
+      }
+    } catch (e) {
+      console.error("Failed to fetch rep mode status:", e);
+    }
+  }, []);
+
+  const extractRepCompanyFromHistory = useCallback((history: Message[]): string | null => {
+    let activeCompany: string | null = null;
+
+    for (const msg of history) {
+      if (msg.role !== "user") continue;
+      const raw = (msg.content || "").trim();
+      if (!raw) continue;
+      const lower = raw.toLowerCase();
+
+      if (
+        lower.includes("exit rep mode") ||
+        lower.includes("clear rep mode") ||
+        lower.includes("general mode")
+      ) {
+        activeCompany = null;
+        continue;
+      }
+
+      let match = raw.match(/^set\s+rep\s+mode(?:\s+(?:for|to))?\s+(.+)$/i);
+      if (!match) {
+        match = raw.match(/^represent\s+(.+)$/i);
+      }
+
+      if (match?.[1]) {
+        const candidate = match[1].trim().replace(/[.?!,:;]+$/g, "");
+        if (candidate) {
+          activeCompany = candidate;
+        }
+      }
+    }
+
+    return activeCompany;
+  }, []);
 
   // Load session from storage or props on mount
   useEffect(() => {
     const storedSessionId = sessionStorage.getItem("current_chat_session_id");
     if (storedSessionId) {
       setSessionId(storedSessionId);
-      loadHistory(storedSessionId);
+      void loadHistory(storedSessionId);
+    } else {
+      void refreshRepMode();
     }
-  }, []);
+  }, [refreshRepMode]);
 
   const loadHistory = async (id: string) => {
     try {
@@ -31,6 +81,28 @@ export function useChat() {
       setMessages(history);
       // Mark all loaded messages as "old" so they don't animate
       loadedMessageCountRef.current = history.length;
+
+      const companyFromHistory = extractRepCompanyFromHistory(history);
+      if (companyFromHistory) {
+        try {
+          const repMode = await setRepModeStatus(companyFromHistory);
+          if (repMode?.active) {
+            setActiveRepMode(repMode);
+          } else {
+            setActiveRepMode(undefined);
+          }
+        } catch (e) {
+          console.error("Failed to restore rep mode from session history:", e);
+          await refreshRepMode();
+        }
+      } else {
+        setActiveRepMode(undefined);
+        try {
+          await clearRepModeStatus();
+        } catch (e) {
+          console.error("Failed to clear rep mode while loading non-rep session:", e);
+        }
+      }
     } catch (e) {
       console.error("Failed to load history:", e);
       // If session invalid, clear it
@@ -45,7 +117,8 @@ export function useChat() {
     content: string,
     patientContext?: PatientContext,
     webSearchMode: boolean = false,
-    files?: File[]
+    files?: File[],
+    voiceMode: boolean = false
   ): Promise<ChatResponse | null> => {
     // Cancel any existing request
     if (abortControllerRef.current) {
@@ -97,7 +170,8 @@ export function useChat() {
         sessionId || undefined,
         webSearchMode,
         images,
-        abortControllerRef.current.signal
+        abortControllerRef.current.signal,
+        voiceMode
       );
 
       // Handle new session
@@ -118,6 +192,15 @@ export function useChat() {
 
       if (response.suggestions) {
         setSuggestions(response.suggestions);
+      }
+
+      if (response.track2?.rep_mode) {
+        const repMode = response.track2.rep_mode;
+        if (repMode.active) {
+          setActiveRepMode(repMode);
+        } else {
+          setActiveRepMode(undefined);
+        }
       }
 
       // Store web sources if returned
@@ -169,13 +252,19 @@ export function useChat() {
     await loadHistory(id);
   };
 
-  const resetSession = () => {
+  const resetSession = async () => {
     setMessages([]);
     setSuggestions([]);
     setWebSources([]);
     setSessionId(null);
     loadedMessageCountRef.current = 0;
     sessionStorage.removeItem("current_chat_session_id");
+    setActiveRepMode(undefined);
+    try {
+      await clearRepModeStatus();
+    } catch (e) {
+      console.error("Failed to clear rep mode on new chat:", e);
+    }
   };
 
   // Helper to check if a message at given index is new (should animate)
@@ -183,10 +272,6 @@ export function useChat() {
 
   // Backwards compatibility: isLoading is true when generating (not when loading history)
   const isLoading = isGenerating;
-
-  // Determine if Rep Mode is active based on the last assistant message
-  const lastAssistantMessage = [...messages].reverse().find(m => m.role === "assistant");
-  const activeRepMode = lastAssistantMessage?.track2?.rep_mode;
 
   return {
     messages,

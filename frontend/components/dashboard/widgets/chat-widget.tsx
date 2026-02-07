@@ -42,7 +42,7 @@ export default function ChatWidget() {
 
         {!isLoadingHistory && messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center p-6">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[color:var(--landing-moss)] shadow-sm">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-(--landing-moss) shadow-sm">
               <Bot className="h-6 w-6 text-white" />
             </div>
             <p className="text-zinc-500 text-sm text-center">

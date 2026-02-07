@@ -26,7 +26,7 @@ _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 
 # Stopwords/noise commonly present in insurance/admin questions.
 _PROCEDURE_STOPWORDS = {
-    "pmjay", "pm-jay", "ayushman", "bharat", "cghs", "hbp",
+    "pmjay", "pm-jay", "pmj", "pm jai", "ayushman", "bharat", "cghs", "hbp", "jai",
     "insurance", "coverage", "covered", "reimbursement", "reimburse", "claim", "cashless",
     "package", "rate", "procedure", "cost", "price", "pricing", "how", "much",
     "for", "of", "the", "a", "an", "in", "on", "to", "and", "or", "is", "are",
@@ -192,7 +192,7 @@ class InsuranceService:
         scheme_filter = None
         if scheme:
             scheme_upper = scheme.upper()
-            if scheme_upper in ["PMJAY", "AYUSHMAN", "PM-JAY"]:
+            if scheme_upper in ["PMJAY", "PMJ", "AYUSHMAN", "PM-JAY", "PM JAI"]:
                 scheme_filter = "PMJAY"
             elif scheme_upper == "CGHS":
                 scheme_filter = "CGHS"

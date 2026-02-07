@@ -304,9 +304,43 @@ def _is_pmjay_package_rate_request(message: str) -> bool:
     if not msg:
         return False
 
-    has_pmjay = any(k in msg for k in ("pmjay", "pm-jay", "ayushman"))
-    has_rate = any(k in msg for k in ("package rate", "tariff", "package code", "package codes", "hbp rate", "rate for"))
+    has_pmjay = any(k in msg for k in ("pmjay", "pm-jay", "pmj", "pm jai", "ayushman"))
+    has_rate = any(
+        k in msg
+        for k in (
+            "package rate",
+            "tariff",
+            "package code",
+            "package codes",
+            "hbp rate",
+            "rate for",
+            "rate",
+        )
+    )
     return bool(has_pmjay and has_rate)
+
+
+def _is_insurance_like_query(message: str) -> bool:
+    """Detect insurance/reimbursement/admin asks, including common shorthand misspellings."""
+    msg = (message or "").lower()
+    if not msg:
+        return False
+
+    scheme_markers = (
+        "pmjay", "pm-jay", "pmj", "pm jai", "ayushman",
+        "cghs", "esi", "esic", "hbp",
+    )
+    insurance_markers = (
+        "insurance", "coverage", "covered", "reimbursement", "reimburse",
+        "package rate", "package code", "tariff", "claim", "cashless", "scheme",
+    )
+    if any(m in msg for m in insurance_markers):
+        return True
+    if any(m in msg for m in scheme_markers) and any(
+        k in msg for k in ("rate", "package", "code", "replacement", "surgery", "procedure", "hip", "knee", "coverage")
+    ):
+        return True
+    return False
 
 
 def _render_pmjay_package_rate_answer(insurance_ctx, user_message: str) -> Optional[str]:
@@ -734,7 +768,9 @@ async def chat_endpoint(
         plan = await plan_intent(chat_request.message, history=intent_history_for_llm)
         logger.info("Intent Plan: %s, Drugs: %s", plan.intent, plan.drug_names)
         enhanced_intents = detect_enhanced_intents(chat_request.message)
-        is_insurance_query = "INSURANCE" in enhanced_intents
+        is_insurance_query = ("INSURANCE" in enhanced_intents) or _is_insurance_like_query(chat_request.message)
+        if is_insurance_query:
+            enhanced_intents.add("INSURANCE")
         is_freshness_query = _is_freshness_sensitive_query(chat_request.message)
         is_moa_query = "MOA" in enhanced_intents
 
@@ -774,8 +810,11 @@ async def chat_endpoint(
         # Keyword-based intent override (fallback when LLM intent fails)
         is_substitute_query = _detect_substitute_intent(chat_request.message)
         if is_substitute_query and plan.intent == "GENERAL":
-            plan.intent = "SUBSTITUTE"
-            logger.info("Intent overridden to SUBSTITUTE based on keywords")
+            if is_insurance_query:
+                logger.info("Skipping SUBSTITUTE keyword override for insurance-like query")
+            else:
+                plan.intent = "SUBSTITUTE"
+                logger.info("Intent overridden to SUBSTITUTE based on keywords")
 
         context_data = {}
         msg_context = ""

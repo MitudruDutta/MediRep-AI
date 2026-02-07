@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Words that commonly appear in insurance/admin queries but are not useful for procedure search.
 _PROCEDURE_NOISE_WORDS = {
-    "pmjay", "pm-jay", "ayushman", "bharat", "cghs",
+    "pmjay", "pm-jay", "pmj", "pm jai", "ayushman", "bharat", "cghs", "jai",
     "insurance", "coverage", "covered", "reimbursement", "reimburse", "claim", "cashless",
     "package", "rate", "procedure", "hbp", "price", "cost", "how", "much",
     "for", "of", "the", "a", "an", "in", "on", "to", "and", "or",
@@ -84,7 +84,7 @@ def _extract_scheme_hint(message: str) -> Optional[str]:
     if not msg:
         return None
 
-    has_pmjay = any(k in msg for k in ("pmjay", "pm-jay", "ayushman"))
+    has_pmjay = any(k in msg for k in ("pmjay", "pm-jay", "pmj", "pm jai", "ayushman"))
     has_cghs = "cghs" in msg
     has_esi = any(k in msg for k in ("esi", "esic"))
 
@@ -117,7 +117,9 @@ COMPARE_KEYWORDS = {
 
 INSURANCE_KEYWORDS = {
     "insurance", "coverage", "covered", "reimbursement", "reimburse",
-    "pmjay", "pm-jay", "ayushman", "cghs", "claim", "cashless",
+    "pmjay", "pm-jay", "pmj", "pm jai", "ayushman", "cghs", "esi", "esic", "hbp",
+    "tariff",
+    "package code", "package codes",
     "package rate", "empanelled", "beneficiary", "health scheme"
 }
 
@@ -473,7 +475,9 @@ async def build_enhanced_context(
                     context_parts.append(
                         f"\n[{company_name} Products from Database]\n"
                         "[INSTRUCTION: No verified products were found in the database for this request. "
-                        "Do NOT invent product names. State that portfolio data is unavailable for the asked area.]"
+                        "Do NOT invent product names and do NOT infer portfolio from brand-name fragments "
+                        "(for example names containing company-like tokens). "
+                        "State that portfolio data is unavailable for the asked area.]"
                     )
 
             elif intent_name == "SUPPORT" and result:

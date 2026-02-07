@@ -4,16 +4,23 @@ from typing import Optional, List
 import logging
 import asyncio
 from supabase import create_client
+from pydantic import BaseModel
 
 from models import PatientContext, ConsultationStatus
 from config import SUPABASE_URL, SUPABASE_KEY
-from dependencies import get_current_user, get_current_patient
+from dependencies import get_current_patient
+from middleware.auth import get_current_user
 from services.supabase_service import SupabaseService
 from services.language_service import get_supported_languages_list
+from services.pharma_rep_service import pharma_rep_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 security = HTTPBearer()
+
+
+class RepModeSetRequest(BaseModel):
+    company: str
 
 def get_auth_client(token: str):
     """Create a Supabase client authenticated as the user (for RLS)."""
@@ -145,3 +152,92 @@ async def get_supported_languages():
     Returns language codes and BCP-47 codes for Web Speech API.
     """
     return {"languages": get_supported_languages_list()}
+
+
+@router.get("/rep-mode")
+async def get_rep_mode_status(
+    current_user: object = Depends(get_current_user)
+):
+    """Get active pharma rep mode for the current user."""
+    try:
+        rep_company = await asyncio.to_thread(
+            pharma_rep_service.get_active_company_context,
+            current_user.id,
+            current_user.token,
+        )
+        if not rep_company:
+            return {"active": False}
+
+        return {
+            "active": True,
+            "company_key": rep_company.get("company_key"),
+            "company_name": rep_company.get("company_name"),
+            "company_id": rep_company.get("id"),
+        }
+    except Exception as e:
+        logger.error("Failed to get rep mode status: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to get rep mode status")
+
+
+@router.post("/rep-mode/clear")
+async def clear_rep_mode_status(
+    current_user: object = Depends(get_current_user)
+):
+    """Clear active pharma rep mode for the current user."""
+    try:
+        result = await asyncio.to_thread(
+            pharma_rep_service.clear_company_mode,
+            current_user.id,
+            current_user.token,
+        )
+        return {"success": bool(result.get("success")), "message": result.get("message")}
+    except Exception as e:
+        logger.error("Failed to clear rep mode status: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to clear rep mode")
+
+
+@router.post("/rep-mode/set")
+async def set_rep_mode_status(
+    body: RepModeSetRequest,
+    current_user: object = Depends(get_current_user)
+):
+    """Set pharma rep mode for the current user."""
+    company = (body.company or "").strip()
+    if not company:
+        raise HTTPException(status_code=400, detail="Company name is required")
+
+    try:
+        result = await asyncio.to_thread(
+            pharma_rep_service.set_company_mode,
+            current_user.id,
+            current_user.token,
+            company,
+        )
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("message", "Failed to set rep mode"))
+
+        rep_company = await asyncio.to_thread(
+            pharma_rep_service.get_active_company_context,
+            current_user.id,
+            current_user.token,
+        )
+
+        if rep_company:
+            return {
+                "active": True,
+                "company_key": rep_company.get("company_key"),
+                "company_name": rep_company.get("company_name"),
+                "company_id": rep_company.get("id"),
+            }
+
+        return {
+            "active": True,
+            "company_key": result.get("company_key"),
+            "company_name": result.get("company"),
+            "company_id": None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to set rep mode status: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to set rep mode")
