@@ -273,7 +273,6 @@ class InsuranceService:
             "excluded_items": excluded_items,
             "drug_coverage": drug_coverage,
             "helpline": scheme.get("helpline"),
-            "helpline": scheme.get("helpline"),
             "website": scheme.get("website"),
             # data_source removed
             "source_url": scheme.get("source_url"),

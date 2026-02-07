@@ -308,7 +308,6 @@ class EnhancedInteractionResponse(BaseModel):
     metabolic_pathway: MetabolicPathway
     clinical_impact: ClinicalImpact
     reaction_image: Optional[ReactionImage] = None
-    reaction_image: Optional[ReactionImage] = None
 
 
 class PillIdentification(BaseModel):
