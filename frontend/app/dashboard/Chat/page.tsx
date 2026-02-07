@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useChat } from "@/hooks/useChat";
 import { useProfile } from "@/hooks/useProfile";
 import { usePatientContext } from "@/lib/context/PatientContext";
@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getAvailableCompanies } from "@/lib/api";
+import { clearRepModeStatus, getAvailableCompanies, getRepModeStatus, setRepModeStatus } from "@/lib/api";
 
 const MODE_SUGGESTIONS = {
   normal: [
@@ -95,13 +95,9 @@ export default function ChatPage() {
   const searchParams = useSearchParams();
 
   const userName = profile?.full_name || profile?.email?.split('@')[0] || "there";
-
-  useEffect(() => {
-    const sessionParam = searchParams.get("session");
-    if (sessionParam && sessionParam !== sessionId) {
-      loadSession(sessionParam);
-    }
-  }, [searchParams, loadSession, sessionId]);
+  const selectedCompanyName = useMemo(() => {
+    return companies.find((c) => c.key === selectedCompany)?.name || selectedCompany;
+  }, [companies, selectedCompany]);
 
   useEffect(() => {
     const checkSize = () => setIsSidebarOpen(window.innerWidth >= 768);
@@ -120,12 +116,56 @@ export default function ChatPage() {
     }
   }, [chatMode, companies.length]);
 
+  const handleNewChat = useCallback(async () => {
+    await resetSession();
+    setChatMode("normal");
+    setSelectedCompany("");
+    setWebSearchMode(false);
+  }, [resetSession]);
+
+  const handleSelectSession = useCallback(async (id: string) => {
+    setChatMode("normal");
+    setSelectedCompany("");
+    setWebSearchMode(false);
+    await loadSession(id);
+    try {
+      const repStatus = await getRepModeStatus();
+      if (repStatus?.active) {
+        setChatMode("rep");
+        setSelectedCompany(repStatus.company_key || repStatus.company_name || "");
+      }
+    } catch (e) {
+      console.error("Failed to refresh rep mode after loading session:", e);
+    }
+  }, [loadSession]);
+
+  useEffect(() => {
+    const sessionParam = searchParams.get("session");
+    if (sessionParam && sessionParam !== sessionId) {
+      const timer = window.setTimeout(() => {
+        void handleSelectSession(sessionParam);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [searchParams, sessionId, handleSelectSession]);
+
   const handleSend = async (message: string, files?: File[], isSearchMode?: boolean) => {
     if (!message.trim() && (!files || files.length === 0)) return;
 
     // Pass chatMode and company override if applicable
     let modeContext = chatMode;
     if (chatMode === "rep" && selectedCompany) {
+      try {
+        if (
+          !activeRepMode?.active ||
+          (activeRepMode.company_key !== selectedCompany &&
+            activeRepMode.company_name !== selectedCompany)
+        ) {
+          await setRepModeStatus(selectedCompany);
+        }
+      } catch (e) {
+        console.error("Failed to sync rep mode before send:", e);
+      }
       modeContext = `rep:${selectedCompany}`;
     }
 
@@ -135,12 +175,40 @@ export default function ChatPage() {
   const handleVoiceTurn = useCallback(async (transcript: string): Promise<string | null> => {
     let modeContext = chatMode;
     if (chatMode === "rep" && selectedCompany) {
+      try {
+        if (
+          !activeRepMode?.active ||
+          (activeRepMode.company_key !== selectedCompany &&
+            activeRepMode.company_name !== selectedCompany)
+        ) {
+          await setRepModeStatus(selectedCompany);
+        }
+      } catch (e) {
+        console.error("Failed to sync rep mode before voice turn:", e);
+      }
       modeContext = `rep:${selectedCompany}`;
     }
     const response = await send(transcript, patientContext || undefined, webSearchMode, undefined, true, modeContext);
     const assistant = (response?.response || "").trim();
     return assistant || null;
-  }, [patientContext, send, webSearchMode, chatMode, selectedCompany]);
+  }, [patientContext, send, webSearchMode, chatMode, selectedCompany, activeRepMode]);
+
+  const handleCompanyChange = useCallback((companyKey: string) => {
+    setSelectedCompany(companyKey);
+    void setRepModeStatus(companyKey).catch((e) => {
+      console.error("Failed to sync rep mode on company change:", e);
+    });
+  }, []);
+
+  const handleModeChange = useCallback((nextMode: string) => {
+    setChatMode(nextMode);
+    if (nextMode !== "rep") {
+      setSelectedCompany("");
+      void clearRepModeStatus().catch((e) => {
+        console.error("Failed to clear rep mode on mode switch:", e);
+      });
+    }
+  }, []);
 
   const showEmptyState = messages.length === 0 && !isGenerating && !isLoadingHistory;
 
@@ -151,8 +219,8 @@ export default function ChatPage() {
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         currentSessionId={sessionId}
-        onSelectSession={loadSession}
-        onNewChat={resetSession}
+        onSelectSession={handleSelectSession}
+        onNewChat={handleNewChat}
       />
 
       {/* Main Content */}
@@ -188,13 +256,13 @@ export default function ChatPage() {
 
             {/* Company Selector (Only in Rep Mode) */}
             {chatMode === "rep" && (
-              <Select value={selectedCompany} onValueChange={setSelectedCompany}>
-                <SelectTrigger className="w-[160px] h-8 text-xs bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 animate-in fade-in slide-in-from-right-4 duration-300">
+              <Select value={selectedCompany} onValueChange={handleCompanyChange}>
+                <SelectTrigger className="w-40 h-8 text-xs bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 animate-in fade-in slide-in-from-right-4 duration-300">
                   <SelectValue placeholder="Select Company" />
                 </SelectTrigger>
                 <SelectContent align="end">
                   {companies.map((c) => (
-                    <SelectItem key={c.key} value={c.name}>
+                    <SelectItem key={c.key} value={c.key}>
                       {c.name}
                     </SelectItem>
                   ))}
@@ -203,8 +271,8 @@ export default function ChatPage() {
             )}
 
             {/* Mode Selector */}
-            <Select value={chatMode} onValueChange={setChatMode}>
-              <SelectTrigger className="w-[140px] h-8 text-xs bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+            <Select value={chatMode} onValueChange={handleModeChange}>
+              <SelectTrigger className="w-35 h-8 text-xs bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
                 <SelectValue placeholder="Mode" />
               </SelectTrigger>
               <SelectContent align="end">
@@ -215,7 +283,7 @@ export default function ChatPage() {
               </SelectContent>
             </Select>
 
-            {activeRepMode && (
+            {chatMode === "rep" && activeRepMode && (
               <RepModeBadge
                 repMode={activeRepMode}
                 onExit={() => handleSend("exit rep mode")}
@@ -265,7 +333,7 @@ export default function ChatPage() {
 
                 {/* Suggestions */}
                 <div className="flex flex-wrap justify-center gap-2">
-                  {getSuggestions(chatMode, selectedCompany).map((s, i) => (
+                  {getSuggestions(chatMode, selectedCompanyName).map((s, i) => (
                     <button
                       key={i}
                       onClick={() => handleSend(s.prompt)}

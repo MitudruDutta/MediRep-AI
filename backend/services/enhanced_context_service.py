@@ -132,7 +132,8 @@ PHARMA_REP_KEYWORDS = {
 PRODUCT_KEYWORDS = {
     "product", "products", "portfolio", "what drugs", "your drugs",
     "which drugs", "drug portfolio", "medicines", "what do you make",
-    "what do you sell", "offerings", "catalog", "catalogue"
+    "what do you sell", "offerings", "catalog", "catalogue",
+    "manufacture", "manufactures", "manufacturer", "make", "makes"
 }
 
 # Keywords that trigger support program lookup when in rep mode

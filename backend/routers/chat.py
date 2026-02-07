@@ -245,6 +245,13 @@ def _strip_inline_reference_tokens(text: str) -> str:
     cleaned = re.sub(r"[【\[]\s*\d+\s*†\s*source\s*[】\]]", "", cleaned, flags=re.IGNORECASE)
     # More generic bracketed dagger references, e.g. 【3†L120-L130】.
     cleaned = re.sub(r"[【\[]\s*\d+\s*†[^\]】]{0,80}[】\]]", "", cleaned)
+    # Bracketed source tags: [Web Result 5], [Company Info], [Source 2], etc.
+    cleaned = re.sub(
+        r"\[\s*(?:web\s*result|company\s*info|source|sources|citation|citations|evidence|reference|references)\s*[:#-]?\s*\d*\s*\]",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
@@ -325,6 +332,62 @@ def _is_insurance_like_query(message: str) -> bool:
     from services.enhanced_context_service import detect_enhanced_intents
     intents = detect_enhanced_intents(message)
     return "INSURANCE" in intents
+
+
+def _is_moa_like_query(message: str) -> bool:
+    """Detect MOA/pharmacology-scoped questions."""
+    from services.enhanced_context_service import detect_enhanced_intents
+    intents = detect_enhanced_intents(message)
+    if "MOA" in intents:
+        return True
+    msg = (message or "").lower()
+    return any(
+        marker in msg
+        for marker in (
+            "mechanism",
+            "mechanism of action",
+            "moa",
+            "pharmacology",
+            "pharmacodynamic",
+            "pathway",
+            "target",
+            "receptor",
+        )
+    )
+
+
+def _is_rep_like_query(message: str, rep_company: Optional[dict] = None) -> bool:
+    """Detect pharma-rep/product-portfolio scoped questions."""
+    from services.enhanced_context_service import detect_enhanced_intents
+    intents = detect_enhanced_intents(message)
+    if {"PHARMA_REP", "PRODUCTS", "SUPPORT"} & intents:
+        return True
+
+    msg = (message or "").lower()
+    rep_markers = (
+        "portfolio",
+        "product",
+        "products",
+        "brand",
+        "support program",
+        "patient support",
+        "patient assistance",
+        "manufacturer",
+        "manufacture",
+        "manufactures",
+        "what do you make",
+        "company",
+    )
+    if any(marker in msg for marker in rep_markers):
+        return True
+
+    if rep_company:
+        company_name = (rep_company.get("company_name") or "").lower().strip()
+        company_key = (rep_company.get("company_key") or "").lower().strip()
+        if (company_name and company_name in msg) or (company_key and company_key in msg):
+            return True
+
+    return False
 
 
 def _render_pmjay_package_rate_answer(insurance_ctx, user_message: str) -> Optional[str]:
@@ -481,7 +544,7 @@ def _build_rep_auto_web_query(
         return None
 
     company_focus_markers = (
-        "company", "brand", "manufacturer", "made by",
+        "brand", "manufacturer", "made by",
         "product", "products", "portfolio", "available", "do you have",
         "represent", "your medicine", "your drug", "your products",
     )
@@ -748,6 +811,50 @@ async def chat_endpoint(
                 track2=track2_data
             )
 
+        # Load active rep-mode context once per request.
+        # If frontend sends chat_mode as rep:<company>, sync server-side rep mode.
+        rep_company = None
+        requested_mode = (chat_request.chat_mode or "normal").strip()
+        requested_mode_lower = requested_mode.lower()
+        rep_mode_enabled = requested_mode_lower.startswith("rep")
+        requested_rep_company = None
+        if requested_mode_lower.startswith("rep:"):
+            requested_rep_company = requested_mode.split(":", 1)[1].strip()
+
+        if rep_mode_enabled:
+            try:
+                rep_company = await asyncio.to_thread(
+                    pharma_rep_service.get_active_company_context,
+                    user_id,
+                    auth_token
+                )
+            except Exception as e:
+                logger.warning("Failed to load active rep company context: %s", e)
+                rep_company = None
+
+            if requested_rep_company:
+                active_name = (rep_company.get("company_name") or "").strip().lower() if rep_company else ""
+                active_key = (rep_company.get("company_key") or "").strip().lower() if rep_company else ""
+                requested_norm = requested_rep_company.strip().lower()
+                if not rep_company or requested_norm not in {active_name, active_key}:
+                    try:
+                        result = await asyncio.to_thread(
+                            pharma_rep_service.set_company_mode,
+                            user_id,
+                            auth_token,
+                            requested_rep_company
+                        )
+                        if result.get("success"):
+                            rep_company = await asyncio.to_thread(
+                                pharma_rep_service.get_active_company_context,
+                                user_id,
+                                auth_token
+                            )
+                        else:
+                            logger.warning("Failed to auto-sync rep mode from chat_mode: %s", result.get("message"))
+                    except Exception as e:
+                        logger.warning("Rep mode auto-sync failed for '%s': %s", requested_rep_company, e)
+
         # 1. Intent Planning & Entity Extraction (LLM Powered)
         plan = await plan_intent(chat_request.message, history=intent_history_for_llm)
         logger.info("Intent Plan: %s, Drugs: %s", plan.intent, plan.drug_names)
@@ -766,6 +873,8 @@ async def chat_endpoint(
         
         is_freshness_query = _is_freshness_sensitive_query(chat_request.message)
         is_moa_query = "MOA" in enhanced_intents
+        is_moa_mode_query = is_moa_query or _is_moa_like_query(chat_request.message)
+        is_rep_mode_query = bool({"PHARMA_REP", "PRODUCTS", "SUPPORT"} & enhanced_intents) or _is_rep_like_query(chat_request.message, rep_company)
 
         # ============================================================
         # STRICT MODE ENFORCEMENT
@@ -775,25 +884,53 @@ async def chat_endpoint(
         if mode == "insurance":
             # Strict rejection of non-insurance queries
             if not is_insurance_query:
+                response_text = (
+                    "Insurance mode only handles PM-JAY, CGHS, ESI, reimbursement, and package-rate questions. "
+                    "Please switch to Default Chat or another mode for this query."
+                )
+                if chat_request.voice_mode:
+                    response_text = (
+                        "You are in insurance mode. Ask about PM-JAY, CGHS, ESI, reimbursement, or package rates, "
+                        "or switch mode for clinical questions."
+                    )
                 return ChatResponse(
-                    response="[Active Mode: Insurance]\n\nI can only answer questions about **PM-JAY, Health Insurance, Reimbursement, and Package Rates** in this mode.\n\nPlease switch to **Default Chat** for clinical queries or diagnosis.",
+                    response=response_text,
                     session_id=session_id
                 )
         
         elif mode == "moa":
-            # Strict rejection of insurance queries in MOA mode
-            if is_insurance_query:
+            # Strict rejection of any non-MOA query
+            if not is_moa_mode_query:
+                response_text = (
+                    "Mechanism mode only handles mechanism of action, receptors, pathways, pharmacodynamics, "
+                    "and pharmacokinetics. Please switch mode for insurance, pricing, or general chat."
+                )
+                if chat_request.voice_mode:
+                    response_text = (
+                        "You are in mechanism mode. Ask about mechanism of action, receptors, pathways, "
+                        "or pharmacokinetics, or switch mode for other topics."
+                    )
                 return ChatResponse(
-                    response="[Active Mode: Mechanism of Action]\n\nI am focused on **Pharmacology and Molecular Mechanisms**. I cannot verify insurance coverage or prices in this mode.\n\nPlease switch to **Insurance Mode** for reimbursement queries.",
+                    response=response_text,
                     session_id=session_id
                 )
         
         elif mode.startswith("rep"):
-            # Strict Rep Mode: Reject generic irrelevant chitchat if possible, 
-            # but usually Reps need to answer "price" or "availability".
-            # We strictly block "Competitor Promotion" or "Diagnosis" if easy to detect,
-            # but usually the system prompt handles this best. 
-            pass
+            # Strict rep mode: only company/product/rep support queries are allowed.
+            if not is_rep_mode_query:
+                response_text = (
+                    "Rep mode only handles company portfolio, brand positioning, product details, and support programs. "
+                    "Please switch to Default, Insurance, or MOA mode for this query."
+                )
+                if chat_request.voice_mode:
+                    response_text = (
+                        "You are in rep mode. Ask company, product, brand, or support-program questions, "
+                        "or switch mode for other topics."
+                    )
+                return ChatResponse(
+                    response=response_text,
+                    session_id=session_id
+                )
 
         # Use strict mode to override intent if needed
         if mode == "insurance":
@@ -803,6 +940,7 @@ async def chat_endpoint(
         if mode == "moa":
             # Force MOA intent
             enhanced_intents.add("MOA")
+            is_moa_query = True
 
         # ============================================================
         
@@ -894,19 +1032,52 @@ async def chat_endpoint(
         # 2. Execution based on Intent
         if plan.intent == "SUBSTITUTE" and not is_insurance_query:
             # Find cheaper alternatives
+            explicit_target = _extract_substitute_target(chat_request.message)
             drug_name = (
-                _sanitize_drug_candidate(plan.drug_names[0]) if plan.drug_names else None
-            ) or _extract_substitute_target(chat_request.message) or _sanitize_drug_candidate(drug_from_history)
+                explicit_target
+                or (_sanitize_drug_candidate(plan.drug_names[0]) if plan.drug_names else None)
+                or _sanitize_drug_candidate(drug_from_history)
+            )
             if drug_name:
                 substitute_target_for_search = drug_name
                 subs = await find_cheaper_substitutes(drug_name)
                 if subs:
                     context_data['substitutes'] = subs
-                    msg_context += f"\n\n[Cheaper Alternatives for {drug_name} from Database]\n"
-                    for s in subs[:5]:
-                        price_info = f" - {s.price_raw}" if s.price_raw else ""
-                        mfg_info = f" by {s.manufacturer}" if s.manufacturer else ""
-                        msg_context += f"- {s.name}{price_info}{mfg_info}\n"
+                    if chat_request.voice_mode:
+                        top_names = ", ".join([s.name for s in subs[:3] if s.name])
+                        response_text = (
+                            f"I found verified cheaper substitutes for {drug_name} in the database: {top_names}. "
+                            "Do you want a quick price comparison?"
+                        )
+                    else:
+                        lines = [f"Cheaper substitutes for {drug_name} (database):", ""]
+                        for s in subs[:5]:
+                            price_info = s.price_raw or "price not listed"
+                            mfg_info = f" | {s.manufacturer}" if s.manufacturer else ""
+                            lines.append(f"- {s.name} | {price_info}{mfg_info}")
+                        lines.append("")
+                        lines.append("Only lower-priced matches are included based on available database pricing.")
+                        response_text = "\n".join(lines).strip()
+
+                    asyncio.create_task(save_message_to_session(
+                        user_id=user_id,
+                        session_id=session_id,
+                        message=chat_request.message,
+                        response=response_text,
+                        auth_token=auth_token,
+                    ))
+                    return ChatResponse(
+                        response=response_text,
+                        citations=[],
+                        suggestions=[] if chat_request.voice_mode else [
+                            f"Compare top 2 substitutes for {drug_name}",
+                            f"Show cheapest substitute for {drug_name}",
+                            "Check dosage-equivalent options",
+                        ],
+                        session_id=session_id,
+                        web_sources=[],
+                        track2=None
+                    )
                 else:
                     if not chat_request.web_search_mode:
                         if chat_request.voice_mode:
@@ -1004,11 +1175,6 @@ async def chat_endpoint(
                         msg_context += f"- {inter.drug1} + {inter.drug2}: {inter.severity} - {inter.description}\n"
 
         # 2b. Enhanced Track2 context (MOA, comparison, insurance, rep-mode)
-        rep_company = await asyncio.to_thread(
-            pharma_rep_service.get_active_company_context,
-            user_id,
-            auth_token
-        )
         if enhanced_intents or rep_company:
             try:
                 enhanced_context, track2_data = await build_enhanced_context(
