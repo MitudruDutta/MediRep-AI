@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User as UserIcon, ArrowLeft, Save } from "lucide-react";
+import { User as UserIcon, ArrowLeft, Save, LogOut } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -139,6 +139,11 @@ export function ProfileSettings({ user }: { user: SerializableUser }) {
     router.refresh();
   }
 
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    router.push('/');
+  }
+
   return (
     <div className="mx-auto w-full max-w-5xl p-6 md:p-8">
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -156,7 +161,7 @@ export function ProfileSettings({ user }: { user: SerializableUser }) {
             Profile
           </h1>
           <p className="mt-1 text-muted-foreground">
-            Edit your personal details. This writes to `user_profiles` (RLS protected).
+            Edit your personal details.
           </p>
         </div>
       </div>
@@ -257,6 +262,16 @@ export function ProfileSettings({ user }: { user: SerializableUser }) {
                 className="border-[color:var(--landing-border-strong)] hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
               >
                 Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleSignOut}
+                disabled={saving}
+                className="ml-auto"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Log Out
               </Button>
             </div>
           </CardContent>

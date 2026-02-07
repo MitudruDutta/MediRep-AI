@@ -46,15 +46,21 @@ export default function EarningsPage() {
             if (showLoading) setLoading(true);
             else setRefreshing(true);
 
-            const [payoutsData, statsData] = await Promise.all([
+            const [payoutsData, statsData, dashboardData] = await Promise.all([
                 pharmacistApi.getPayoutHistory(statusFilter === "all" ? undefined : statusFilter),
                 pharmacistApi.getPayoutStats(),
+                pharmacistApi.getDashboardStats(),
             ]);
 
+            console.log("Payout stats received:", statsData); // Debug log
+            console.log("Dashboard stats received:", dashboardData); // Debug log
             setPayouts(payoutsData);
-            setStats(statsData);
+            setStats({
+                ...statsData,
+                total_earnings: dashboardData.total_earnings, // Add total earnings from dashboard
+            });
         } catch (error: any) {
-            console.error(error);
+            console.error("Error fetching earnings data:", error);
             toast.error(error.message || "Failed to fetch earnings data");
         } finally {
             setLoading(false);
@@ -118,7 +124,7 @@ export default function EarningsPage() {
             <div className="grid gap-4 md:grid-cols-3">
                 <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)]">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-[color:var(--landing-muted)]">
+                        <CardTitle className="text-sm font-medium text-gray-600">
                             Total Earned
                         </CardTitle>
                         <div className="p-2 rounded-lg bg-[rgb(var(--landing-moss-rgb)/0.12)]">
@@ -126,18 +132,18 @@ export default function EarningsPage() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-3xl font-bold text-[color:var(--landing-moss)]">
-                            {formatCurrency(stats?.total_earned || 0)}
+                        <div className="text-3xl font-bold text-green-600">
+                            {formatCurrency((stats?.total_earnings ?? 0))}
                         </div>
-                        <p className="text-xs text-[color:var(--landing-muted)] mt-1">
-                            Lifetime earnings (paid out)
+                        <p className="text-xs text-gray-600 mt-1">
+                            Total revenue from all consultations
                         </p>
                     </CardContent>
                 </Card>
 
                 <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)]">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-[color:var(--landing-muted)]">
+                        <CardTitle className="text-sm font-medium text-gray-600">
                             Pending Payout
                         </CardTitle>
                         <div className="p-2 rounded-lg bg-[rgb(var(--landing-clay-rgb)/0.12)]">
@@ -145,10 +151,10 @@ export default function EarningsPage() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-3xl font-bold text-[color:var(--landing-clay)]">
-                            {formatCurrency(stats?.pending_payout || 0)}
+                        <div className="text-3xl font-bold text-orange-600">
+                            {formatCurrency((stats?.pending_payout ?? 0))}
                         </div>
-                        <p className="text-xs text-[color:var(--landing-muted)] mt-1">
+                        <p className="text-xs text-gray-600 mt-1">
                             Awaiting next payout cycle
                         </p>
                     </CardContent>
@@ -156,7 +162,7 @@ export default function EarningsPage() {
 
                 <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)]">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-[color:var(--landing-muted)]">
+                        <CardTitle className="text-sm font-medium text-gray-600">
                             Last Payout
                         </CardTitle>
                         <div className="p-2 rounded-lg bg-[rgb(var(--landing-dot-rgb)/0.12)]">
@@ -164,10 +170,10 @@ export default function EarningsPage() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-3xl font-bold text-[color:var(--landing-ink)]">
+                        <div className="text-3xl font-bold text-gray-900">
                             {stats?.last_payout?.amount ? formatCurrency(stats.last_payout.amount) : "---"}
                         </div>
-                        <p className="text-xs text-[color:var(--landing-muted)] mt-1">
+                        <p className="text-xs text-gray-600 mt-1">
                             {stats?.last_payout?.date ? formatDate(stats.last_payout.date) : "No payouts yet"}
                         </p>
                     </CardContent>

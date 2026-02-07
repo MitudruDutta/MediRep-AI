@@ -1,17 +1,18 @@
 import { AuthPage } from "@/components/ui/auth-page";
 import { sanitizeRedirectPath } from "@/lib/auth/redirect";
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const params = await searchParams;
   const nextParam =
-    (typeof searchParams?.redirect === "string" && searchParams.redirect) ||
-    (typeof searchParams?.next === "string" && searchParams.next) ||
+    (typeof params?.redirect === "string" && params.redirect) ||
+    (typeof params?.next === "string" && params.next) ||
     undefined;
 
   const redirectTo = sanitizeRedirectPath(nextParam, "/pharmacist/register");
 
-  return <AuthPage mode="login" redirectTo={redirectTo} />;
+  return <AuthPage mode="login" redirectTo={redirectTo} variant="pharmacist" />;
 }

@@ -70,8 +70,10 @@ export interface PayoutSummary {
 }
 
 export interface PayoutStats {
-    total_earned: number;
+    total_paid: number;
     pending_payout: number;
+    unpaid_earnings: number;
+    total_earnings?: number; // Added from dashboard stats
     last_payout: {
         amount: number;
         date?: string;

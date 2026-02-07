@@ -35,7 +35,7 @@ const BentoGridItem = ({
   icon,
   className,
   url,
-  accent = "bg-[color:var(--landing-clay)]",
+  accent = "bg-[#c85a3a]",
 }: BentoGridItemProps) => {
   const variants: Variants = {
     hidden: { opacity: 0, y: 20 },
@@ -49,49 +49,60 @@ const BentoGridItem = ({
   return (
     <motion.div
       variants={variants}
-      whileHover={{ y: -5, scale: 1.02 }}
+      whileHover={{ y: -8, scale: 1.03 }}
       className={cn(
-        "group relative flex h-full cursor-pointer flex-col justify-between overflow-hidden rounded-2xl p-6",
-        "bg-[color:var(--landing-card)] backdrop-blur-xl",
-        "border border-[color:var(--landing-border)]",
-        "shadow-xl shadow-black/5 dark:shadow-black/20",
-        "hover:shadow-2xl hover:border-[color:var(--landing-border-strong)]",
+        "group relative flex h-full min-h-[180px] cursor-pointer flex-col justify-between overflow-hidden rounded-3xl p-6 sm:p-8",
+        "bg-white/90 backdrop-blur-xl",
+        "border-2 border-orange-200/50",
+        "shadow-lg hover:shadow-2xl",
         "transition-all duration-500",
         className
       )}
     >
       <Link href={url} className="absolute inset-0 z-20" />
 
-      {/* Large background icon */}
-      <div className="absolute -right-4 -bottom-4 opacity-[0.05] dark:opacity-[0.08] scale-[4] group-hover:scale-[4.5] transition-transform duration-700">
-        {icon}
-      </div>
+      {/* Decorative background circles */}
+      <div className="absolute top-0 right-0 w-40 h-40 bg-orange-200/30 rounded-full blur-3xl" />
+      <div className="absolute bottom-0 left-0 w-32 h-32 bg-pink-200/20 rounded-full blur-2xl" />
+      <div className="absolute top-1/2 right-1/4 w-24 h-24 bg-orange-100/40 rounded-full blur-xl" />
+      
+      {/* Animated gradient background on hover */}
+      <div className="absolute inset-0 bg-gradient-to-br from-orange-50/80 via-transparent to-pink-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      
+      {/* Floating particles effect */}
+      <div className="absolute top-0 right-0 w-32 h-32 bg-orange-200/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
 
       <div className="relative z-10 flex h-full flex-col justify-between">
         <div>
           <div className={cn(
-            "mb-4 flex h-12 w-12 items-center justify-center rounded-xl",
-            "shadow-lg shadow-black/10 dark:shadow-black/30",
+            "mb-4 flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-2xl",
+            "shadow-xl group-hover:shadow-2xl",
             accent,
-            "group-hover:shadow-xl transition-shadow duration-500"
+            "group-hover:scale-110 group-hover:rotate-3 transition-all duration-500 relative"
           )}>
-            <span className="text-white">{icon}</span>
+            {/* Glow effect */}
+            <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" 
+                 style={{ boxShadow: '0 0 30px rgba(203, 85, 52, 0.6)' }} 
+            />
+            <span className="text-white text-xl relative z-10">{icon}</span>
           </div>
-          <h3 className="mb-2 text-xl font-bold tracking-tight text-[color:var(--landing-ink)] font-[family-name:var(--font-display)]">
+          <h3 className="mb-2 text-xl sm:text-2xl font-bold tracking-tight text-gray-900">
             {title}
           </h3>
-          <p className="text-[color:var(--landing-muted)] text-sm leading-relaxed">
+          <p className="text-gray-600 text-sm sm:text-base leading-relaxed">
             {description}
           </p>
         </div>
-        <div className="mt-4 flex items-center text-sm font-medium text-[color:var(--landing-moss)]">
+        <div className="mt-4 flex items-center text-sm font-semibold text-[#c85a3a] group-hover:text-[#b14a2f]">
           <span className="mr-2">Open</span>
           <ArrowRight className="size-4 transition-all duration-300 group-hover:translate-x-2" />
         </div>
       </div>
 
-      {/* Hover overlay (solid, no gradient) */}
-      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-[rgb(var(--landing-dot-rgb)/0.03)]" />
+      {/* Shine effect on hover */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+      </div>
     </motion.div>
   );
 };
@@ -111,7 +122,7 @@ const items: DashboardItem[] = [
     url: "/dashboard/Chat",
     icon: <MessageSquare className="size-6" />,
     description: "Ask questions about medications and get instant AI-powered answers",
-    colSpan: "md:col-span-2",
+    colSpan: "md:col-span-1",
     accent: "bg-[color:var(--landing-clay)]",
   },
   {
@@ -128,14 +139,6 @@ const items: DashboardItem[] = [
     icon: <Camera className="size-6" />,
     description: "Identify pills using image recognition",
     colSpan: "md:col-span-1",
-    accent: "bg-[color:var(--landing-clay)]",
-  },
-  {
-    title: "Safety Alerts",
-    url: "/dashboard/SafetyAlert",
-    icon: <AlertTriangle className="size-6" />,
-    description: "Check FDA alerts and recalls for medications",
-    colSpan: "md:col-span-2",
     accent: "bg-[color:var(--landing-clay)]",
   },
   {
@@ -185,11 +188,7 @@ const sidebarLinks = [
     href: "/dashboard/PillScanner",
     icon: <Camera className="h-5 w-5" />,
   },
-  {
-    label: "Safety Alerts",
-    href: "/dashboard/SafetyAlert",
-    icon: <AlertTriangle className="h-5 w-5" />,
-  },
+
   {
     label: "Patient Context",
     href: "/dashboard/PatientContext",
@@ -215,6 +214,7 @@ interface DashboardProps {
 
 export default function Dashboard({ initialUserEmail, initialUserName, initialUserAvatar }: DashboardProps) {
   const [open, setOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -235,14 +235,98 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
   };
 
   return (
-    <Sidebar open={open} setOpen={setOpen}>
+    <>
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-[color:var(--landing-paper)] border-b border-[color:var(--landing-border)] px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Image src="/logo.png" alt="MediRep AI" width={24} height={24} className="h-6 w-6 dark:invert" />
+          <span className="font-bold text-lg text-[color:var(--landing-ink)]">MediRep AI</span>
+        </div>
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="p-2 rounded-lg hover:bg-[rgb(var(--landing-dot-rgb)/0.06)] transition-colors"
+          aria-label="Toggle menu"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {mobileMenuOpen ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            )}
+          </svg>
+        </button>
+      </div>
+
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && (
+        <div 
+          className="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Mobile Menu */}
+      <div className={cn(
+        "lg:hidden fixed top-[57px] right-0 bottom-0 z-40 w-64 bg-[color:var(--landing-paper)] border-l border-[color:var(--landing-border)] transform transition-transform duration-300 overflow-y-auto",
+        mobileMenuOpen ? "translate-x-0" : "translate-x-full"
+      )}>
+        <div className="p-4 flex flex-col gap-2">
+          {sidebarLinks.map((link, idx) => (
+            <Link
+              key={idx}
+              href={link.href}
+              onClick={() => setMobileMenuOpen(false)}
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200",
+                pathname === link.href
+                  ? "bg-[color:var(--landing-moss)] text-white shadow-lg"
+                  : "text-[color:var(--landing-muted)] hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
+              )}
+            >
+              {link.icon}
+              <span className="text-sm font-medium">{link.label}</span>
+            </Link>
+          ))}
+          
+          <div className="border-t border-[color:var(--landing-border)] mt-4 pt-4">
+            <Link
+              href="/dashboard/settings"
+              onClick={() => setMobileMenuOpen(false)}
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200",
+                pathname === "/dashboard/settings"
+                  ? "bg-[color:var(--landing-moss)] text-white shadow-lg"
+                  : "text-[color:var(--landing-muted)] hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
+              )}
+            >
+              <User className="h-5 w-5" />
+              <span className="text-sm font-medium">Profile</span>
+            </Link>
+            
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                handleSignOut();
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[color:var(--landing-muted)] hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200 mt-2"
+            >
+              <LogOut className="h-5 w-5" />
+              <span className="text-sm font-medium">Sign Out</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <Sidebar open={open} setOpen={setOpen}>
       <div className="flex h-screen bg-[color:var(--landing-paper)] text-[color:var(--landing-ink)] overflow-hidden">
         {/* Animated Background */}
         <div className="fixed inset-0 z-0">
           {/* Keep it clean (no gradients) */}
         </div>
 
-        <SidebarBody className="justify-between gap-10 relative z-10">
+        {/* Desktop Sidebar - Hidden on mobile */}
+        <div className="hidden lg:block">
+          <SidebarBody className="justify-between gap-10 relative z-10">
           <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
             <SidebarLogo
               open={open}
@@ -287,68 +371,31 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
                 </motion.span>
               )}
             </button>
-
-            {/* User info */}
-            <Link
-              href="/dashboard/settings"
-              className="mt-4 flex items-center gap-3 px-2 rounded-xl hover:bg-[rgb(var(--landing-dot-rgb)/0.06)] transition-colors"
-              title="Edit profile"
-            >
-              {initialUserAvatar ? (
-                <Image
-                  src={initialUserAvatar}
-                  className="h-9 w-9 flex-shrink-0 rounded-full border-2 border-[rgb(var(--landing-moss-rgb)/0.45)]"
-                  width={36}
-                  height={36}
-                  alt="Avatar"
-                />
-              ) : (
-                <div className="h-9 w-9 flex-shrink-0 rounded-full bg-[color:var(--landing-clay)] flex items-center justify-center text-white font-bold text-sm">
-                  {(initialUserName || initialUserEmail || "U")[0].toUpperCase()}
-                </div>
-              )}
-              {open && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex flex-col overflow-hidden"
-                >
-                  <span className="text-sm font-medium text-[color:var(--landing-ink)] truncate">
-                    {initialUserName || "User"}
-                  </span>
-                  <span className="text-xs text-[color:var(--landing-muted)] truncate">
-                    {initialUserEmail}
-                  </span>
-                </motion.div>
-              )}
-            </Link>
           </div>
 
 
         </SidebarBody>
+        </div>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto relative z-10">
-          <div className="absolute top-4 left-4 z-50">
-            <SidebarTrigger />
-          </div>
-          <div className="p-6 md:p-8 max-w-7xl mx-auto pt-16">
+        <main className="flex-1 overflow-y-auto relative z-10 lg:pt-0 pt-[57px] bg-gradient-to-br from-[#fef5f1] to-[#f9dcc4]">
+          <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="mb-8"
+              className="mb-6 md:mb-8"
             >
-              <h1 className="text-3xl md:text-4xl font-bold text-[color:var(--landing-ink)] mb-2 tracking-tight font-[family-name:var(--font-display)]">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-[color:var(--landing-ink)] mb-2 tracking-tight font-[family-name:var(--font-display)]">
                 Welcome back, {initialUserName || initialUserEmail?.split('@')[0] || 'User'}
               </h1>
-              <p className="text-[color:var(--landing-muted)] text-lg">
+              <p className="text-[color:var(--landing-muted)] text-base md:text-lg">
                 Your AI-powered medical assistant is ready to help.
               </p>
             </motion.div>
 
             <motion.div
-              className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3"
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4"
               variants={containerVariants}
               initial="hidden"
               animate="visible"
@@ -369,5 +416,6 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
         </main>
       </div>
     </Sidebar>
+    </>
   );
 }

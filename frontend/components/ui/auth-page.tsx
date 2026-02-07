@@ -26,10 +26,12 @@ export function AuthPage({
   mode,
   redirectTo,
   className,
+  variant = "default",
 }: {
   mode: AuthMode;
   redirectTo?: string;
   className?: string;
+  variant?: "default" | "pharmacist";
 }) {
   const safeNext = useMemo(
     () => sanitizeRedirectPath(redirectTo, "/dashboard"),
@@ -114,38 +116,38 @@ export function AuthPage({
       )}
     >
       {/* Left panel */}
-      <div className="relative hidden h-full flex-col border-r bg-muted/60 p-10 lg:flex">
-        <div className="absolute inset-0 z-10 bg-gradient-to-t from-background to-transparent" />
+      <div className="relative hidden h-full flex-col border-r p-10 lg:flex bg-gradient-to-br from-[#f4a88a] via-[#f9c9a8] to-[#fde4c8]">
+        <div className="absolute inset-0 z-10 bg-gradient-to-t from-[#f9dcc4]/80 to-transparent" />
 
         <div className="z-10 flex items-center gap-2">
-          <Grid2x2PlusIcon className="size-6" />
-          <p className="text-xl font-semibold font-[family-name:var(--font-display)]">
+          <Grid2x2PlusIcon className="size-6 text-[#c85a3a]" />
+          <p className="text-xl font-semibold font-[family-name:var(--font-display)] text-gray-900">
             MediRep AI
           </p>
         </div>
 
         <div className="z-10 mt-auto space-y-6">
           <blockquote className="space-y-3">
-            <p className="text-xl leading-relaxed">
+            <p className="text-xl leading-relaxed text-gray-900 font-medium">
               &ldquo;If the answer affects patient safety or coverage, it should be
               instant, sourced, and auditable.&rdquo;
             </p>
-            <footer className="font-mono text-sm font-semibold">
+            <footer className="font-mono text-sm font-semibold text-gray-700">
               ~ Design principle
             </footer>
           </blockquote>
 
-          <div className="grid grid-cols-2 gap-3 text-sm text-muted-foreground">
-            <div className="rounded-lg border bg-background/60 p-3">
+          <div className="grid grid-cols-2 gap-3 text-sm text-gray-700">
+            <div className="rounded-lg border border-orange-200/50 bg-white/80 backdrop-blur-sm p-3 shadow-sm hover:shadow-md transition-shadow">
               Drug: dosing, contraindications, interactions
             </div>
-            <div className="rounded-lg border bg-background/60 p-3">
+            <div className="rounded-lg border border-orange-200/50 bg-white/80 backdrop-blur-sm p-3 shadow-sm hover:shadow-md transition-shadow">
               Coverage: reimbursement, prior auth, formularies
             </div>
-            <div className="rounded-lg border bg-background/60 p-3">
+            <div className="rounded-lg border border-orange-200/50 bg-white/80 backdrop-blur-sm p-3 shadow-sm hover:shadow-md transition-shadow">
               Marketplace: book a verified pharmacist
             </div>
-            <div className="rounded-lg border bg-background/60 p-3">
+            <div className="rounded-lg border border-orange-200/50 bg-white/80 backdrop-blur-sm p-3 shadow-sm hover:shadow-md transition-shadow">
               Secure: roles, RLS, server-side verification
             </div>
           </div>
@@ -158,10 +160,10 @@ export function AuthPage({
       </div>
 
       {/* Right panel */}
-      <div className="relative flex min-h-screen flex-col justify-center p-4">
-        <div aria-hidden className="absolute inset-0 -z-10 opacity-60">
-          <div className="absolute right-0 top-0 h-[520px] w-[520px] -translate-y-1/2 translate-x-1/4 rounded-full bg-[radial-gradient(circle_at_center,hsl(var(--foreground)/0.06)_0,transparent_65%)]" />
-          <div className="absolute right-0 top-0 h-[420px] w-[320px] -translate-y-1/2 rounded-full bg-[radial-gradient(circle_at_center,hsl(var(--foreground)/0.04)_0,transparent_70%)]" />
+      <div className="relative flex min-h-screen flex-col justify-center p-4 bg-gradient-to-br from-[#fef5f1] to-[#f9dcc4]">
+        <div aria-hidden className="absolute inset-0 -z-10 opacity-40">
+          <div className="absolute right-0 top-0 h-[520px] w-[520px] -translate-y-1/2 translate-x-1/4 rounded-full bg-[radial-gradient(circle_at_center,rgba(203,85,52,0.15)_0,transparent_65%)]" />
+          <div className="absolute right-0 top-0 h-[420px] w-[320px] -translate-y-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(244,168,138,0.2)_0,transparent_70%)]" />
         </div>
 
         <Button variant="ghost" className="absolute left-5 top-7" asChild>
@@ -180,10 +182,10 @@ export function AuthPage({
           </div>
 
           <div className="flex flex-col space-y-1">
-            <h1 className="text-2xl font-bold tracking-wide font-[family-name:var(--font-display)]">
+            <h1 className="text-2xl font-bold tracking-wide font-[family-name:var(--font-display)] text-gray-900">
               {title}
             </h1>
-            <p className="text-muted-foreground text-base">{subtitle}</p>
+            <p className="text-gray-700 text-base">{subtitle}</p>
           </div>
 
           {error && (
@@ -202,7 +204,7 @@ export function AuthPage({
             <Button
               type="button"
               size="lg"
-              className="w-full"
+              className="w-full bg-[#c85a3a] hover:bg-[#b14a2f] text-white shadow-lg"
               onClick={handleGoogle}
               disabled={isLoading || isGoogleLoading || !!success}
             >
@@ -214,7 +216,7 @@ export function AuthPage({
           <AuthSeparator />
 
           <form className="space-y-3" onSubmit={handleSubmit}>
-            <p className="text-muted-foreground text-start text-xs">
+            <p className="text-gray-700 text-start text-xs">
               {mode === "login"
                 ? "Use your email and password to sign in."
                 : "Use your email to create an account (confirmation email required)."}
@@ -223,14 +225,17 @@ export function AuthPage({
             <div className="relative">
               <Input
                 placeholder="your.email@example.com"
-                className="peer pl-9"
+                className={cn(
+                  "peer pl-9 border-gray-300 text-gray-900 placeholder:text-gray-500",
+                  variant === "pharmacist" ? "bg-gray-200" : "bg-white"
+                )}
                 type="email"
                 name="email"
                 autoComplete="email"
                 required
                 disabled={isLoading || isGoogleLoading || !!success}
               />
-              <div className="text-muted-foreground pointer-events-none absolute inset-y-0 left-0 flex items-center justify-center pl-3 peer-disabled:opacity-50">
+              <div className="text-gray-600 pointer-events-none absolute inset-y-0 left-0 flex items-center justify-center pl-3 peer-disabled:opacity-50">
                 <AtSignIcon className="size-4" aria-hidden="true" />
               </div>
             </div>
@@ -238,7 +243,10 @@ export function AuthPage({
             <div className="relative">
               <Input
                 placeholder={mode === "login" ? "Password" : "Create a password"}
-                className="peer pl-9 pr-9"
+                className={cn(
+                  "peer pl-9 pr-9 border-gray-300 text-gray-900 placeholder:text-gray-500",
+                  variant === "pharmacist" ? "bg-gray-200" : "bg-white"
+                )}
                 type={showPassword ? "text" : "password"}
                 name="password"
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
@@ -248,13 +256,13 @@ export function AuthPage({
                 value={password}
                 onChange={(ev) => setPassword(ev.target.value)}
               />
-              <div className="text-muted-foreground pointer-events-none absolute inset-y-0 left-0 flex items-center justify-center pl-3 peer-disabled:opacity-50">
+              <div className="text-gray-600 pointer-events-none absolute inset-y-0 left-0 flex items-center justify-center pl-3 peer-disabled:opacity-50">
                 <LockIcon className="size-4" aria-hidden="true" />
               </div>
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="text-muted-foreground absolute inset-y-0 right-0 flex items-center pr-3 hover:text-foreground disabled:opacity-50"
+                className="text-gray-600 absolute inset-y-0 right-0 flex items-center pr-3 hover:text-gray-900 disabled:opacity-50"
                 disabled={isLoading || isGoogleLoading || !!success}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
@@ -272,7 +280,10 @@ export function AuthPage({
               <div className="relative">
                 <Input
                   placeholder="Confirm password"
-                  className="peer pl-9 pr-9"
+                  className={cn(
+                    "peer pl-9 pr-9 border-gray-300 text-gray-900 placeholder:text-gray-500",
+                    variant === "pharmacist" ? "bg-gray-200" : "bg-white"
+                  )}
                   type={showConfirmPassword ? "text" : "password"}
                   name="confirmPassword"
                   autoComplete="new-password"
@@ -280,13 +291,13 @@ export function AuthPage({
                   minLength={8}
                   disabled={isLoading || isGoogleLoading || !!success}
                 />
-                <div className="text-muted-foreground pointer-events-none absolute inset-y-0 left-0 flex items-center justify-center pl-3 peer-disabled:opacity-50">
+                <div className="text-gray-600 pointer-events-none absolute inset-y-0 left-0 flex items-center justify-center pl-3 peer-disabled:opacity-50">
                   <LockIcon className="size-4" aria-hidden="true" />
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword((v) => !v)}
-                  className="text-muted-foreground absolute inset-y-0 right-0 flex items-center pr-3 hover:text-foreground disabled:opacity-50"
+                  className="text-gray-600 absolute inset-y-0 right-0 flex items-center pr-3 hover:text-gray-900 disabled:opacity-50"
                   disabled={isLoading || isGoogleLoading || !!success}
                   aria-label={
                     showConfirmPassword ? "Hide confirm password" : "Show confirm password"
@@ -305,7 +316,7 @@ export function AuthPage({
               <div className="flex justify-end">
                 <Link
                   href={`/auth/forgot-password?next=${encodeURIComponent(safeNext)}`}
-                  className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4"
+                  className="text-xs text-gray-700 hover:text-gray-900 underline underline-offset-4"
                 >
                   Forgot password?
                 </Link>
@@ -314,7 +325,7 @@ export function AuthPage({
 
             <Button
               type="submit"
-              className="w-full"
+              className="w-full bg-[#c85a3a] hover:bg-[#b14a2f] text-white shadow-lg"
               disabled={isLoading || isGoogleLoading || !!success}
             >
               {mode === "login"
@@ -327,13 +338,13 @@ export function AuthPage({
             </Button>
           </form>
 
-          <p className="text-muted-foreground mt-6 text-sm">
+          <p className="text-gray-700 mt-6 text-sm">
             {mode === "login" ? (
               <>
                 No account yet?{" "}
                 <Link
                   href={`/auth/signup?next=${encodeURIComponent(safeNext)}`}
-                  className="hover:text-primary underline underline-offset-4"
+                  className="text-gray-900 hover:text-[#c85a3a] underline underline-offset-4 font-medium"
                 >
                   Create one
                 </Link>
@@ -344,7 +355,7 @@ export function AuthPage({
                 Already have an account?{" "}
                 <Link
                   href={`/auth/login?next=${encodeURIComponent(safeNext)}`}
-                  className="hover:text-primary underline underline-offset-4"
+                  className="text-gray-900 hover:text-[#c85a3a] underline underline-offset-4 font-medium"
                 >
                   Sign in
                 </Link>
@@ -353,15 +364,15 @@ export function AuthPage({
             )}
           </p>
 
-          <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
+          <p className="text-gray-700 mt-4 text-xs leading-relaxed">
             By continuing, you agree to our{" "}
-            <Link href="/terms" className="hover:text-primary underline underline-offset-4">
+            <Link href="/terms" className="text-gray-900 hover:text-[#c85a3a] underline underline-offset-4">
               Terms of Service
             </Link>{" "}
             and{" "}
             <Link
               href="/privacy"
-              className="hover:text-primary underline underline-offset-4"
+              className="text-gray-900 hover:text-[#c85a3a] underline underline-offset-4"
             >
               Privacy Policy
             </Link>
@@ -424,9 +435,9 @@ const GoogleIcon = (props: React.ComponentProps<"svg">) => (
 const AuthSeparator = () => {
   return (
     <div className="flex w-full items-center justify-center">
-      <div className="bg-border h-px w-full" />
-      <span className="text-muted-foreground px-2 text-xs">OR</span>
-      <div className="bg-border h-px w-full" />
+      <div className="bg-gray-300 h-px w-full" />
+      <span className="text-gray-700 px-2 text-xs">OR</span>
+      <div className="bg-gray-300 h-px w-full" />
     </div>
   );
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ModeToggle } from "@/components/mode-toggle";
+
 import { Button } from "@/components/ui/button";
 import {
   Pill,
@@ -23,16 +23,11 @@ import {
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
-import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import BlurText from "@/components/ui/blur-text";
 import ScrambledText from "@/components/ui/scrambled-text";
 import ScrollFloat from "@/components/ui/scroll-float";
-
-const GL = dynamic(() => import("@/components/gl").then((mod) => mod.GL), {
-  ssr: false,
-});
 
 // --- Helper Components ---
 
@@ -75,23 +70,33 @@ const FeatureTile = ({ tone, icon, title, body }: FeatureTileProps) => {
 
   return (
     <div
-      className="group relative overflow-hidden rounded-2xl border p-4 transition-colors hover:bg-[color:var(--landing-card-strong)]"
-      style={{ borderColor: "var(--landing-border)", backgroundColor: "var(--landing-card)" }}
+      className="group relative overflow-hidden rounded-2xl border p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:-translate-y-1 cursor-pointer bg-white/90 backdrop-blur-sm"
+      style={{ borderColor: "rgba(203, 85, 52, 0.2)" }}
     >
-      <div className="mb-3 flex items-center gap-3">
-        <div
-          className="flex h-10 w-10 items-center justify-center rounded-xl"
-          style={{
-            backgroundColor: `rgba(${color.rgb}, 0.1)`,
-            color: color.bg,
-          }}
-        >
-          {icon}
+      {/* Animated gradient background on hover */}
+      <div className="absolute inset-0 bg-gradient-to-br from-orange-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      
+      <div className="relative z-10">
+        <div className="mb-4 flex items-center gap-3">
+          <div
+            className="flex h-12 w-12 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 shadow-md"
+            style={{
+              backgroundColor: `rgba(${color.rgb}, 0.15)`,
+              color: color.bg,
+            }}
+          >
+            {icon}
+          </div>
+          <div className="font-bold text-gray-900 text-lg">{title}</div>
         </div>
-        <div className="font-bold text-[color:var(--landing-ink)]">{title}</div>
+        <div className="text-sm leading-relaxed text-gray-600">
+          {body}
+        </div>
       </div>
-      <div className="text-sm leading-relaxed text-[color:var(--landing-muted)]">
-        {body}
+      
+      {/* Shine effect on hover */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
       </div>
     </div>
   );
@@ -134,6 +139,7 @@ export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -170,77 +176,121 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-[color:var(--landing-paper)] text-[color:var(--landing-ink)] font-sans selection:bg-[color:var(--landing-clay)] selection:text-white">
-      {/* GL Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <GL hovering={false} />
+    <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-[#fde4c8] text-[color:var(--landing-ink)] font-sans selection:bg-[color:var(--landing-clay)] selection:text-white">
+      {/* Video Background - Only for Hero Section */}
+      <div className="absolute top-0 left-0 right-0 h-screen z-0 pointer-events-none overflow-hidden">
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-full object-cover"
+        >
+          <source src="/dna-video.webm" type="video/webm" />
+        </video>
+        {/* Dark overlay for better text readability */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/40 to-black/60" />
       </div>
 
-      {/* Navbar - Transforms on scroll */}
+      {/* Navbar - Liquid Glass Effect */}
       <nav className="fixed z-50 w-full px-2 pt-2">
         <div
           className={cn(
-            "mx-auto px-6 transition-all duration-500 ease-out lg:px-5",
+            "mx-auto px-4 sm:px-6 transition-all duration-500 ease-out lg:px-5",
             scrolled
-              ? "max-w-4xl rounded-[20px] border border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.4)] ring-1 ring-white/10"
-              : "max-w-6xl bg-transparent"
+              ? "max-w-4xl rounded-[24px] border border-white/20 bg-white/10 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] ring-1 ring-white/10"
+              : "max-w-6xl rounded-[24px] border border-white/20 bg-white/10 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] ring-1 ring-white/10"
           )}
-          style={scrolled ? {
-            background: "linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%)",
-          } : {}}
         >
           <div className="relative flex items-center justify-between py-3 lg:py-4">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2">
-              <Image src="/logo.png" alt="MediRep AI" width={32} height={32} className="h-8 w-8 dark:invert" />
-              <h1 className="text-2xl font-bold">MediRep AI</h1>
+              <Image src="/logo.png" alt="MediRep AI" width={32} height={32} className="h-7 w-7 sm:h-8 sm:w-8 brightness-0 invert" />
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">MediRep AI</h1>
             </Link>
 
-            {/* Right Side Actions */}
-            <div className="flex items-center gap-4">
-              <Link
-                href="https://github.com/MitudruDutta/MediRep-AI"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="View source on GitHub"
-                title="GitHub"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-foreground/90 hover:text-foreground"
-                >
-                  <Github className="h-5 w-5" />
-                </Button>
-              </Link>
-              <ModeToggle />
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex items-center gap-3">
               {isLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Loader2 className="h-5 w-5 animate-spin text-white/70" />
               ) : user ? (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <Link href="/pharmacist/dashboard">
-                    <Button variant="ghost" size={scrolled ? "sm" : "default"}>Pharmacist</Button>
+                    <Button variant="ghost" size={scrolled ? "sm" : "default"} className="text-white/90 hover:text-white hover:bg-white/10 font-medium">Pharmacist</Button>
                   </Link>
                   <Link href="/dashboard">
-                    <Button size={scrolled ? "sm" : "default"}>
+                    <Button size={scrolled ? "sm" : "default"} className="bg-[#c85a3a] text-white hover:bg-[#b14a2f] shadow-lg font-semibold">
                       Dashboard
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   </Link>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <Link href="/auth/login">
-                    <Button variant="ghost" size={scrolled ? "sm" : "default"}>Sign In</Button>
+                    <Button variant="ghost" size={scrolled ? "sm" : "default"} className="text-white/90 hover:text-white hover:bg-white/10 font-medium">Sign In</Button>
                   </Link>
                   <Link href="/auth/signup">
-                    <Button size={scrolled ? "sm" : "default"}>Get Started</Button>
+                    <Button size={scrolled ? "sm" : "default"} className="bg-[#c85a3a] text-white hover:bg-[#b14a2f] shadow-lg font-semibold">Get Started</Button>
                   </Link>
                 </div>
               )}
             </div>
+
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors text-white"
+              aria-label="Toggle menu"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {mobileMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
           </div>
         </div>
+
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <>
+            <div 
+              className="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm top-[72px]"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <div className="md:hidden fixed top-[72px] left-2 right-2 bg-white/10 backdrop-blur-2xl rounded-2xl border border-white/20 shadow-2xl p-4 space-y-2 z-50 ring-1 ring-white/10">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-white/70" />
+                </div>
+              ) : user ? (
+                <>
+                  <Link href="/pharmacist/dashboard" onClick={() => setMobileMenuOpen(false)}>
+                    <Button variant="ghost" className="w-full justify-start text-white/90 hover:text-white hover:bg-white/10 font-medium">Pharmacist Portal</Button>
+                  </Link>
+                  <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
+                    <Button className="w-full bg-[#c85a3a] text-white hover:bg-[#b14a2f] font-semibold">
+                      Dashboard
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link href="/auth/login" onClick={() => setMobileMenuOpen(false)}>
+                    <Button variant="ghost" className="w-full justify-start text-white/90 hover:text-white hover:bg-white/10 font-medium">Sign In</Button>
+                  </Link>
+                  <Link href="/auth/signup" onClick={() => setMobileMenuOpen(false)}>
+                    <Button className="w-full bg-[#c85a3a] text-white hover:bg-[#b14a2f] font-semibold">Get Started</Button>
+                  </Link>
+                </>
+              )}
+            </div>
+          </>
+        )}
       </nav>
 
       {/* Spacer for fixed navbar */}
@@ -256,17 +306,17 @@ export default function HomePage() {
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-500/5 dark:bg-blue-500/10 blur-[120px] rounded-full pointer-events-none" />
 
               <div className="relative">
-                <div className="inline-flex items-center rounded-full border border-zinc-200 dark:border-white/20 bg-white/50 dark:bg-white/5 px-4 py-1.5 text-sm font-medium text-zinc-800 dark:text-white/90 backdrop-blur-md shadow-sm ring-1 ring-black/5 dark:ring-white/10 mb-8">
-                  <Shield className="mr-2 h-4 w-4 text-primary" />
+                <div className="inline-flex items-center rounded-full border border-white/30 bg-white/10 backdrop-blur-md px-5 py-2.5 text-sm font-medium text-white shadow-lg mb-8 ring-1 ring-white/20">
+                  <Shield className="mr-2 h-4 w-4 text-white" />
                   Trusted by healthcare professionals
                 </div>
 
-                <h1 className="font-[family-name:var(--font-playfair)] text-5xl md:text-7xl lg:text-8xl font-medium tracking-tight text-foreground drop-shadow-sm leading-[1.1]">
-                  MediRep <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400">AI</span> Medical<br />
-                  <span className="italic block mt-2">Assistant</span>
+                <h1 className="font-[family-name:var(--font-playfair)] text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white leading-[1.1] drop-shadow-2xl">
+                  MediRep <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#f4a88a] via-[#ea8e6d] to-[#c85a3a] drop-shadow-none">AI</span> Medical<br />
+                  <span className="italic font-serif">Assistant</span>
                 </h1>
 
-                <p className="text-xl text-zinc-900 dark:text-zinc-300 max-w-2xl mx-auto leading-relaxed font-light tracking-wide mt-8">
+                <p className="text-lg sm:text-xl md:text-2xl text-white/95 max-w-3xl mx-auto leading-relaxed mt-8 font-normal drop-shadow-lg">
                   Get instant access to drug information, interaction checks, and
                   safety alerts. Built for medical representatives who need accurate
                   information fast.
@@ -274,16 +324,16 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="flex gap-6 justify-center items-center flex-wrap pt-8">
+            <div className="flex gap-4 justify-center items-center flex-wrap pt-6">
               {user ? (
                 <>
                   <Link href="/dashboard">
-                    <Button size="lg" className="h-14 px-10 text-lg rounded-full bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-white/90 shadow-xl transition-all hover:scale-105 duration-300 font-medium">
+                    <Button size="lg" className="h-14 px-10 text-base rounded-full bg-[#c85a3a] text-white hover:bg-[#b14a2f] shadow-xl transition-all hover:scale-105 duration-200 font-semibold">
                       Go to Dashboard
                     </Button>
                   </Link>
                   <Link href="/pharmacist/dashboard">
-                    <Button variant="ghost" className="text-lg text-zinc-600 hover:text-black hover:bg-zinc-100 dark:text-white/80 dark:hover:text-white dark:hover:bg-white/10 font-medium px-4 h-14 rounded-full">
+                    <Button size="lg" variant="outline" className="h-14 px-10 text-base text-white hover:text-white hover:bg-white/10 font-semibold rounded-full backdrop-blur-md border-2 border-white/30 bg-white/5 shadow-lg transition-all hover:scale-105 duration-200">
                       Pharmacist Portal
                     </Button>
                   </Link>
@@ -291,12 +341,12 @@ export default function HomePage() {
               ) : (
                 <>
                   <Link href="/auth/signup?role=patient">
-                    <Button size="lg" className="h-14 px-10 text-lg rounded-full bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-white/90 shadow-xl transition-all hover:scale-105 duration-300 font-medium">
+                    <Button size="lg" className="h-14 px-10 text-base rounded-full bg-[#c85a3a] text-white hover:bg-[#b14a2f] shadow-xl transition-all hover:scale-105 duration-200 font-semibold">
                       Get Started
                     </Button>
                   </Link>
                   <Link href="/pharmacist/auth/signup">
-                    <Button variant="ghost" className="text-lg text-zinc-600 hover:text-black hover:bg-zinc-100 dark:text-white/80 dark:hover:text-white dark:hover:bg-white/10 font-medium px-4 h-14 rounded-full">
+                    <Button size="lg" variant="outline" className="h-14 px-10 text-base text-white hover:text-white hover:bg-white/10 font-semibold rounded-full backdrop-blur-md border-2 border-white/30 bg-white/5 shadow-lg transition-all hover:scale-105 duration-200">
                       Join as Pharmacist
                     </Button>
                   </Link>
@@ -306,51 +356,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Existing Features Section */}
-        <section className="py-20 px-4 relative">
-          <div className="container mx-auto">
-            <h3 className="text-3xl font-bold text-center mb-12">
-              Everything you need for drug information
-            </h3>
-            <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-              {/* Feature 1 */}
-              <div className="bg-white/20 dark:bg-zinc-900/50 backdrop-blur-2xl rounded-3xl p-8 border border-white/10 dark:border-white/10 shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-300">
-                <div className="rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 w-14 h-14 flex items-center justify-center mb-6 shadow-inner ring-1 ring-white/20">
-                  <Zap className="h-7 w-7 text-primary" />
-                </div>
-                <h4 className="text-xl font-bold mb-3">Instant Answers</h4>
-                <p className="text-zinc-800 dark:text-zinc-300 leading-relaxed">
-                  Get accurate drug information in seconds. Ask about dosages,
-                  contraindications, and more with AI precision.
-                </p>
-              </div>
 
-              {/* Feature 2 */}
-              <div className="bg-white/20 dark:bg-zinc-900/50 backdrop-blur-2xl rounded-3xl p-8 border border-white/10 dark:border-white/10 shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-300">
-                <div className="rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-500/5 w-14 h-14 flex items-center justify-center mb-6 shadow-inner ring-1 ring-white/20">
-                  <Shield className="h-7 w-7 text-blue-500" />
-                </div>
-                <h4 className="text-xl font-bold mb-3">Safety Alerts</h4>
-                <p className="text-zinc-800 dark:text-zinc-300 leading-relaxed">
-                  Automatic drug interaction checks and safety warnings to keep
-                  your patients safe and informed.
-                </p>
-              </div>
-
-              {/* Feature 3 */}
-              <div className="bg-white/20 dark:bg-zinc-900/50 backdrop-blur-2xl rounded-3xl p-8 border border-white/10 dark:border-white/10 shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-300">
-                <div className="rounded-2xl bg-gradient-to-br from-indigo-500/20 to-indigo-500/5 w-14 h-14 flex items-center justify-center mb-6 shadow-inner ring-1 ring-white/20">
-                  <Users className="h-7 w-7 text-indigo-500" />
-                </div>
-                <h4 className="text-xl font-bold mb-3">Patient Context</h4>
-                <p className="text-zinc-800 dark:text-zinc-300 leading-relaxed">
-                  Personalized recommendations based on patient history,
-                  medications, and specific needs.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
 
         {/* --- Rendered v2 Sections --- */}
 
@@ -368,13 +374,14 @@ export default function HomePage() {
           }
           subtitle="We optimized for clarity, speed, and escalation — the parts users actually feel."
         >
-          <div className="relative overflow-hidden rounded-[32px] border p-6 backdrop-blur"
-            style={{ borderColor: "var(--landing-border)", backgroundColor: "var(--landing-card)" }}
-          >
-            <div aria-hidden className="absolute inset-0">
-              <DotGrid />
-            </div>
-
+          <div className="relative overflow-hidden rounded-3xl border border-orange-200/50 p-8 bg-white/90 backdrop-blur-sm shadow-lg hover:shadow-2xl transition-all duration-500 hover:scale-[1.01] group">
+            {/* Animated background gradient */}
+            <div className="absolute inset-0 bg-gradient-to-br from-orange-50/80 via-transparent to-pink-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            
+            {/* Floating particles effect */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-orange-200/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
+            <div className="absolute bottom-0 left-0 w-40 h-40 bg-pink-200/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
+            
             <div className="relative z-10">
               <ScrollFloat containerClassName="mb-6" textClassName="opacity-90">
                 Evidence
@@ -388,7 +395,7 @@ export default function HomePage() {
                   body="We bias toward source trails. If evidence is missing, we say so."
                 />
                 <FeatureTile
-                  tone="marigold"
+                  tone="clay"
                   icon={<Search className="h-5 w-5" />}
                   title="Hybrid retrieval"
                   body="Structured drug DB + semantic search + guardrails, merged by intent."
@@ -581,7 +588,7 @@ export default function HomePage() {
                 body="Type a medication question. Get a short answer you can verify."
               />
               <FeatureTile
-                tone="marigold"
+                tone="clay"
                 icon={<Search className="h-5 w-5" />}
                 title="Check"
                 body="See citations and key warnings so you don’t rely on blind confidence."
@@ -634,7 +641,7 @@ export default function HomePage() {
               body="Marketplace listings are reviewed before they go live."
             />
             <FeatureTile
-              tone="marigold"
+              tone="clay"
               icon={<Lock className="h-5 w-5" />}
               title="Private by default"
               body="Sensitive documents stay private and aren't shown publicly."
@@ -658,12 +665,13 @@ export default function HomePage() {
             style={{ borderColor: "var(--landing-border)" }}
           >
             <div className="flex items-center gap-3">
-              <div
-                className="flex h-10 w-10 items-center justify-center rounded-2xl border"
-                style={{ borderColor: "var(--landing-border)", backgroundColor: "var(--landing-card-strong)" }}
-              >
-                <Pill className="h-5 w-5" style={{ color: "var(--landing-ink)" }} />
-              </div>
+              <Image 
+                src="/logo.png" 
+                alt="MediRep AI Logo" 
+                width={40} 
+                height={40} 
+                className="h-10 w-10 rounded-xl"
+              />
               <div>
                 <div className="text-base font-extrabold tracking-tight" style={{ color: "var(--landing-ink)" }}>
                   MediRep AI
@@ -689,6 +697,15 @@ export default function HomePage() {
               </Link>
               <Link href="/auth/login" className="hover:text-[color:var(--landing-ink)] hover:underline">
                 Sign in
+              </Link>
+              <Link 
+                href="https://github.com/MitudruDutta/MediRep-AI"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-[color:var(--landing-ink)] hover:underline"
+              >
+                <Github className="h-4 w-4" />
+                GitHub
               </Link>
             </div>
           </div>
