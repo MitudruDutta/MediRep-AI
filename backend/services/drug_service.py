@@ -583,6 +583,8 @@ async def get_drug_info(
                         bool(info.dosage),
                         bool(info.contraindications),
                         bool(info.interactions),
+                        bool(info.formula),
+                        bool(info.smiles),
                     ]
                 ):
                     cache.set(cache_key_full, info)

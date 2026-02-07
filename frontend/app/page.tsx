@@ -19,6 +19,7 @@ import {
   PhoneCall,
   ChevronRight,
   Lock,
+  CircleHelp,
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -75,7 +76,7 @@ const FeatureTile = ({ tone, icon, title, body }: FeatureTileProps) => {
     >
       {/* Animated gradient background on hover */}
       <div className="absolute inset-0 bg-linear-to-br from-orange-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-      
+
       <div className="relative z-10">
         <div className="mb-4 flex items-center gap-3">
           <div
@@ -93,7 +94,7 @@ const FeatureTile = ({ tone, icon, title, body }: FeatureTileProps) => {
           {body}
         </div>
       </div>
-      
+
       {/* Shine effect on hover */}
       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
         <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
@@ -257,7 +258,7 @@ export default function HomePage() {
         {/* Mobile Menu */}
         {mobileMenuOpen && (
           <>
-            <div 
+            <div
               className="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm top-[72px]"
               onClick={() => setMobileMenuOpen(false)}
             />
@@ -311,12 +312,15 @@ export default function HomePage() {
                   Trusted by healthcare professionals
                 </div>
 
-                <h1 className="font-(family-name:--font-playfair) text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white leading-[1.1] drop-shadow-2xl">
-                  MediRep <span className="text-transparent bg-clip-text bg-linear-to-r from-[#f4a88a] via-[#ea8e6d] to-[#c85a3a] drop-shadow-none">AI</span> Medical<br />
-                  <span className="italic font-serif">Assistant</span>
+                <h1 className="font-sans text-6xl sm:text-7xl md:text-8xl lg:text-[7rem] font-black tracking-tighter text-white leading-[0.9] drop-shadow-2xl uppercase">
+                  MediRep <span className="text-[#c85a3a] inline-block hover:scale-105 transition-transform duration-300">AI</span>
+                  <br />
+                  <span className="font-serif italic font-light tracking-normal text-5xl sm:text-6xl md:text-7xl normal-case text-white/90 block mt-2">
+                    Medical Assistant
+                  </span>
                 </h1>
 
-                <p className="text-lg sm:text-xl md:text-2xl text-white/95 max-w-3xl mx-auto leading-relaxed mt-8 font-normal drop-shadow-lg">
+                <p className="text-lg sm:text-xl md:text-2xl text-white font-medium max-w-3xl mx-auto leading-relaxed mt-10 drop-shadow-md bg-black/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
                   Get instant access to drug information, interaction checks, and
                   safety alerts. Built for medical representatives who need accurate
                   information fast.
@@ -377,11 +381,11 @@ export default function HomePage() {
           <div className="relative overflow-hidden rounded-3xl border border-orange-200/50 p-8 bg-white/90 backdrop-blur-sm shadow-lg hover:shadow-2xl transition-all duration-500 hover:scale-[1.01] group">
             {/* Animated background gradient */}
             <div className="absolute inset-0 bg-linear-to-br from-orange-50/80 via-transparent to-pink-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            
+
             {/* Floating particles effect */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-orange-200/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
             <div className="absolute bottom-0 left-0 w-40 h-40 bg-pink-200/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
-            
+
             <div className="relative z-10">
               <ScrollFloat containerClassName="mb-6" textClassName="opacity-90">
                 Evidence
@@ -657,62 +661,47 @@ export default function HomePage() {
         </Section>
       </main>
 
-      {/* Footer */}
-      <footer className="px-4 pb-14 pt-10">
-        <div className="mx-auto w-full max-w-6xl">
-          <div
-            className="flex flex-col gap-5 rounded-3xl border bg-(--landing-card) p-6 backdrop-blur sm:flex-row sm:items-center sm:justify-between"
-            style={{ borderColor: "var(--landing-border)" }}
-          >
-            <div className="flex items-center gap-3">
-              <Image 
-                src="/logo.png" 
-                alt="MediRep AI Logo" 
-                width={40} 
-                height={40} 
-                className="h-10 w-10 rounded-xl"
-              />
-              <div>
-                <div className="text-base font-extrabold tracking-tight" style={{ color: "var(--landing-ink)" }}>
-                  MediRep AI
-                </div>
-                <div className="text-xs" style={{ color: "var(--landing-muted-2)" }}>
-                  Evidence-first drug intelligence + pharmacist marketplace
-                </div>
-              </div>
-            </div>
+      {/* Discord-style Footer */}
+      <footer className="bg-[#c85a3a] pt-24 pb-12 relative overflow-hidden">
+        <div className="mx-auto w-full max-w-[1400px] px-6 relative flex flex-col justify-center min-h-[400px]">
 
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-semibold" style={{ color: "var(--landing-muted)" }}>
-              <a href="#product" onClick={(e) => { e.preventDefault(); scrollToHash("#product"); }} className="hover:text-(--landing-ink) hover:underline">
-                Product
-              </a>
-              <a href="#marketplace" onClick={(e) => { e.preventDefault(); scrollToHash("#marketplace"); }} className="hover:text-(--landing-ink) hover:underline">
-                Marketplace
-              </a>
-              <a href="#how" onClick={(e) => { e.preventDefault(); scrollToHash("#how"); }} className="hover:text-(--landing-ink) hover:underline">
-                How it works
-              </a>
-              <Link href="/compare" className="hover:text-(--landing-ink) hover:underline">
-                Price compare
-              </Link>
-              <Link href="/auth/login" className="hover:text-(--landing-ink) hover:underline">
-                Sign in
-              </Link>
-              <Link 
-                href="https://github.com/MitudruDutta/MediRep-AI"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 hover:text-(--landing-ink) hover:underline"
-              >
-                <Github className="h-4 w-4" />
+          {/* Floating Elements */}
+          <div className="absolute top-0 right-6 text-white/80 text-xs font-bold tracking-widest uppercase mt-6 font-mono z-10">
+            Official AI Medical Assistant
+          </div>
+
+          {/* Giant Typography */}
+          <div className="flex justify-center md:justify-start items-center w-full">
+            <h1 className="font-black text-[13vw] leading-[0.9] tracking-tighter text-white uppercase font-sans select-none mix-blend-overlay opacity-90">
+              MediRep AI
+            </h1>
+          </div>
+
+          {/* Bottom Controls */}
+          <div className="absolute bottom-6 right-6 flex items-center gap-4 z-10">
+            <div className="hidden md:flex items-center gap-6 text-white/70 text-sm font-semibold mr-4">
+              <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+              <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
+              <Link href="https://github.com/MitudruDutta/MediRep-AI" target="_blank" className="hover:text-white transition-colors flex items-center gap-2">
+                <Github className="w-4 h-4" />
                 GitHub
               </Link>
             </div>
+
+            <Link href="/help">
+              <Button className="rounded-full bg-white text-[#c85a3a] hover:bg-white/90 font-bold px-6 py-6 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all flex items-center gap-2 text-base">
+                <CircleHelp className="w-5 h-5" />
+                Help
+              </Button>
+            </Link>
           </div>
 
-          <div className="mt-4 text-xs" style={{ color: "var(--landing-muted-2)" }}>
-            © 2026 MediRep AI. Prototype built for a hackathon; not medical advice.
+          {/* Copyright/Status (Tiny) */}
+          <div className="absolute bottom-8 left-8 text-white/40 text-[10px] font-mono max-w-xs leading-tight z-10">
+            © 2026 MediRep AI.<br />
+            System Status: <span className="text-green-300">Operational</span>
           </div>
+
         </div>
       </footer>
     </div>
