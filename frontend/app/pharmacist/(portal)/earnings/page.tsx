@@ -91,7 +91,7 @@ export default function EarningsPage() {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-96">
-                <Loader2 className="h-8 w-8 animate-spin text-[color:var(--landing-clay)]" />
+                <Loader2 className="h-8 w-8 animate-spin text-(--landing-clay)" />
             </div>
         );
     }
@@ -101,10 +101,10 @@ export default function EarningsPage() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-[color:var(--landing-ink)] font-[family-name:var(--font-display)]">
+                    <h1 className="text-3xl font-bold tracking-tight text-(--landing-ink) font-display">
                         Earnings & Payouts
                     </h1>
-                    <p className="text-[color:var(--landing-muted)] mt-1">
+                    <p className="text-(--landing-muted) mt-1">
                         Track your consultation earnings and payout history
                     </p>
                 </div>
@@ -113,7 +113,7 @@ export default function EarningsPage() {
                     size="sm"
                     onClick={() => fetchData(false)}
                     disabled={refreshing}
-                    className="border-[color:var(--landing-border-strong)] hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
+                    className="border-(--landing-border-strong) hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
                 >
                     <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
                     Refresh
@@ -122,13 +122,13 @@ export default function EarningsPage() {
 
             {/* Summary Cards */}
             <div className="grid gap-4 md:grid-cols-3">
-                <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)]">
+                <Card className="bg-(--landing-card) border-(--landing-border)">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-medium text-gray-600">
                             Total Earned
                         </CardTitle>
                         <div className="p-2 rounded-lg bg-[rgb(var(--landing-moss-rgb)/0.12)]">
-                            <TrendingUp className="h-4 w-4 text-[color:var(--landing-moss)]" />
+                            <TrendingUp className="h-4 w-4 text-(--landing-moss)" />
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -141,13 +141,13 @@ export default function EarningsPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)]">
+                <Card className="bg-(--landing-card) border-(--landing-border)">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-medium text-gray-600">
                             Pending Payout
                         </CardTitle>
                         <div className="p-2 rounded-lg bg-[rgb(var(--landing-clay-rgb)/0.12)]">
-                            <IndianRupee className="h-4 w-4 text-[color:var(--landing-clay)]" />
+                            <IndianRupee className="h-4 w-4 text-(--landing-clay)" />
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -160,13 +160,13 @@ export default function EarningsPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)]">
+                <Card className="bg-(--landing-card) border-(--landing-border)">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-medium text-gray-600">
                             Last Payout
                         </CardTitle>
                         <div className="p-2 rounded-lg bg-[rgb(var(--landing-dot-rgb)/0.12)]">
-                            <Wallet className="h-4 w-4 text-[color:var(--landing-muted)]" />
+                            <Wallet className="h-4 w-4 text-(--landing-muted)" />
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -181,15 +181,15 @@ export default function EarningsPage() {
             </div>
 
             {/* Info Card */}
-            <Card className="bg-gradient-to-r from-[rgb(var(--landing-moss-rgb)/0.08)] to-[rgb(var(--landing-clay-rgb)/0.08)] border-[color:var(--landing-border)]">
+            <Card className="bg-linear-to-r from-[rgb(var(--landing-moss-rgb)/0.08)] to-[rgb(var(--landing-clay-rgb)/0.08)] border-(--landing-border)">
                 <CardContent className="p-4">
                     <div className="flex items-start gap-3">
                         <div className="p-2 rounded-lg bg-[rgb(var(--landing-moss-rgb)/0.12)]">
-                            <AlertCircle className="h-5 w-5 text-[color:var(--landing-moss)]" />
+                            <AlertCircle className="h-5 w-5 text-(--landing-moss)" />
                         </div>
                         <div>
-                            <h3 className="font-medium text-[color:var(--landing-ink)]">Payout Information</h3>
-                            <p className="text-sm text-[color:var(--landing-muted)] mt-1">
+                            <h3 className="font-medium text-(--landing-ink)">Payout Information</h3>
+                            <p className="text-sm text-(--landing-muted) mt-1">
                                 Payouts are processed weekly. Completed consultations are aggregated and paid out via UPI/Bank transfer.
                                 A 20% platform fee is deducted from each consultation. TDS (2%) may be applicable for annual earnings above Rs. 20,000.
                             </p>
@@ -199,11 +199,11 @@ export default function EarningsPage() {
             </Card>
 
             {/* Payout History */}
-            <Card className="bg-[color:var(--landing-card)] border-[color:var(--landing-border)]">
+            <Card className="bg-(--landing-card) border-(--landing-border)">
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
-                        <CardTitle className="text-lg text-[color:var(--landing-ink)] flex items-center gap-2">
-                            <Wallet className="h-5 w-5 text-[color:var(--landing-moss)]" />
+                        <CardTitle className="text-lg text-(--landing-ink) flex items-center gap-2">
+                            <Wallet className="h-5 w-5 text-(--landing-moss)" />
                             Payout History
                         </CardTitle>
                         <CardDescription>
@@ -211,7 +211,7 @@ export default function EarningsPage() {
                         </CardDescription>
                     </div>
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="w-[150px] bg-[rgb(var(--landing-dot-rgb)/0.04)] border-[color:var(--landing-border)]">
+                        <SelectTrigger className="w-[150px] bg-[rgb(var(--landing-dot-rgb)/0.04)] border-(--landing-border)">
                             <SelectValue placeholder="Filter status" />
                         </SelectTrigger>
                         <SelectContent>
@@ -225,7 +225,7 @@ export default function EarningsPage() {
                 </CardHeader>
                 <CardContent>
                     {payouts.length === 0 ? (
-                        <div className="text-center py-12 text-[color:var(--landing-muted)]">
+                        <div className="text-center py-12 text-(--landing-muted)">
                             <Wallet className="h-12 w-12 mx-auto mb-4 opacity-30" />
                             <p className="font-medium">No payouts yet</p>
                             <p className="text-sm mt-1">Complete consultations to start earning!</p>
@@ -239,7 +239,7 @@ export default function EarningsPage() {
                                 return (
                                     <div
                                         key={payout.id}
-                                        className="flex items-center justify-between p-4 rounded-lg bg-[rgb(var(--landing-dot-rgb)/0.04)] border border-[color:var(--landing-border)]"
+                                        className="flex items-center justify-between p-4 rounded-lg bg-[rgb(var(--landing-dot-rgb)/0.04)] border border-(--landing-border)"
                                     >
                                         <div className="flex items-center gap-4">
                                             <div className={`p-2 rounded-lg ${config.bg}`}>
@@ -247,14 +247,14 @@ export default function EarningsPage() {
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <p className="font-medium text-[color:var(--landing-ink)]">
+                                                    <p className="font-medium text-(--landing-ink)">
                                                         Payout #{payout.id.slice(0, 8)}
                                                     </p>
                                                     <Badge variant="outline" className={`text-xs ${config.color}`}>
                                                         {config.label}
                                                     </Badge>
                                                 </div>
-                                                <div className="flex items-center gap-3 text-sm text-[color:var(--landing-muted)] mt-1">
+                                                <div className="flex items-center gap-3 text-sm text-(--landing-muted) mt-1">
                                                     <span className="flex items-center gap-1">
                                                         <Calendar className="h-3 w-3" />
                                                         {formatDate(payout.period_start)} - {formatDate(payout.period_end)}
@@ -265,23 +265,23 @@ export default function EarningsPage() {
                                                     </span>
                                                 </div>
                                                 {payout.transfer_reference && (
-                                                    <p className="text-xs text-[color:var(--landing-muted)] mt-1">
+                                                    <p className="text-xs text-(--landing-muted) mt-1">
                                                         UTR: {payout.transfer_reference}
                                                     </p>
                                                 )}
                                             </div>
                                         </div>
                                         <div className="text-right">
-                                            <p className="font-bold text-lg text-[color:var(--landing-ink)]">
+                                            <p className="font-bold text-lg text-(--landing-ink)">
                                                 {formatCurrency(payout.net_amount)}
                                             </p>
                                             {payout.tds_deducted > 0 && (
-                                                <p className="text-xs text-[color:var(--landing-muted)]">
+                                                <p className="text-xs text-(--landing-muted)">
                                                     TDS: {formatCurrency(payout.tds_deducted)}
                                                 </p>
                                             )}
                                             {payout.processed_at && (
-                                                <p className="text-xs text-[color:var(--landing-moss)] mt-1">
+                                                <p className="text-xs text-(--landing-moss) mt-1">
                                                     Paid on {formatDate(payout.processed_at)}
                                                 </p>
                                             )}

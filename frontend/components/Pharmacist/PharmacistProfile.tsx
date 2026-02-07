@@ -142,7 +142,7 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
 
             {/* Header Image/Banner */}
-            <div className="relative h-48 bg-gradient-to-br from-cyan-600 to-blue-700 shrink-0">
+            <div className="relative h-48 bg-linear-to-br from-cyan-600 to-blue-700 shrink-0">
                 <Button
                     variant="ghost"
                     size="icon"
@@ -235,7 +235,7 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
                     <Button
                         onClick={handleBookNow}
                         disabled={loading}
-                        className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white shadow-lg shadow-cyan-500/25 h-12 rounded-xl text-base"
+                        className="flex-1 bg-linear-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white shadow-lg shadow-cyan-500/25 h-12 rounded-xl text-base"
                     >
                         {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
                         {loading ? "Processing..." : "Pay & Chat"}

@@ -67,7 +67,7 @@ const BentoGridItem = ({
       <div className="absolute top-1/2 right-1/4 w-24 h-24 bg-orange-100/40 rounded-full blur-xl" />
       
       {/* Animated gradient background on hover */}
-      <div className="absolute inset-0 bg-gradient-to-br from-orange-50/80 via-transparent to-pink-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      <div className="absolute inset-0 bg-linear-to-br from-orange-50/80 via-transparent to-pink-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
       
       {/* Floating particles effect */}
       <div className="absolute top-0 right-0 w-32 h-32 bg-orange-200/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
@@ -101,7 +101,7 @@ const BentoGridItem = ({
 
       {/* Shine effect on hover */}
       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+        <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
       </div>
     </motion.div>
   );
@@ -237,10 +237,10 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
   return (
     <>
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-[color:var(--landing-paper)] border-b border-[color:var(--landing-border)] px-4 py-3 flex items-center justify-between">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-(--landing-paper) border-b border-(--landing-border) px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Image src="/logo.png" alt="MediRep AI" width={24} height={24} className="h-6 w-6 dark:invert" />
-          <span className="font-bold text-lg text-[color:var(--landing-ink)]">MediRep AI</span>
+          <span className="font-bold text-lg text-(--landing-ink)">MediRep AI</span>
         </div>
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -267,7 +267,7 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
 
       {/* Mobile Menu */}
       <div className={cn(
-        "lg:hidden fixed top-[57px] right-0 bottom-0 z-40 w-64 bg-[color:var(--landing-paper)] border-l border-[color:var(--landing-border)] transform transition-transform duration-300 overflow-y-auto",
+        "lg:hidden fixed top-[57px] right-0 bottom-0 z-40 w-64 bg-(--landing-paper) border-l border-(--landing-border) transform transition-transform duration-300 overflow-y-auto",
         mobileMenuOpen ? "translate-x-0" : "translate-x-full"
       )}>
         <div className="p-4 flex flex-col gap-2">
@@ -279,8 +279,8 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
               className={cn(
                 "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200",
                 pathname === link.href
-                  ? "bg-[color:var(--landing-moss)] text-white shadow-lg"
-                  : "text-[color:var(--landing-muted)] hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
+                  ? "bg-(--landing-moss) text-white shadow-lg"
+                  : "text-(--landing-muted) hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
               )}
             >
               {link.icon}
@@ -288,15 +288,15 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
             </Link>
           ))}
           
-          <div className="border-t border-[color:var(--landing-border)] mt-4 pt-4">
+          <div className="border-t border-(--landing-border) mt-4 pt-4">
             <Link
               href="/dashboard/settings"
               onClick={() => setMobileMenuOpen(false)}
               className={cn(
                 "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200",
                 pathname === "/dashboard/settings"
-                  ? "bg-[color:var(--landing-moss)] text-white shadow-lg"
-                  : "text-[color:var(--landing-muted)] hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
+                  ? "bg-(--landing-moss) text-white shadow-lg"
+                  : "text-(--landing-muted) hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
               )}
             >
               <User className="h-5 w-5" />
@@ -308,7 +308,7 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
                 setMobileMenuOpen(false);
                 handleSignOut();
               }}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[color:var(--landing-muted)] hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200 mt-2"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-(--landing-muted) hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200 mt-2"
             >
               <LogOut className="h-5 w-5" />
               <span className="text-sm font-medium">Sign Out</span>
@@ -318,7 +318,7 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
       </div>
 
       <Sidebar open={open} setOpen={setOpen}>
-      <div className="flex h-screen bg-[color:var(--landing-paper)] text-[color:var(--landing-ink)] overflow-hidden">
+      <div className="flex h-screen bg-(--landing-paper) text-(--landing-ink) overflow-hidden">
         {/* Animated Background */}
         <div className="fixed inset-0 z-0">
           {/* Keep it clean (no gradients) */}
@@ -347,7 +347,7 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
           </div>
 
           {/* User section at bottom */}
-          <div className="border-t border-[color:var(--landing-border)] pt-4">
+          <div className="border-t border-(--landing-border) pt-4">
             <SidebarLink
               link={{
                 label: "Profile",
@@ -358,9 +358,9 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
             />
             <button
               onClick={handleSignOut}
-              className="w-full flex items-center gap-3 py-3 px-3 rounded-xl text-[color:var(--landing-muted)] hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200"
+              className="w-full flex items-center gap-3 py-3 px-3 rounded-xl text-(--landing-muted) hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200"
             >
-              <LogOut className="h-5 w-5 flex-shrink-0" />
+              <LogOut className="h-5 w-5 shrink-0" />
               {open && (
                 <motion.span
                   initial={{ opacity: 0 }}
@@ -378,7 +378,7 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
         </div>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto relative z-10 lg:pt-0 pt-[57px] bg-gradient-to-br from-[#fef5f1] to-[#f9dcc4]">
+        <main className="flex-1 overflow-y-auto relative z-10 lg:pt-0 pt-[57px] bg-linear-to-br from-[#fef5f1] to-[#f9dcc4]">
           <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -386,10 +386,10 @@ export default function Dashboard({ initialUserEmail, initialUserName, initialUs
               transition={{ duration: 0.5 }}
               className="mb-6 md:mb-8"
             >
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-[color:var(--landing-ink)] mb-2 tracking-tight font-[family-name:var(--font-display)]">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-(--landing-ink) mb-2 tracking-tight font-display">
                 Welcome back, {initialUserName || initialUserEmail?.split('@')[0] || 'User'}
               </h1>
-              <p className="text-[color:var(--landing-muted)] text-base md:text-lg">
+              <p className="text-(--landing-muted) text-base md:text-lg">
                 Your AI-powered medical assistant is ready to help.
               </p>
             </motion.div>

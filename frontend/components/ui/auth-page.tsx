@@ -116,12 +116,12 @@ export function AuthPage({
       )}
     >
       {/* Left panel */}
-      <div className="relative hidden h-full flex-col border-r p-10 lg:flex bg-gradient-to-br from-[#f4a88a] via-[#f9c9a8] to-[#fde4c8]">
-        <div className="absolute inset-0 z-10 bg-gradient-to-t from-[#f9dcc4]/80 to-transparent" />
+      <div className="relative hidden h-full flex-col border-r p-10 lg:flex bg-linear-to-br from-[#f4a88a] via-[#f9c9a8] to-[#fde4c8]">
+        <div className="absolute inset-0 z-10 bg-linear-to-t from-[#f9dcc4]/80 to-transparent" />
 
         <div className="z-10 flex items-center gap-2">
           <Grid2x2PlusIcon className="size-6 text-[#c85a3a]" />
-          <p className="text-xl font-semibold font-[family-name:var(--font-display)] text-gray-900">
+          <p className="text-xl font-semibold font-display text-gray-900">
             MediRep AI
           </p>
         </div>
@@ -160,7 +160,7 @@ export function AuthPage({
       </div>
 
       {/* Right panel */}
-      <div className="relative flex min-h-screen flex-col justify-center p-4 bg-gradient-to-br from-[#fef5f1] to-[#f9dcc4]">
+      <div className="relative flex min-h-screen flex-col justify-center p-4 bg-linear-to-br from-[#fef5f1] to-[#f9dcc4]">
         <div aria-hidden className="absolute inset-0 -z-10 opacity-40">
           <div className="absolute right-0 top-0 h-[520px] w-[520px] -translate-y-1/2 translate-x-1/4 rounded-full bg-[radial-gradient(circle_at_center,rgba(203,85,52,0.15)_0,transparent_65%)]" />
           <div className="absolute right-0 top-0 h-[420px] w-[320px] -translate-y-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(244,168,138,0.2)_0,transparent_70%)]" />
@@ -176,13 +176,13 @@ export function AuthPage({
         <div className="mx-auto w-full max-w-sm space-y-4">
           <div className="flex items-center gap-2 lg:hidden">
             <Grid2x2PlusIcon className="size-6" />
-            <p className="text-xl font-semibold font-[family-name:var(--font-display)]">
+            <p className="text-xl font-semibold font-display">
               MediRep AI
             </p>
           </div>
 
           <div className="flex flex-col space-y-1">
-            <h1 className="text-2xl font-bold tracking-wide font-[family-name:var(--font-display)] text-gray-900">
+            <h1 className="text-2xl font-bold tracking-wide font-display text-gray-900">
               {title}
             </h1>
             <p className="text-gray-700 text-base">{subtitle}</p>

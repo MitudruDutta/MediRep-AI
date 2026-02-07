@@ -157,7 +157,7 @@ export function ProfileSettings({ user }: { user: SerializableUser }) {
               Back to Dashboard
             </Link>
           </div>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight font-[family-name:var(--font-display)]">
+          <h1 className="mt-2 text-3xl font-bold tracking-tight font-display">
             Profile
           </h1>
           <p className="mt-1 text-muted-foreground">
@@ -249,7 +249,7 @@ export function ProfileSettings({ user }: { user: SerializableUser }) {
               <Button
                 onClick={onSave}
                 disabled={loading || saving}
-                className="bg-[color:var(--landing-moss)] text-[color:var(--landing-bone)] hover:bg-[rgb(var(--landing-moss-rgb)/0.9)]"
+                className="bg-(--landing-moss) text-(--landing-bone) hover:bg-[rgb(var(--landing-moss-rgb)/0.9)]"
               >
                 <Save className="mr-2 h-4 w-4" />
                 {saving ? "Saving..." : "Save changes"}
@@ -259,7 +259,7 @@ export function ProfileSettings({ user }: { user: SerializableUser }) {
                 variant="outline"
                 onClick={() => router.push("/dashboard")}
                 disabled={saving}
-                className="border-[color:var(--landing-border-strong)] hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
+                className="border-(--landing-border-strong) hover:bg-[rgb(var(--landing-dot-rgb)/0.06)]"
               >
                 Cancel
               </Button>

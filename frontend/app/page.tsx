@@ -74,7 +74,7 @@ const FeatureTile = ({ tone, icon, title, body }: FeatureTileProps) => {
       style={{ borderColor: "rgba(203, 85, 52, 0.2)" }}
     >
       {/* Animated gradient background on hover */}
-      <div className="absolute inset-0 bg-gradient-to-br from-orange-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      <div className="absolute inset-0 bg-linear-to-br from-orange-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       
       <div className="relative z-10">
         <div className="mb-4 flex items-center gap-3">
@@ -96,7 +96,7 @@ const FeatureTile = ({ tone, icon, title, body }: FeatureTileProps) => {
       
       {/* Shine effect on hover */}
       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+        <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
       </div>
     </div>
   );
@@ -116,15 +116,15 @@ const Section = ({ id, eyebrow, title, subtitle, children }: SectionProps) => {
       <div className="mx-auto max-w-6xl px-4">
         <div className="mb-12 md:text-center">
           <div
-            className="mb-4 text-xs font-bold uppercase tracking-widest text-[color:var(--landing-clay)]"
+            className="mb-4 text-xs font-bold uppercase tracking-widest text-(--landing-clay)"
           >
             {eyebrow}
           </div>
-          <h2 className="mb-4 text-3xl font-bold tracking-tight text-[color:var(--landing-ink)] md:text-5xl font-[family-name:var(--font-display)]">
+          <h2 className="mb-4 text-3xl font-bold tracking-tight text-(--landing-ink) md:text-5xl font-display">
             {title}
           </h2>
           {subtitle && (
-            <p className="mx-auto max-w-2xl text-lg text-[color:var(--landing-muted)]">
+            <p className="mx-auto max-w-2xl text-lg text-(--landing-muted)">
               {subtitle}
             </p>
           )}
@@ -176,7 +176,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-[#fde4c8] text-[color:var(--landing-ink)] font-sans selection:bg-[color:var(--landing-clay)] selection:text-white">
+    <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-[#fde4c8] text-(--landing-ink) font-sans selection:bg-(--landing-clay) selection:text-white">
       {/* Video Background - Only for Hero Section */}
       <div className="absolute top-0 left-0 right-0 h-screen z-0 pointer-events-none overflow-hidden">
         <video
@@ -189,7 +189,7 @@ export default function HomePage() {
           <source src="/dna-video.webm" type="video/webm" />
         </video>
         {/* Dark overlay for better text readability */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/40 to-black/60" />
+        <div className="absolute inset-0 bg-linear-to-b from-black/50 via-black/40 to-black/60" />
       </div>
 
       {/* Navbar - Liquid Glass Effect */}
@@ -311,8 +311,8 @@ export default function HomePage() {
                   Trusted by healthcare professionals
                 </div>
 
-                <h1 className="font-[family-name:var(--font-playfair)] text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white leading-[1.1] drop-shadow-2xl">
-                  MediRep <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#f4a88a] via-[#ea8e6d] to-[#c85a3a] drop-shadow-none">AI</span> Medical<br />
+                <h1 className="font-(family-name:--font-playfair) text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white leading-[1.1] drop-shadow-2xl">
+                  MediRep <span className="text-transparent bg-clip-text bg-linear-to-r from-[#f4a88a] via-[#ea8e6d] to-[#c85a3a] drop-shadow-none">AI</span> Medical<br />
                   <span className="italic font-serif">Assistant</span>
                 </h1>
 
@@ -376,7 +376,7 @@ export default function HomePage() {
         >
           <div className="relative overflow-hidden rounded-3xl border border-orange-200/50 p-8 bg-white/90 backdrop-blur-sm shadow-lg hover:shadow-2xl transition-all duration-500 hover:scale-[1.01] group">
             {/* Animated background gradient */}
-            <div className="absolute inset-0 bg-gradient-to-br from-orange-50/80 via-transparent to-pink-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute inset-0 bg-linear-to-br from-orange-50/80 via-transparent to-pink-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             
             {/* Floating particles effect */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-orange-200/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
@@ -547,14 +547,14 @@ export default function HomePage() {
                 </p>
                 <div className="mt-4 flex flex-col gap-2">
                   <Link href="/dashboard/BookPharmacist">
-                    <Button className="w-full rounded-2xl bg-[color:var(--landing-moss)] text-[color:var(--landing-bone)] hover:brightness-95">
+                    <Button className="w-full rounded-2xl bg-(--landing-moss) text-(--landing-bone) hover:brightness-95">
                       Open marketplace <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   </Link>
                   <Link href="/pharmacist/register">
                     <Button
                       variant="outline"
-                      className="w-full rounded-2xl bg-[color:var(--landing-card)] hover:bg-[color:var(--landing-card-strong)]"
+                      className="w-full rounded-2xl bg-(--landing-card) hover:bg-(--landing-card-strong)"
                       style={{ borderColor: "var(--landing-border)", color: "var(--landing-ink)" }}
                     >
                       Register as pharmacist <ChevronRight className="ml-1 h-4 w-4" />
@@ -661,7 +661,7 @@ export default function HomePage() {
       <footer className="px-4 pb-14 pt-10">
         <div className="mx-auto w-full max-w-6xl">
           <div
-            className="flex flex-col gap-5 rounded-3xl border bg-[color:var(--landing-card)] p-6 backdrop-blur sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-5 rounded-3xl border bg-(--landing-card) p-6 backdrop-blur sm:flex-row sm:items-center sm:justify-between"
             style={{ borderColor: "var(--landing-border)" }}
           >
             <div className="flex items-center gap-3">
@@ -683,26 +683,26 @@ export default function HomePage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-semibold" style={{ color: "var(--landing-muted)" }}>
-              <a href="#product" onClick={(e) => { e.preventDefault(); scrollToHash("#product"); }} className="hover:text-[color:var(--landing-ink)] hover:underline">
+              <a href="#product" onClick={(e) => { e.preventDefault(); scrollToHash("#product"); }} className="hover:text-(--landing-ink) hover:underline">
                 Product
               </a>
-              <a href="#marketplace" onClick={(e) => { e.preventDefault(); scrollToHash("#marketplace"); }} className="hover:text-[color:var(--landing-ink)] hover:underline">
+              <a href="#marketplace" onClick={(e) => { e.preventDefault(); scrollToHash("#marketplace"); }} className="hover:text-(--landing-ink) hover:underline">
                 Marketplace
               </a>
-              <a href="#how" onClick={(e) => { e.preventDefault(); scrollToHash("#how"); }} className="hover:text-[color:var(--landing-ink)] hover:underline">
+              <a href="#how" onClick={(e) => { e.preventDefault(); scrollToHash("#how"); }} className="hover:text-(--landing-ink) hover:underline">
                 How it works
               </a>
-              <Link href="/compare" className="hover:text-[color:var(--landing-ink)] hover:underline">
+              <Link href="/compare" className="hover:text-(--landing-ink) hover:underline">
                 Price compare
               </Link>
-              <Link href="/auth/login" className="hover:text-[color:var(--landing-ink)] hover:underline">
+              <Link href="/auth/login" className="hover:text-(--landing-ink) hover:underline">
                 Sign in
               </Link>
               <Link 
                 href="https://github.com/MitudruDutta/MediRep-AI"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 hover:text-[color:var(--landing-ink)] hover:underline"
+                className="flex items-center gap-1 hover:text-(--landing-ink) hover:underline"
               >
                 <Github className="h-4 w-4" />
                 GitHub

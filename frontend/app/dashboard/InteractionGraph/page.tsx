@@ -9,7 +9,7 @@ export default function InteractionGraphPage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#fef5f1] to-[#f9dcc4]">
+    <div className="min-h-screen bg-linear-to-br from-[#fef5f1] to-[#f9dcc4]">
       <div className="container mx-auto p-6">
         <Button
           variant="ghost"
