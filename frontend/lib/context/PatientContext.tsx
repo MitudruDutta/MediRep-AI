@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { PatientContext as PatientContextType } from "@/types";
 import { getPatientContext, savePatientContext } from "@/lib/api";
+import { useAuth } from "@/lib/context/AuthContext";
 
 interface PatientContextState {
   patientContext: PatientContextType | null;
@@ -14,10 +15,13 @@ const PatientContext = createContext<PatientContextState | undefined>(undefined)
 
 
 export function PatientContextProvider({ children }: { children: ReactNode }) {
+  const { user, isPharmacist, isLoading: isLoadingAuth } = useAuth();
   const [patientContext, setPatientContextState] = useState<PatientContextType | null>(null);
 
   // Load from backend on mount
   useEffect(() => {
+    if (isLoadingAuth || !user || isPharmacist) return;
+
     const loadContext = async () => {
       try {
         const saved = await getPatientContext();
@@ -29,7 +33,7 @@ export function PatientContextProvider({ children }: { children: ReactNode }) {
       }
     };
     loadContext();
-  }, []);
+  }, [user, isLoadingAuth, isPharmacist]);
 
   const setPatientContext = (context: PatientContextType | null) => {
     console.log("PatientContext Provider: Setting context", context);

@@ -55,7 +55,7 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
                 },
                 body: JSON.stringify({
                     pharmacist_id: pharmacist.id,
-                     scheduled_at: new Date().toISOString(),
+                    scheduled_at: new Date().toISOString(),
                 }),
             });
 
@@ -142,7 +142,7 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
 
             {/* Header Image/Banner */}
-            <div className="relative h-48 bg-linear-to-br from-cyan-600 to-blue-700 shrink-0">
+            <div className="relative h-48 bg-linear-to-br from-orange-500 to-red-600 shrink-0">
                 <Button
                     variant="ghost"
                     size="icon"
@@ -168,7 +168,7 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
                     </div>
 
                     <h2 className="text-2xl font-bold text-slate-900 text-center">{pharmacist.full_name}</h2>
-                    <p className="text-cyan-600 font-medium text-sm">{pharmacist.specializations.join(" • ")}</p>
+                    <p className="text-orange-600 font-medium text-sm">{pharmacist.specializations.join(" • ")}</p>
 
                     <div className="flex items-center gap-1 mt-1 text-sm text-slate-500">
                         <ShieldCheck className="h-4 w-4 text-emerald-500" />
@@ -184,7 +184,7 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
                         <div className="text-[10px] text-slate-400 uppercase tracking-wider">Experience</div>
                     </div>
                     <div className="bg-slate-50 p-3 rounded-xl text-center border border-slate-100">
-                        <div className="flex justify-center mb-1 text-blue-500"><Clock className="h-5 w-5" /></div>
+                        <div className="flex justify-center mb-1 text-orange-500"><Clock className="h-5 w-5" /></div>
                         <div className="font-bold text-slate-900">15 Min</div>
                         <div className="text-[10px] text-slate-400 uppercase tracking-wider">Duration</div>
                     </div>
@@ -208,7 +208,7 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
                         <div>
                             <h3 className="font-semibold text-slate-900 mb-2">Education</h3>
                             <p className="text-slate-600 text-sm flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
                                 {pharmacist.education}
                             </p>
                         </div>
@@ -235,7 +235,7 @@ export default function PharmacistProfile({ pharmacist, onBack, onBookingComplet
                     <Button
                         onClick={handleBookNow}
                         disabled={loading}
-                        className="flex-1 bg-linear-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white shadow-lg shadow-cyan-500/25 h-12 rounded-xl text-base"
+                        className="flex-1 bg-linear-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white shadow-lg shadow-orange-500/25 h-12 rounded-xl text-base"
                     >
                         {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
                         {loading ? "Processing..." : "Pay & Chat"}

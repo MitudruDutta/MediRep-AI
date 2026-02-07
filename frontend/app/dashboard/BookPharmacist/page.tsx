@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { marketplaceApi } from "@/lib/marketplace-api";
 import { useAuth } from "@/lib/context/AuthContext";
 import PharmacistList from "@/components/Pharmacist/PharmacistList";
@@ -123,68 +125,80 @@ export default function BookPharmacistPage() {
     };
 
     return (
-        <div className="h-[calc(100vh-4rem)] flex gap-6 p-6 overflow-hidden bg-background">
-            {/* Left Panel: List (Always visible on large screens, or main view) */}
-            <div className={`w-full lg:w-1/3 min-w-[320px] bg-card rounded-3xl border border-border shadow-sm overflow-hidden flex flex-col transition-all duration-300 ${view !== "LIST" ? "hidden lg:flex" : "flex"
-                }`}>
-                <PharmacistList onSelect={handleSelectPharmacist} />
+        <div className="h-[calc(100vh-4rem)] flex flex-col p-6 gap-4 overflow-hidden bg-background">
+            <div className="flex-none">
+                <Link
+                    href="/dashboard"
+                    className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors font-medium"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to Dashboard
+                </Link>
             </div>
 
-            {/* Right Panel: Content (Profile or Chat) */}
-            <div className={`flex-1 bg-card rounded-3xl border border-border shadow-sm overflow-hidden relative transition-all duration-300 ${view === "LIST" ? "hidden lg:flex lg:items-center lg:justify-center" : "flex"
-                }`}>
-                <AnimatePresence mode="wait">
-                    {view === "LIST" && (
-                        <motion.div
-                            key="placeholder"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="text-center p-8 max-w-md"
-                        >
-                            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                                <span className="text-4xl">👨‍⚕️</span>
-                            </div>
-                            <h3 className="text-xl font-bold text-foreground mb-2">Select a Pharmacist</h3>
-                            <p className="text-muted-foreground">
-                                Browse the list on the left to view profiles, check availability, and book a consultation instantly.
-                            </p>
-                        </motion.div>
-                    )}
+            <div className="flex-1 flex gap-6 overflow-hidden">
+                {/* Left Panel: List (Always visible on large screens, or main view) */}
+                <div className={`w-full lg:w-1/3 min-w-[320px] bg-card rounded-3xl border border-border shadow-sm overflow-hidden flex flex-col transition-all duration-300 ${view !== "LIST" ? "hidden lg:flex" : "flex"
+                    }`}>
+                    <PharmacistList onSelect={handleSelectPharmacist} />
+                </div>
 
-                    {view === "PROFILE" && selectedPharmacist && (
-                        <motion.div
-                            key="profile"
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                            className="w-full h-full"
-                        >
-                            <PharmacistProfile
-                                pharmacist={selectedPharmacist}
-                                onBack={handleBack}
-                                onBookingComplete={handleBookingComplete}
-                            />
-                        </motion.div>
-                    )}
+                {/* Right Panel: Content (Profile or Chat) */}
+                <div className={`flex-1 bg-card rounded-3xl border border-border shadow-sm overflow-hidden relative transition-all duration-300 ${view === "LIST" ? "hidden lg:flex lg:items-center lg:justify-center" : "flex"
+                    }`}>
+                    <AnimatePresence mode="wait">
+                        {view === "LIST" && (
+                            <motion.div
+                                key="placeholder"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="text-center p-8 max-w-md"
+                            >
+                                <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <span className="text-4xl">👨‍⚕️</span>
+                                </div>
+                                <h3 className="text-xl font-bold text-foreground mb-2">Select a Pharmacist</h3>
+                                <p className="text-muted-foreground">
+                                    Browse the list on the left to view profiles, check availability, and book a consultation instantly.
+                                </p>
+                            </motion.div>
+                        )}
 
-                    {view === "CHAT" && consultationId && selectedPharmacist && (
-                        <motion.div
-                            key="chat"
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            className="w-full h-full"
-                        >
-                            <ChatInterface
-                                consultationId={consultationId}
-                                pharmacistName={selectedPharmacist.full_name}
-                                 endTime={targetEndTime || new Date(Date.now() + 15 * 60000).toISOString()}
-                                onExpired={handleSessionExpired}
-                            />
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                        {view === "PROFILE" && selectedPharmacist && (
+                            <motion.div
+                                key="profile"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="w-full h-full"
+                            >
+                                <PharmacistProfile
+                                    pharmacist={selectedPharmacist}
+                                    onBack={handleBack}
+                                    onBookingComplete={handleBookingComplete}
+                                />
+                            </motion.div>
+                        )}
+
+                        {view === "CHAT" && consultationId && selectedPharmacist && (
+                            <motion.div
+                                key="chat"
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="w-full h-full"
+                            >
+                                <ChatInterface
+                                    consultationId={consultationId}
+                                    pharmacistName={selectedPharmacist.full_name}
+                                    endTime={targetEndTime || new Date(Date.now() + 15 * 60000).toISOString()}
+                                    onExpired={handleSessionExpired}
+                                />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
             </div>
         </div>
     );
