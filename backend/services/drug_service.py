@@ -64,6 +64,105 @@ class DrugCache:
 cache = DrugCache(ttl=CACHE_TTL_DRUG, max_size=500)
 
 
+def _normalize_text(value: Optional[str]) -> str:
+    """Normalize text for robust matching."""
+    return " ".join((value or "").strip().lower().split())
+
+
+def _is_single_drug_query(query: str) -> bool:
+    """Heuristic: single-token drug query (e.g., 'metformin')."""
+    q = _normalize_text(query)
+    if not q:
+        return False
+    if any(marker in q for marker in ("+", "/", "&", ",")):
+        return False
+    return len(q.split()) == 1
+
+
+def _looks_like_combo_drug(value: Optional[str]) -> bool:
+    """Heuristic: detect fixed-dose combinations from text."""
+    text = _normalize_text(value)
+    if not text:
+        return False
+    combo_markers = ("+", "/", "&", ",", " and ", " with ")
+    return any(marker in text for marker in combo_markers)
+
+
+def _candidate_match_score(candidate: Dict[str, Any], query: str) -> int:
+    """
+    Rank search candidates for a user query.
+
+    Higher score means "more likely the intended drug". We strongly prefer
+    exact/single-ingredient matches over combination products for generic lookups.
+    """
+    q = _normalize_text(query)
+    if not q:
+        return -10_000
+
+    name = _normalize_text(candidate.get("name"))
+    generic = _normalize_text(candidate.get("generic_name"))
+    is_combo = _looks_like_combo_drug(name) or _looks_like_combo_drug(generic)
+
+    score = 0
+
+    # Exact matches first.
+    if name == q:
+        score += 120
+    if generic == q:
+        score += 110
+
+    # Prefix matches are typically better than substring noise.
+    if name.startswith(f"{q} "):
+        score += 80
+    if generic.startswith(f"{q} "):
+        score += 70
+
+    # Generic containment is generally better than brand containment for generic queries.
+    if q and q in generic:
+        score += 45
+    if q and q in name:
+        score += 35
+
+    # Prefer simpler monotherapy matches for single-token queries (e.g., "metformin").
+    if len(q.split()) == 1 and not is_combo:
+        score += 20
+
+    if is_combo:
+        score -= 35
+
+    return score
+
+
+def _is_cache_candidate_compatible(query: str, info: "DrugInfo") -> bool:
+    """
+    Validate cached info against the requested query.
+
+    Prevent stale or over-broad cache hits (e.g., prior combo-drug result for
+    a single-drug query like 'metformin').
+    """
+    q = _normalize_text(query)
+    if not q:
+        return True
+
+    name = _normalize_text(getattr(info, "name", None))
+    generic = _normalize_text(getattr(info, "generic_name", None))
+    is_combo = _looks_like_combo_drug(name) or _looks_like_combo_drug(generic)
+
+    # For single-drug queries, reject combo cache entries outright.
+    if _is_single_drug_query(q) and is_combo:
+        return False
+
+    # Basic textual compatibility check.
+    if q == name or q == generic:
+        return True
+    if name.startswith(f"{q} ") or generic.startswith(f"{q} "):
+        return True
+    if q in name or q in generic:
+        return True
+
+    return False
+
+
 def escape_lucene_special_chars(query: str) -> str:
     """Escape Lucene special characters."""
     special_chars = r'+-&&||!(){}[]^"~*?:\/'
@@ -403,12 +502,12 @@ async def get_drug_info(
     cache_key_basic = f"info:basic:{drug_name.lower()}"
 
     cached_full = cache.get(cache_key_full)
-    if cached_full:
+    if cached_full and _is_cache_candidate_compatible(drug_name, cached_full):
         return cached_full
 
     if not enrich:
         cached_basic = cache.get(cache_key_basic)
-        if cached_basic:
+        if cached_basic and _is_cache_candidate_compatible(drug_name, cached_basic):
             return cached_basic
     
     # 1. TURSO: Get drug data from database
@@ -419,25 +518,36 @@ async def get_drug_info(
         # while the DB may store branded/strength variants. Use Turso text search
         # before hitting external APIs or LLM enrichment.
         if not data:
-            candidates = await asyncio.to_thread(turso_service.search_drugs, drug_name, 5)
+            candidates = await asyncio.to_thread(turso_service.search_drugs, drug_name, 30)
             best = None
             q = drug_name.strip().lower()
 
-            for c in candidates or []:
-                name = (c.get("name") or "").strip()
-                generic = (c.get("generic_name") or "").strip()
-                if generic and generic.strip().lower() == q:
+            # For single-drug queries, prefer non-combination candidates if available.
+            candidate_pool = candidates or []
+            if _is_single_drug_query(q):
+                non_combo = [
+                    c for c in candidate_pool
+                    if not _looks_like_combo_drug(c.get("name"))
+                    and not _looks_like_combo_drug(c.get("generic_name"))
+                ]
+                if non_combo:
+                    candidate_pool = non_combo
+
+            best_score = -10_000
+            for c in candidate_pool:
+                score = _candidate_match_score(c, q)
+                if score > best_score:
                     best = c
-                    break
-                if name and name.strip().lower() == q:
-                    best = c
-                    break
-                if name and name.strip().lower().startswith(q):
-                    best = c
-                    break
+                    best_score = score
 
             if not best and candidates:
                 best = candidates[0]
+
+            # Last guard: avoid returning combo products for plain single-drug queries.
+            if best and _is_single_drug_query(q):
+                best_is_combo = _looks_like_combo_drug(best.get("name")) or _looks_like_combo_drug(best.get("generic_name"))
+                if best_is_combo:
+                    best = None
 
             if best and best.get("name"):
                 data = await asyncio.to_thread(turso_service.get_drug_by_name, best["name"]) or best

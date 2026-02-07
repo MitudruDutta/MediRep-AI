@@ -11,6 +11,7 @@ import os
 import httpx
 from typing import List, Optional
 from pydantic import BaseModel
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -189,15 +190,41 @@ async def search_web(query: str, num_results: int = 5) -> List[WebSearchResult]:
     return []
 
 
-async def search_medical(query: str, num_results: int = 5) -> List[WebSearchResult]:
+def _normalize_domain(domain_or_url: str) -> str:
+    """Normalize a domain/url to hostname without www."""
+    raw = (domain_or_url or "").strip().lower()
+    if not raw:
+        return ""
+    if raw.startswith("http://") or raw.startswith("https://"):
+        try:
+            raw = urlparse(raw).hostname or ""
+        except Exception:
+            raw = ""
+    raw = raw.replace("www.", "")
+    return raw
+
+
+async def search_medical(
+    query: str,
+    num_results: int = 5,
+    extra_trusted_domains: Optional[List[str]] = None
+) -> List[WebSearchResult]:
     """
     Medical-focused web search.
     
     Appends medical context to query for better results.
     Filters for trusted medical sources when possible.
     """
-    # Enhance query with medical context
-    enhanced_query = f"{query} medicine drug India"
+    query_lower = (query or "").lower()
+    freshness_markers = (
+        "latest", "current", "today", "this year", "as of",
+        "guideline", "recommendation", "update", "advisory",
+    )
+    # For guideline/update asks, avoid forcing "India medicine drug" terms.
+    if any(m in query_lower for m in freshness_markers):
+        enhanced_query = f"{query} official guidance recommendation"
+    else:
+        enhanced_query = f"{query} medicine drug India"
     
     results = await search_web(enhanced_query, num_results * 2)  # Get extra, filter later
     
@@ -205,19 +232,27 @@ async def search_medical(query: str, num_results: int = 5) -> List[WebSearchResu
     trusted_domains = {
         "1mg.com", "pharmeasy.in", "netmeds.com", "apollopharmacy.in",
         "webmd.com", "mayoclinic.org", "nih.gov", "medscape.com",
-        "drugs.com", "rxlist.com", "healthline.com"
+        "drugs.com", "rxlist.com", "healthline.com", "dailymed.nlm.nih.gov",
+        "cdc.gov", "who.int", "fda.gov", "aap.org",
+        "mohfw.gov.in", "nha.gov.in", "icmr.gov.in", "cdsco.gov.in"
     }
-    
-    # Sort: trusted sources first
-    def source_priority(result: WebSearchResult) -> int:
-        for i, domain in enumerate(trusted_domains):
-            if domain in result.source.lower():
-                return i
-        return 100  # Unknown sources last
-    
-    sorted_results = sorted(results, key=source_priority)
-    
-    return sorted_results[:num_results]
+    for d in extra_trusted_domains or []:
+        nd = _normalize_domain(d)
+        if nd:
+            trusted_domains.add(nd)
+
+    def is_trusted(result: WebSearchResult) -> bool:
+        try:
+            host = (urlparse(result.url).hostname or result.source or "").lower()
+        except Exception:
+            host = (result.source or "").lower()
+        return any(host == d or host.endswith(f".{d}") for d in trusted_domains)
+
+    # Strict filter: do not return unknown domains for medical context.
+    trusted_results = [r for r in results if is_trusted(r)]
+
+    # Keep order from providers; trim to requested size.
+    return trusted_results[:num_results]
 
 
 def format_web_results_for_llm(results: List[WebSearchResult]) -> str:

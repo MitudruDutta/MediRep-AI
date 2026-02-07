@@ -89,6 +89,8 @@ class MoAContext(BaseModel):
     drug_class: Optional[str] = None
     pharmacodynamics: Optional[str] = None
     targets: List[str] = Field(default_factory=list)
+    # Optional one-line "arrow chain" the UI can display when present.
+    pathway_equation: Optional[str] = None
     sources: List[str] = Field(default_factory=list)
 
 
@@ -337,34 +339,6 @@ class PillScanResponse(PillIdentification):
     drug_info: Optional[DrugInfo] = None
     drug_info_source: Optional[Literal["database", "llm"]] = None
     drug_info_disclaimer: Optional[str] = None
-
-
-class FDAAlert(BaseModel):
-    id: str
-    severity: Literal["info", "warning", "recall"]
-    title: str
-    description: str
-    date: Optional[datetime] = None
-    lot_numbers: List[str] = Field(default_factory=list)
-
-    @field_validator('date', mode='before')
-    @classmethod
-    def parse_date(cls, v):
-        if v is None:
-            return None
-        if isinstance(v, datetime):
-            return v
-        if isinstance(v, str):
-            try:
-                return datetime.fromisoformat(v.replace('Z', '+00:00'))
-            except ValueError:
-                return None
-        return None
-
-
-class FDAAlertResponse(BaseModel):
-    drug_name: str
-    alerts: List[FDAAlert] = Field(default_factory=list)
 
 
 class SavedDrug(BaseModel):

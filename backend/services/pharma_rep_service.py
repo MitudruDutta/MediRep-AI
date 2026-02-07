@@ -43,6 +43,76 @@ class PharmaRepService:
                 return value
         return value
 
+    def _therapeutic_keywords(self, therapeutic_area: Optional[str]) -> List[str]:
+        """Map a broad therapeutic area to robust matching keywords."""
+        if not therapeutic_area:
+            return []
+        area = therapeutic_area.strip().lower()
+        if not area:
+            return []
+
+        keyword_map = {
+            "respiratory": [
+                "respiratory", "pulmonary", "asthma", "copd", "bronchodilator",
+                "inhaler", "inhalation", "antiasthmatic", "anti asthmatic",
+                "salbutamol", "levosalbutamol", "formoterol", "budesonide",
+                "fluticasone", "ipratropium", "tiotropium", "montelukast",
+            ],
+            "cardiovascular": [
+                "cardiovascular", "cardiac", "hypertension", "antihypertensive",
+                "heart", "antianginal", "statin",
+            ],
+            "diabetes": [
+                "diabetes", "antidiabetic", "hypoglycemic", "metformin", "insulin",
+            ],
+            "gastro": [
+                "gastro", "gi", "gastric", "acid", "ulcer", "antiulcer", "antacid",
+            ],
+            "pain": [
+                "pain", "analgesic", "anti-inflammatory", "anti inflammatory", "nsaid",
+            ],
+            "anti-infective": [
+                "antiinfective", "anti-infective", "antibiotic", "antifungal", "antiviral",
+                "infection",
+            ],
+            "cns": [
+                "cns", "neurology", "psychiatric", "antidepressant", "antiepileptic", "anxiolytic",
+            ],
+        }
+
+        if area in keyword_map:
+            base = keyword_map[area]
+        else:
+            base = [area]
+
+        # Keep deterministic order while removing duplicates.
+        seen = set()
+        ordered = []
+        for kw in [area] + base:
+            k = kw.strip().lower()
+            if k and k not in seen:
+                seen.add(k)
+                ordered.append(k)
+        return ordered
+
+    def _score_product_match(self, product: Dict[str, Any], keywords: List[str]) -> int:
+        """Score relevance of a product against therapeutic-area keywords."""
+        if not keywords:
+            return 0
+        text_parts = [
+            product.get("name") or "",
+            product.get("generic_name") or "",
+            product.get("therapeutic_class") or "",
+            product.get("action_class") or "",
+            product.get("description") or "",
+        ]
+        blob = " ".join(text_parts).lower()
+        score = 0
+        for kw in keywords:
+            if kw and kw in blob:
+                score += 1
+        return score
+
     def _fetch_company_from_db(
         self,
         company_key: str,
@@ -337,39 +407,126 @@ class PharmaRepService:
             # Extract variations: "Cipla Limited" -> ["cipla", "Cipla", "Cipla Limited"]
             company_short = company_name.split()[0] if company_name else company_key
 
-            # Query with multiple name variations
-            query = """
-                SELECT DISTINCT name, generic_name, therapeutic_class, price_raw, price, manufacturer
+            # Query with multiple name variations.
+            # Pull action_class + description so therapeutic matching can use fallback scoring.
+            select_clause = """
+                SELECT DISTINCT name, generic_name, therapeutic_class, action_class, description, price_raw, price, manufacturer
+            """
+            manufacturer_where = """
                 FROM drugs
                 WHERE (
-                    LOWER(manufacturer) LIKE LOWER(?)
-                    OR LOWER(manufacturer) LIKE LOWER(?)
-                    OR LOWER(manufacturer) LIKE LOWER(?)
+                    LOWER(COALESCE(manufacturer, '')) LIKE LOWER(?)
+                    OR LOWER(COALESCE(manufacturer, '')) LIKE LOWER(?)
+                    OR LOWER(COALESCE(manufacturer, '')) LIKE LOWER(?)
                 )
-                AND is_discontinued = 0
+                AND COALESCE(is_discontinued, 0) = 0
             """
-            params: List[Any] = [f"%{company_key}%", f"%{company_short}%", f"%{company_name}%"]
+            base_params: List[Any] = [f"%{company_key}%", f"%{company_short}%", f"%{company_name}%"]
 
-            if therapeutic_area:
-                query += " AND LOWER(therapeutic_class) LIKE LOWER(?)"
-                params.append(f"%{therapeutic_area}%")
+            def _rows_to_products(rows) -> List[Dict[str, Any]]:
+                return [
+                    {
+                        "name": row[0],
+                        "generic_name": row[1],
+                        "therapeutic_class": row[2],
+                        "action_class": row[3],
+                        "description": row[4],
+                        "price_raw": row[5],
+                        "price": row[6],
+                        "manufacturer": row[7],
+                    }
+                    for row in rows
+                ]
 
-            query += " ORDER BY name LIMIT ?"
-            params.append(limit)
+            products: List[Dict[str, Any]] = []
+            area_keywords = self._therapeutic_keywords(therapeutic_area)
 
-            rs = conn.execute(query, params)
+            if area_keywords:
+                # Stage 1: keyword-aware SQL matching across multiple columns.
+                clause_parts = []
+                filter_params: List[Any] = []
+                for kw in area_keywords:
+                    like = f"%{kw}%"
+                    clause_parts.append(
+                        "("
+                        "LOWER(therapeutic_class) LIKE LOWER(?) OR "
+                        "LOWER(action_class) LIKE LOWER(?) OR "
+                        "LOWER(generic_name) LIKE LOWER(?) OR "
+                        "LOWER(name) LIKE LOWER(?) OR "
+                        "LOWER(description) LIKE LOWER(?)"
+                        ")"
+                    )
+                    filter_params.extend([like, like, like, like, like])
 
-            products = [
-                {
-                    "name": row[0],
-                    "generic_name": row[1],
-                    "therapeutic_class": row[2],
-                    "price_raw": row[3],
-                    "price": row[4],
-                    "manufacturer": row[5],
-                }
-                for row in rs.rows
-            ]
+                query = (
+                    select_clause
+                    + manufacturer_where
+                    + " AND ("
+                    + " OR ".join(clause_parts)
+                    + ") ORDER BY name LIMIT ?"
+                )
+                rs = conn.execute(query, [*base_params, *filter_params, max(limit * 4, 40)])
+                products = _rows_to_products(rs.rows)
+                logger.info("Product lookup stage1 (manufacturer+area) for %s: %d rows", company_key, len(products))
+
+            if not products:
+                # Stage 2 fallback: fetch broader company catalog and rank in Python.
+                rs = conn.execute(
+                    select_clause + manufacturer_where + " ORDER BY name LIMIT ?",
+                    [*base_params, max(limit * 12, 120)]
+                )
+                broader = _rows_to_products(rs.rows)
+                logger.info("Product lookup stage2 (manufacturer broad) for %s: %d rows", company_key, len(broader))
+                if area_keywords:
+                    ranked = sorted(
+                        (
+                            (self._score_product_match(p, area_keywords), p)
+                            for p in broader
+                        ),
+                        key=lambda x: x[0],
+                        reverse=True
+                    )
+                    products = [p for score, p in ranked if score > 0]
+                else:
+                    products = broader
+
+            if not products:
+                # Stage 3 fallback: some datasets miss manufacturer values.
+                # Use company token in product text fields, then apply same therapeutic ranking.
+                brand_where = """
+                    FROM drugs
+                    WHERE (
+                        LOWER(COALESCE(name, '')) LIKE LOWER(?)
+                        OR LOWER(COALESCE(generic_name, '')) LIKE LOWER(?)
+                        OR LOWER(COALESCE(description, '')) LIKE LOWER(?)
+                    )
+                    AND COALESCE(is_discontinued, 0) = 0
+                """
+                brand_params: List[Any] = [
+                    f"%{company_short}%",
+                    f"%{company_short}%",
+                    f"%{company_short}%",
+                ]
+                rs = conn.execute(
+                    select_clause + brand_where + " ORDER BY name LIMIT ?",
+                    [*brand_params, max(limit * 12, 120)]
+                )
+                broader = _rows_to_products(rs.rows)
+                logger.info("Product lookup stage3 (brand-token fallback) for %s: %d rows", company_key, len(broader))
+                if area_keywords:
+                    ranked = sorted(
+                        (
+                            (self._score_product_match(p, area_keywords), p)
+                            for p in broader
+                        ),
+                        key=lambda x: x[0],
+                        reverse=True
+                    )
+                    products = [p for score, p in ranked if score > 0]
+                else:
+                    products = broader
+
+            products = products[:limit]
 
             logger.info("Found %d products for %s", len(products), company_key)
 
@@ -528,7 +685,11 @@ Remember: You represent {company_name}, but patient safety and clinical accuracy
         if not products:
             return ""
 
-        lines = [f"\n[{company_name} Products from Database]"]
+        lines = [
+            f"\n[{company_name} Products from Database]",
+            "[INSTRUCTION: Use ONLY the product names listed below for company portfolio answers. "
+            "Do NOT add unlisted brands, competitor products, doses, or prices.]"
+        ]
         for p in products[:10]:  # Limit to 10 products in context
             price = p.get('price_raw') or f"Rs. {p.get('price', 'N/A')}"
             lines.append(f"- {p.get('name')}: {p.get('generic_name', 'N/A')} | {p.get('therapeutic_class', 'N/A')} | {price}")

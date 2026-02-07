@@ -1,7 +1,7 @@
 import React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ArrowUp, Paperclip, Square, X, StopCircle, Mic, Globe } from "lucide-react";
+import { ArrowUp, Paperclip, Square, X, StopCircle, Mic, Globe, Headphones } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Utility function for className merging
@@ -450,9 +450,10 @@ interface PromptInputBoxProps {
   className?: string;
   onSearchModeChange?: (isSearchMode: boolean) => void;
   speechLanguage?: keyof typeof SUPPORTED_SPEECH_LANGUAGES;
+  onVoiceCall?: () => void;
 }
 export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref: React.Ref<HTMLDivElement>) => {
-  const { onSend = () => { }, onStop, isLoading = false, placeholder = "Type your message here...", className, onSearchModeChange, speechLanguage = "en" } = props;
+  const { onSend = () => { }, onStop, isLoading = false, placeholder = "Type your message here...", className, onSearchModeChange, speechLanguage = "en", onVoiceCall } = props;
   const [input, setInput] = React.useState("");
   const [files, setFiles] = React.useState<File[]>([]);
   const [filePreviews, setFilePreviews] = React.useState<{ [key: string]: string }>({});
@@ -758,6 +759,18 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
 
 
             </div>
+
+            {onVoiceCall && (
+              <PromptInputAction tooltip="Voice conversation">
+                <button
+                  onClick={onVoiceCall}
+                  className="flex h-8 w-8 text-muted-foreground cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-accent hover:text-foreground"
+                  disabled={isRecording || isLoading}
+                >
+                  <Headphones className="h-5 w-5 transition-colors" />
+                </button>
+              </PromptInputAction>
+            )}
           </div>
 
           <PromptInputAction

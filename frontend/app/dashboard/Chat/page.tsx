@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useChat } from "@/hooks/useChat";
 import { useProfile } from "@/hooks/useProfile";
 import { usePatientContext } from "@/lib/context/PatientContext";
@@ -14,6 +14,7 @@ import {
 import { ChatSidebar } from "@/components/Chat/ChatSidebar";
 import { RepModeBadge } from "@/components/Chat/RepModeBadge";
 import { PromptInputBox } from "@/components/ai-prompt-box";
+import { VoiceCallOverlay } from "@/components/Voice/VoiceCallOverlay";
 import { Bot, PanelLeftOpen, PanelLeftClose, Globe, ExternalLink, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -27,6 +28,7 @@ const SUGGESTIONS = [
 export default function ChatPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [webSearchMode, setWebSearchMode] = useState(false);
+  const [isVoiceCallOpen, setIsVoiceCallOpen] = useState(false);
 
   const {
     messages,
@@ -100,7 +102,7 @@ export default function ChatPage() {
             <span className="font-semibold text-sm text-[color:var(--landing-ink)]">MediRep AI</span>
           </div>
 
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             {activeRepMode && (
               <RepModeBadge
                 repMode={activeRepMode}
@@ -146,6 +148,7 @@ export default function ChatPage() {
                   isLoading={isGenerating}
                   placeholder="Ask about medications..."
                   onSearchModeChange={setWebSearchMode}
+                  onVoiceCall={() => setIsVoiceCallOpen(true)}
                 />
 
                 {/* Suggestions */}
@@ -226,6 +229,7 @@ export default function ChatPage() {
                     isLoading={isGenerating}
                     placeholder="Message MediRep AI..."
                     onSearchModeChange={setWebSearchMode}
+                    onVoiceCall={() => setIsVoiceCallOpen(true)}
                   />
 
                   <p className="text-[11px] text-center text-zinc-400">
@@ -237,6 +241,12 @@ export default function ChatPage() {
           )}
         </div>
       </div>
+
+      {/* Voice Call Overlay */}
+      <VoiceCallOverlay
+        isOpen={isVoiceCallOpen}
+        onClose={() => setIsVoiceCallOpen(false)}
+      />
     </div>
   );
 }

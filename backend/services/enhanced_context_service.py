@@ -22,6 +22,7 @@ Usage in chat.py:
 import asyncio
 import logging
 from typing import Optional, Dict, Any, List, Set
+import re
 
 from services.moa_service import moa_service
 from services.therapeutic_comparison_service import therapeutic_comparison_service
@@ -65,10 +66,39 @@ def _extract_procedure_query(message: str) -> Optional[str]:
         idx = lower.find(marker)
         if idx != -1:
             candidate = msg[idx + len(marker):].strip()
+            # Strip common instruction tails: "Total Hip Replacement: give ...", "X - include ..."
+            candidate = re.split(r"[:;\n]", candidate, maxsplit=1)[0].strip() or candidate
+            candidate = re.split(r"\b(give|provide|show|list|include|including)\b", candidate, maxsplit=1, flags=re.IGNORECASE)[0].strip() or candidate
             return candidate or msg
 
     # Fall back to message (later token filtering will remove noise words).
     return msg
+
+
+def _extract_scheme_hint(message: str) -> Optional[str]:
+    """
+    If the user is clearly asking about one scheme, pass it through to the DB lookup
+    so we don't accidentally render "first scheme in DB" (which can hide PM-JAY matches).
+    """
+    msg = (message or "").lower()
+    if not msg:
+        return None
+
+    has_pmjay = any(k in msg for k in ("pmjay", "pm-jay", "ayushman"))
+    has_cghs = "cghs" in msg
+    has_esi = any(k in msg for k in ("esi", "esic"))
+
+    mentioned = sum(1 for x in (has_pmjay, has_cghs, has_esi) if x)
+    if mentioned != 1:
+        return None
+    if has_pmjay:
+        return "PMJAY"
+    if has_cghs:
+        return "CGHS"
+    if has_esi:
+        # Only return ESI if it exists in DB; the caller should still handle missing schemes.
+        return "ESI"
+    return None
 
 # =============================================================================
 # INTENT DETECTION KEYWORDS
@@ -246,6 +276,7 @@ async def build_enhanced_context(
     # 3. Insurance/Reimbursement
     if "INSURANCE" in intents:
         procedure_query = procedure or _extract_procedure_query(message)
+        scheme_hint = _extract_scheme_hint(message)
         # Insurance service is synchronous (Supabase client); run it off the event loop.
         tasks.append((
             "INSURANCE",
@@ -253,6 +284,7 @@ async def build_enhanced_context(
                 insurance_service.get_coverage_info,
                 drug_name=drug_name,
                 procedure=procedure_query,
+                scheme=scheme_hint,
                 auth_token=auth_token
             )
         ))
@@ -333,12 +365,14 @@ async def build_enhanced_context(
                 if formatted:
                     context_parts.append(formatted)
                 # Build structured MoA context
+                pathway_equation = _build_moa_pathway_equation(drug_name or "", result)
                 track2_moa = MoAContext(
                     drug_name=drug_name or "",
                     mechanism=result.get("mechanism_of_action"),
                     drug_class=result.get("drug_class"),
                     pharmacodynamics=result.get("pharmacodynamics"),
                     targets=result.get("targets", []),
+                    pathway_equation=pathway_equation,
                     sources=result.get("sources", [])
                 )
 
@@ -429,11 +463,18 @@ async def build_enhanced_context(
                     web_search_note = f"\n[NOTE: No exact match in HBP database. Consider web search for: '{web_search_query}']"
                     context_parts.append(web_search_note)
 
-            elif intent_name == "PRODUCTS" and result:
+            elif intent_name == "PRODUCTS":
                 company_name = rep_company.get("company_name", "Company") if rep_company else "Company"
-                formatted = pharma_rep_service.format_products_for_llm(result, company_name)
-                if formatted:
-                    context_parts.append(formatted)
+                if result:
+                    formatted = pharma_rep_service.format_products_for_llm(result, company_name)
+                    if formatted:
+                        context_parts.append(formatted)
+                else:
+                    context_parts.append(
+                        f"\n[{company_name} Products from Database]\n"
+                        "[INSTRUCTION: No verified products were found in the database for this request. "
+                        "Do NOT invent product names. State that portfolio data is unavailable for the asked area.]"
+                    )
 
             elif intent_name == "SUPPORT" and result:
                 formatted = pharma_rep_service.format_support_programs_for_llm(result)
@@ -502,6 +543,86 @@ def _extract_therapeutic_area(message: str) -> Optional[str]:
             return area
 
     return None
+
+
+def _build_moa_pathway_equation(drug_name: str, moa_result: Dict[str, Any]) -> Optional[str]:
+    """
+    Best-effort one-line mechanism chain derived from structured MoA context.
+    This is intentionally conservative: only emit when we can confidently identify a target/class.
+    """
+    dn = (drug_name or "").strip()
+    if not dn or not moa_result:
+        return None
+
+    drug_class = (moa_result.get("drug_class") or "").strip()
+    mechanism = (moa_result.get("mechanism_of_action") or "").strip()
+    pharmacodynamics = (moa_result.get("pharmacodynamics") or "").strip()
+    targets = moa_result.get("targets") or []
+
+    blob = " ".join([drug_class, mechanism, " ".join([str(t) for t in targets if t])]).lower()
+
+    def has_any(*needles: str) -> bool:
+        return any(n and n in blob for n in needles)
+
+    target_label = None
+    verb = None
+    effect = None
+
+    # Calcium channel blockers
+    if has_any("calcium channel", "l-type", "cav1.2", "cacna1c"):
+        target_label = "L-type calcium channels"
+        if has_any("cav1.2", "cacna1c"):
+            target_label = "L-type calcium channels (Cav1.2)"
+        verb = "blocks"
+        effect = "arteriolar vasodilation → ↓SVR/↓BP"
+
+    # ARBs
+    elif has_any("angiotensin ii receptor", "at1", "agtr1"):
+        target_label = "angiotensin II type 1 (AT1) receptor"
+        verb = "blocks"
+        effect = "↓vasoconstriction/↓aldosterone → ↓BP"
+
+    # ACE inhibitors
+    elif has_any("angiotensin converting enzyme", "angiotensin-converting enzyme", " ace "):
+        target_label = "angiotensin-converting enzyme (ACE)"
+        verb = "inhibits"
+        effect = "↓Ang II, ↑bradykinin → vasodilation → ↓BP"
+
+    # Beta blockers
+    elif has_any("beta-1", "β1", "adrb1", "beta adrenergic"):
+        target_label = "β1-adrenergic receptor"
+        verb = "blocks"
+        effect = "↓HR/↓contractility; ↓renin"
+
+    # PPIs
+    elif has_any("h+/k+", "h+-k+-atpase", "proton pump"):
+        target_label = "gastric H+/K+-ATPase (proton pump)"
+        verb = "inhibits"
+        effect = "↓gastric acid secretion"
+
+    # SSRIs
+    elif has_any("serotonin transporter", "sert", "slc6a4"):
+        target_label = "serotonin transporter (SERT)"
+        verb = "inhibits"
+        effect = "↑synaptic serotonin"
+
+    # Statins
+    elif has_any("hmg-coa reductase", "hmgcr"):
+        target_label = "HMG-CoA reductase"
+        verb = "inhibits"
+        effect = "↓cholesterol synthesis → ↑LDL receptor → ↓LDL"
+
+    if not target_label or not verb:
+        return None
+
+    # If we have a better effect snippet from pharmacodynamics, prefer it (short, high-level).
+    pd = re.sub(r"\s+", " ", pharmacodynamics).strip()
+    if pd and len(pd) <= 120 and not pd.lower().startswith("see"):
+        effect = pd
+
+    if effect:
+        return f"{dn} → {verb} {target_label} → {effect}"
+    return f"{dn} → {verb} {target_label}"
 
 
 def get_pharma_rep_system_prompt(rep_company: Optional[Dict[str, Any]] = None) -> str:

@@ -2,31 +2,28 @@
 """
 MediRep Real-Time Voice Server
 
-Real-time conversational AI with streaming:
-- VAD (Voice Activity Detection) - knows when user stops
-- Streaming STT (faster-whisper)
-- Streaming LLM (llama.cpp)
-- Streaming TTS (Piper)
-
-Target: ~500ms to first audio response
+Pipeline: Mic -> VAD -> Whisper STT -> Groq LLM -> Groq TTS -> Audio back to client
 """
 
 import asyncio
-import json
-import numpy as np
-import wave
-import io
-import os
-import sys
 import re
+import numpy as np
+import os
+import traceback
 from collections import deque
-from typing import AsyncGenerator
 
-# Add backend to path for tool integration
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../backend'))
+# Load .env files before anything else
+try:
+    from dotenv import load_dotenv
+    _project_root = os.path.join(os.path.dirname(__file__), '..')
+    load_dotenv(os.path.join(_project_root, 'backend', '.env'))
+    load_dotenv(os.path.join(_project_root, '.env'))
+except ImportError:
+    pass
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
 import uvicorn
 
 # ============================================================
@@ -34,13 +31,30 @@ import uvicorn
 # ============================================================
 
 CONFIG = {
-    "model_path": "./models/medirep-voice-q4_k_m.gguf",
-    "whisper_model": "base",  # or "small" for better accuracy
-    "piper_model": "en_US-lessac-medium",  # Fast English voice
-    "vad_threshold": 0.5,
+    "whisper_model": os.environ.get("WHISPER_MODEL", "base"),
+    "whisper_device": os.environ.get("WHISPER_DEVICE", "cuda"),
+    "whisper_compute": os.environ.get("WHISPER_COMPUTE", "float16"),
+    "vad_threshold": float(os.environ.get("VAD_THRESHOLD", "0.5")),
     "sample_rate": 16000,
-    "silence_duration": 0.7,  # seconds of silence to detect end of speech
+    "silence_duration": 0.7,
+    "groq_api_key": os.environ.get("GROQ_API_KEY", ""),
+    "groq_model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    "groq_tts_model": "playai-tts",
+    "groq_tts_voice": os.environ.get("GROQ_TTS_VOICE", "Fritz-PlayAI"),
+    # IMPORTANT: Frontend currently assumes any binary frames are raw PCM int16.
+    # Groq TTS returns compressed audio (e.g., mp3), which will break playback.
+    # Keep server-side audio OFF unless/until we add proper decoding on the client.
+    "server_tts_enabled": os.environ.get("VOICE_SERVER_TTS", "0") == "1",
 }
+
+VOICE_SYSTEM_PROMPT = (
+    "You are MediRep AI, a medical-information voice assistant for healthcare professionals in India. "
+    "You are in VOICE mode. Keep responses concise (2-4 sentences), conversational, and natural. "
+    "No markdown formatting, no bullet points, no numbered lists, no asterisks, no headers. "
+    "No source citations. Speak naturally as if talking to a doctor or pharmacist. "
+    "Provide evidence-based information about drugs, dosages, interactions, side effects, "
+    "Indian brand availability, and pricing when asked."
+)
 
 app = FastAPI(title="MediRep Real-Time Voice")
 
@@ -53,13 +67,11 @@ app.add_middleware(
 )
 
 # ============================================================
-# LAZY LOADING - Models load on first use
+# LAZY LOADING
 # ============================================================
 
 _vad_model = None
 _whisper_model = None
-_llm = None
-_tts = None
 
 
 def get_vad():
@@ -73,226 +85,99 @@ def get_vad():
             force_reload=False
         )
         _vad_model = (model, utils)
-        print("VAD loaded")
+        print("[LOADED] VAD")
     return _vad_model
 
 
 def get_whisper():
-    """Load faster-whisper for streaming STT."""
+    """Load faster-whisper for STT."""
     global _whisper_model
     if _whisper_model is None:
         from faster_whisper import WhisperModel
         _whisper_model = WhisperModel(
             CONFIG["whisper_model"],
-            device="cuda",
-            compute_type="float16"
+            device=CONFIG["whisper_device"],
+            compute_type=CONFIG["whisper_compute"],
         )
-        print("Whisper loaded")
+        print("[LOADED] Whisper")
     return _whisper_model
 
 
-def get_llm():
-    """Load fine-tuned LLM."""
-    global _llm
-    if _llm is None:
-        from llama_cpp import Llama
-        _llm = Llama(
-            model_path=CONFIG["model_path"],
-            n_ctx=4096,
-            n_gpu_layers=35,
-            verbose=False,
+# ============================================================
+# GROQ API (LLM + TTS)
+# ============================================================
+
+def clean_for_voice(text: str) -> str:
+    """Strip markdown/artifacts for clean voice output."""
+    ic = re.IGNORECASE | re.DOTALL
+    # Strip any tool-call artifacts if they leak into output.
+    text = re.sub(r'<tool_call>.*?</tool_call>\s*(?:<params>.*?</params>|\{[^}]*\})', '', text, flags=ic)
+    text = re.sub(r'tool_call:\s*\w+\s+params:\s*\{[^}]*\}', '', text, flags=ic)
+    text = re.sub(r'\[Tool Result\]:.*', '', text, flags=ic)
+    # Strip inline source tags (voice should not read these).
+    text = re.sub(r'\(\s*sources?\s*:\s*[^)]+\)', '', text, flags=ic)
+    text = re.sub(r'\(\s*sources?\s+\d+[^)]*\)', '', text, flags=ic)
+    text = re.sub(r'(?im)^\s*sources?\s*:\s*.+$', '', text)
+    text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', text)
+    text = re.sub(r'#{1,3}\s*', '', text)
+    text = re.sub(r'[-*]\s+', '', text)
+    text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    text = re.sub(r'[ \t]{2,}', ' ', text)
+    text = re.sub(r'\n{2,}', '. ', text)
+    text = re.sub(r'\n', ' ', text)
+    return text.strip()
+
+
+async def groq_chat(user_text: str, history: list) -> str:
+    """Generate response via Groq LLM."""
+    messages = [{"role": "system", "content": VOICE_SYSTEM_PROMPT}]
+    messages.extend(history[-6:])
+    messages.append({"role": "user", "content": user_text})
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {CONFIG['groq_api_key']}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": CONFIG["groq_model"],
+                "messages": messages,
+                "max_tokens": 300,
+                "temperature": 0.7,
+            },
         )
-        print("LLM loaded")
-    return _llm
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
 
 
-def get_tts():
-    """Load Piper TTS for fast synthesis."""
-    global _tts
-    if _tts is None:
-        # Piper is subprocess-based for speed
-        _tts = PiperTTS(CONFIG["piper_model"])
-        print("TTS loaded")
-    return _tts
+async def groq_tts(text: str) -> bytes:
+    """Generate speech audio via Groq TTS API."""
+    cleaned = clean_for_voice(text)
+    if not cleaned:
+        return b""
 
-
-# ============================================================
-# PIPER TTS WRAPPER (Streaming)
-# ============================================================
-
-class PiperTTS:
-    """Fast TTS using Piper - synthesizes chunks as they come."""
-
-    def __init__(self, model_name: str):
-        self.model_name = model_name
-        # Check if piper is installed
-        import shutil
-        self.piper_path = shutil.which("piper")
-        if not self.piper_path:
-            print("WARNING: Piper not found. Install with: pip install piper-tts")
-            self.piper_path = None
-
-    async def synthesize_streaming(self, text_generator: AsyncGenerator[str, None]) -> AsyncGenerator[bytes, None]:
-        """Synthesize audio from streaming text."""
-        buffer = ""
-
-        async for token in text_generator:
-            buffer += token
-
-            # Synthesize on sentence boundaries for natural speech
-            if any(buffer.endswith(p) for p in ['. ', '? ', '! ', '.\n', '?\n', '!\n']):
-                if buffer.strip():
-                    audio = await self._synthesize_chunk(buffer.strip())
-                    if audio:
-                        yield audio
-                    buffer = ""
-
-        # Synthesize remaining text
-        if buffer.strip():
-            audio = await self._synthesize_chunk(buffer.strip())
-            if audio:
-                yield audio
-
-    async def _synthesize_chunk(self, text: str) -> bytes:
-        """Synthesize a single chunk of text."""
-        if not self.piper_path or not text:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://api.groq.com/openai/v1/audio/speech",
+            headers={
+                "Authorization": f"Bearer {CONFIG['groq_api_key']}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": CONFIG["groq_tts_model"],
+                "input": cleaned,
+                "voice": CONFIG["groq_tts_voice"],
+                "response_format": "mp3",
+            },
+        )
+        # Do not throw here; server-side audio is optional and should never kill the voice session.
+        if resp.status_code != 200:
+            print(f"Groq TTS error: HTTP {resp.status_code} - {resp.text[:200]}")
             return b""
-
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                self.piper_path,
-                "--model", self.model_name,
-                "--output-raw",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            stdout, _ = await proc.communicate(text.encode())
-            return stdout
-        except Exception as e:
-            print(f"TTS error: {e}")
-            return b""
-
-
-# ============================================================
-# TOOL EXECUTION (from backend services)
-# ============================================================
-
-def load_tools():
-    """Load backend service tools."""
-    tools = {}
-
-    try:
-        from services import turso_service
-        tools["search_drugs"] = lambda p: turso_service.search_drugs(p.get("query", ""))
-    except:
-        pass
-
-    try:
-        from services.therapeutic_comparison_service import TherapeuticComparisonService
-        svc = TherapeuticComparisonService()
-        tools["compare_drugs"] = lambda p: svc.compare_drugs(p.get("drug1"), p.get("drug2"))
-        tools["list_drug_class"] = lambda p: svc.get_class_members(p.get("class_name"))
-    except:
-        pass
-
-    try:
-        from services.insurance_service import get_pmjay_packages
-        tools["get_insurance_rate"] = lambda p: get_pmjay_packages(procedure_name=p.get("procedure"))
-    except:
-        pass
-
-    return tools
-
-
-TOOLS = {}
-
-
-def execute_tool(tool_name: str, params: dict) -> str:
-    """Execute a tool and return result."""
-    global TOOLS
-    if not TOOLS:
-        TOOLS = load_tools()
-
-    if tool_name in TOOLS:
-        try:
-            result = TOOLS[tool_name](params)
-            return json.dumps(result, default=str)
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-    return json.dumps({"error": f"Unknown tool: {tool_name}"})
-
-
-def parse_tool_calls(text: str) -> list:
-    """Extract tool calls from LLM response."""
-    pattern = r'<tool_call>(\w+)</tool_call>\s*<params>(\{[^}]+\})</params>'
-    matches = re.findall(pattern, text, re.DOTALL)
-
-    calls = []
-    for tool_name, params_str in matches:
-        try:
-            params = json.loads(params_str)
-            calls.append({"tool": tool_name, "params": params})
-        except:
-            continue
-    return calls
-
-
-# ============================================================
-# STREAMING LLM GENERATION
-# ============================================================
-
-async def stream_llm_response(user_text: str, history: list) -> AsyncGenerator[str, None]:
-    """Stream LLM response token by token."""
-    llm = get_llm()
-
-    # Build prompt
-    prompt = "<|system|>You are MediRep AI, a medical assistant. Use tools for real-time data.\n"
-    prompt += "Available tools: search_drugs, compare_drugs, list_drug_class, get_insurance_rate\n"
-    prompt += "Format: <tool_call>name</tool_call><params>{...}</params></s>\n"
-
-    for msg in history[-6:]:  # Last 6 messages for context
-        role = msg["role"]
-        content = msg["content"]
-        prompt += f"<|{role}|>{content}</s>\n"
-
-    prompt += f"<|user|>{user_text}</s>\n<|assistant|>"
-
-    # Stream tokens
-    full_response = ""
-    for output in llm(prompt, max_tokens=256, stream=True, temperature=0.7):
-        token = output["choices"][0]["text"]
-        full_response += token
-
-        # Check for tool calls mid-generation
-        if "<tool_call>" in full_response and "</params>" in full_response:
-            # Execute tool and continue
-            tool_calls = parse_tool_calls(full_response)
-            if tool_calls:
-                for call in tool_calls:
-                    result = execute_tool(call["tool"], call["params"])
-                    # Don't yield tool call syntax to TTS
-                    continue
-        else:
-            # Clean token for TTS (remove special tokens)
-            clean = token.replace("<|", "").replace("|>", "").replace("</s>", "")
-            if clean and not clean.startswith("tool"):
-                yield clean
-
-    # If there were tool calls, generate final response
-    if "<tool_call>" in full_response:
-        tool_calls = parse_tool_calls(full_response)
-        if tool_calls:
-            tool_results = {c["tool"]: execute_tool(c["tool"], c["params"]) for c in tool_calls}
-
-            # Generate response with tool results
-            prompt += full_response + f"\n<|tool_result|>{json.dumps(tool_results)}</s>\n<|assistant|>"
-
-            for output in llm(prompt, max_tokens=256, stream=True, temperature=0.7):
-                token = output["choices"][0]["text"]
-                clean = token.replace("<|", "").replace("|>", "").replace("</s>", "")
-                if clean:
-                    yield clean
+        return resp.content
 
 
 # ============================================================
@@ -304,24 +189,20 @@ class VADProcessor:
 
     def __init__(self):
         self.model, self.utils = get_vad()
-        self.get_speech_timestamps = self.utils[0]
-        self.audio_buffer = deque(maxlen=int(CONFIG["sample_rate"] * 30))  # 30 sec buffer
+        self.audio_buffer = deque(maxlen=int(CONFIG["sample_rate"] * 30))
         self.is_speaking = False
         self.silence_frames = 0
-        self.silence_threshold = int(CONFIG["silence_duration"] * CONFIG["sample_rate"] / 512)
+        self.silence_threshold = int(
+            CONFIG["silence_duration"] * CONFIG["sample_rate"] / 512
+        )
 
     def process_chunk(self, audio_chunk: bytes) -> tuple[bool, np.ndarray | None]:
-        """
-        Process audio chunk.
-        Returns (speech_ended, audio_data if ended else None)
-        """
+        """Process audio chunk. Returns (speech_ended, audio_data)."""
         import torch
 
-        # Convert bytes to numpy
         audio = np.frombuffer(audio_chunk, dtype=np.int16).astype(np.float32) / 32768.0
         self.audio_buffer.extend(audio)
 
-        # Check for speech
         audio_tensor = torch.from_numpy(audio)
         speech_prob = self.model(audio_tensor, CONFIG["sample_rate"]).item()
 
@@ -332,7 +213,6 @@ class VADProcessor:
         elif self.is_speaking:
             self.silence_frames += 1
             if self.silence_frames >= self.silence_threshold:
-                # Speech ended - return buffered audio
                 self.is_speaking = False
                 self.silence_frames = 0
                 audio_data = np.array(self.audio_buffer)
@@ -341,6 +221,12 @@ class VADProcessor:
 
         return False, None
 
+    def reset(self):
+        """Clear buffers."""
+        self.audio_buffer.clear()
+        self.is_speaking = False
+        self.silence_frames = 0
+
 
 # ============================================================
 # WEBSOCKET ENDPOINT
@@ -348,57 +234,88 @@ class VADProcessor:
 
 @app.websocket("/ws/realtime")
 async def realtime_voice(websocket: WebSocket):
-    """Real-time bidirectional voice conversation."""
+    """Real-time voice: STT -> Groq LLM -> Groq TTS -> audio back."""
     await websocket.accept()
 
     vad = VADProcessor()
     whisper = get_whisper()
-    tts = get_tts()
     conversation_history = []
+    has_groq = bool(CONFIG["groq_api_key"])
+
+    if not has_groq:
+        print("[WARN] GROQ_API_KEY not set - STT only mode")
 
     print("Client connected")
 
     try:
         while True:
-            # Receive audio chunk from client
             audio_chunk = await websocket.receive_bytes()
 
-            # Process with VAD
             speech_ended, audio_data = vad.process_chunk(audio_chunk)
 
-            if speech_ended and audio_data is not None:
-                # Transcribe
-                segments, _ = whisper.transcribe(
-                    audio_data,
-                    language="en",
-                    vad_filter=True,
-                )
-                user_text = " ".join(s.text for s in segments).strip()
+            if not speech_ended or audio_data is None:
+                continue
 
-                if not user_text:
-                    continue
+            # Transcribe in thread to not block event loop
+            def _transcribe(ad=audio_data):
+                segs, _ = whisper.transcribe(ad, language="en", vad_filter=True)
+                return " ".join(s.text for s in segs).strip()
 
-                print(f"User: {user_text}")
+            user_text = await asyncio.to_thread(_transcribe)
 
-                # Add to history
-                conversation_history.append({"role": "user", "content": user_text})
+            if not user_text:
+                vad.reset()
+                continue
 
-                # Stream response
-                full_response = ""
-                async for audio_chunk in tts.synthesize_streaming(
-                    stream_llm_response(user_text, conversation_history)
-                ):
-                    # Send audio chunk to client immediately
-                    await websocket.send_bytes(audio_chunk)
+            print(f"User: {user_text}")
 
-                # Add assistant response to history
-                # (We'd need to capture this from the LLM stream)
+            # Send transcript to client
+            await websocket.send_json({"type": "transcript", "text": user_text})
+
+            if not has_groq:
+                vad.reset()
+                continue
+
+            conversation_history.append({"role": "user", "content": user_text})
+
+            # Generate LLM response via Groq
+            try:
+                response = await groq_chat(user_text, conversation_history)
+            except Exception as e:
+                print(f"Groq LLM error: {e}")
+                response = "I'm sorry, I couldn't process that right now. Please try again."
+
+            print(f"Assistant: {response}")
+            conversation_history.append({"role": "assistant", "content": response})
+
+            # Send response text to client (for overlay display)
+            await websocket.send_json({"type": "response", "text": response})
+
+            # Server-side audio streaming is disabled by default because the client
+            # assumes raw PCM frames. The web UI already speaks responses via
+            # browser TTS (SpeechSynthesis) on the JSON "response" event.
+            if CONFIG["server_tts_enabled"]:
+                try:
+                    audio_bytes = await groq_tts(response)
+                    if audio_bytes:
+                        # NOTE: This is mp3 bytes; do not enable unless client can decode.
+                        await websocket.send_json({"type": "audio_error"})
+                except Exception as e:
+                    print(f"Groq TTS error: {e}")
+                    await websocket.send_json({"type": "audio_error"})
+
+            # Reset VAD to clear audio buffered during generation
+            vad.reset()
 
     except WebSocketDisconnect:
         print("Client disconnected")
     except Exception as e:
         print(f"Error: {e}")
-        await websocket.close()
+        traceback.print_exc()
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 # ============================================================
@@ -409,11 +326,10 @@ async def realtime_voice(websocket: WebSocket):
 async def health():
     return {
         "status": "ok",
-        "models": {
+        "groq_configured": bool(CONFIG["groq_api_key"]),
+        "models_loaded": {
             "vad": _vad_model is not None,
             "whisper": _whisper_model is not None,
-            "llm": _llm is not None,
-            "tts": _tts is not None,
         }
     }
 
@@ -421,12 +337,18 @@ async def health():
 @app.on_event("startup")
 async def startup():
     """Pre-load models on startup."""
-    print("Loading models...")
-    # Load in background to not block startup
+    print("=" * 60)
+    print("MediRep Voice Server Starting...")
+    print(f"Whisper: {CONFIG['whisper_model']} ({CONFIG['whisper_device']})")
+    print(f"Groq LLM: {CONFIG['groq_model']}")
+    print(f"Groq TTS: {CONFIG['groq_tts_model']} ({CONFIG['groq_tts_voice']})")
+    print(f"Server TTS: {'ENABLED' if CONFIG['server_tts_enabled'] else 'disabled (browser TTS)'}")
+    print(f"Groq API: {'configured' if CONFIG['groq_api_key'] else 'NOT configured'}")
+    print("=" * 60)
+
+    # Load audio models in background
     asyncio.create_task(asyncio.to_thread(get_vad))
     asyncio.create_task(asyncio.to_thread(get_whisper))
-    asyncio.create_task(asyncio.to_thread(get_llm))
-    asyncio.create_task(asyncio.to_thread(get_tts))
 
 
 if __name__ == "__main__":

@@ -25,7 +25,8 @@ from services.supabase_service import SupabaseService
 logger = logging.getLogger(__name__)
 
 # How many recent exchanges to keep in full (in addition to summary)
-RECENT_EXCHANGES_TO_KEEP = 2
+# Raised to reduce "last-message-only" drift between summary updates.
+RECENT_EXCHANGES_TO_KEEP = 12
 
 # Compression prompt - instructs LLM to create/update summary
 COMPRESSION_PROMPT = """You are a medical conversation summarizer. Your job is to maintain a compressed context summary of an ongoing medical consultation.
@@ -53,6 +54,30 @@ OUTPUT FORMAT (plain text, no headers):
 Write a flowing paragraph that captures the essential context. Start with main topic, then key details.
 
 UPDATED SUMMARY:"""
+
+_MAX_STORED_SUMMARY_CHARS = 2000
+
+
+def _heuristic_merge_summary(
+    current_summary: Optional[str],
+    user_message: str,
+    assistant_response: str,
+) -> str:
+    """
+    Deterministic fallback when LLM summarization fails (quota/outage).
+
+    This is intentionally simple: keep prior summary (if any) and append the
+    latest exchange, then truncate from the front to fit storage.
+    """
+    parts = []
+    if current_summary:
+        parts.append(current_summary.strip())
+    parts.append(f"User asked: {user_message.strip()[:800]}")
+    parts.append(f"Assistant replied: {assistant_response.strip()[:1200]}")
+    merged = "\n".join(p for p in parts if p)
+    if len(merged) > _MAX_STORED_SUMMARY_CHARS:
+        merged = merged[-_MAX_STORED_SUMMARY_CHARS:]
+    return merged.strip()
 
 
 
@@ -131,35 +156,51 @@ async def compress_and_update_context(
     Uses LLM to intelligently merge new info into existing summary.
     """
     try:
-        # Import here to avoid circular dependency
-        from services.gemini_service import _get_model
-        import google.generativeai as genai
-
-        model = _get_model()
-
-        # Build compression prompt
         prompt = COMPRESSION_PROMPT.format(
             current_summary=current_summary or "(No previous summary - this is the start of conversation)",
             user_message=user_message[:1000],  # Limit size
-            assistant_response=assistant_response[:1500]
+            assistant_response=assistant_response[:1500],
         )
 
-        # Generate compressed summary
-        response = await asyncio.to_thread(
-            lambda: model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.3,  # Low temp for consistent summaries
-                    max_output_tokens=300
+        new_summary = ""
+
+        # 1) Try Gemini (primary).
+        try:
+            # Import here to avoid circular dependency
+            from services.gemini_service import _get_model
+            import google.generativeai as genai
+
+            model = _get_model()
+            response = await asyncio.to_thread(
+                lambda: model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.3,  # Low temp for consistent summaries
+                        max_output_tokens=300,
+                    ),
                 )
             )
-        )
+            new_summary = (response.text or "").strip()
+        except Exception as e:
+            logger.warning("Gemini compression unavailable for session %s: %s", session_id[:8], e)
 
-        new_summary = (response.text or "").strip()
-
+        # 2) Fallback to Groq summarization (keeps memory working when Gemini is rate-limited).
         if not new_summary:
-            logger.warning("Empty compression result for session %s", session_id[:8])
-            return
+            try:
+                from services.gemini_service import _call_groq_api
+
+                groq_summary = await _call_groq_api(
+                    messages=[{"role": "user", "content": prompt}],
+                    system_prompt="You are a medical conversation summarizer. Output only the updated summary text.",
+                    temperature=0.2,
+                )
+                new_summary = (groq_summary or "").strip()
+            except Exception as e:
+                logger.warning("Groq compression unavailable for session %s: %s", session_id[:8], e)
+
+        # 3) Deterministic fallback (never fails).
+        if not new_summary:
+            new_summary = _heuristic_merge_summary(current_summary, user_message, assistant_response)
 
         # Update session with new summary (non-blocking)
         # Use auth client to satisfy RLS
@@ -167,7 +208,7 @@ async def compress_and_update_context(
         if client:
             await asyncio.to_thread(
                 lambda: client.table("chat_sessions").update({
-                    "context_summary": new_summary[:2000],  # Limit storage
+                    "context_summary": new_summary[:_MAX_STORED_SUMMARY_CHARS],  # Limit storage
                 }).eq("id", session_id).execute()
             )
 

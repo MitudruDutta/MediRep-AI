@@ -13,8 +13,10 @@ torch>=2.0.0
 torchaudio>=2.0.0
 # silero-vad loaded via torch.hub
 
-# LLM (Local inference)
-llama-cpp-python>=0.2.50
+# LLM (Local inference - transformers + 4-bit quantization)
+transformers>=4.44.0
+accelerate>=0.33.0
+bitsandbytes>=0.43.0
 
 # Text-to-Speech (Fast)
 piper-tts>=1.2.0

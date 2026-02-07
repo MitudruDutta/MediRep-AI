@@ -167,6 +167,7 @@ export interface MoAContext {
   drug_class?: string;
   pharmacodynamics?: string;
   targets: string[];
+  pathway_equation?: string;
   sources: string[];
 }
 

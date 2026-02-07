@@ -4,6 +4,7 @@ import logging
 import re
 import threading
 from typing import List, Optional
+from urllib.parse import urlparse
 
 import google.generativeai as genai
 import httpx
@@ -17,6 +18,20 @@ logger = logging.getLogger(__name__)
 
 # Groq API configuration
 GROQ_API_BASE = "https://api.groq.com/openai/v1"
+
+# Conservative allowlist to avoid garbage citation links.
+TRUSTED_CITATION_DOMAINS = (
+    "fda.gov",
+    "nih.gov",
+    "ncbi.nlm.nih.gov",
+    "dailymed.nlm.nih.gov",
+    "cdc.gov",
+    "who.int",
+    "mayoclinic.org",
+    "medscape.com",
+    "drugs.com",
+    "rxlist.com",
+)
 
 # Thread-safe lazy initialization
 _model = None
@@ -84,12 +99,23 @@ RESPONSE RULES:
 5. Cite sources: (Source: Database), (Source: NIH), or (Source: Medical Knowledge).
 6. Prefix critical warnings with "Important:".
 7. For simple replies (yes, thanks), use chat history, ignore keyword-matched context.
+8. For follow-ups like "rephrase", "one-line", "summarize that", keep the same drug/topic from prior turns; do not switch medications unless the user explicitly asks.
+9. Keep default answers short: 2-4 sentences, under ~90 words, unless the user asks for detailed explanation.
+10. Do not add unrelated generic care checklists. Include only the highest-yield items directly tied to the asked drug/question.
+11. For monitoring questions, prioritize drug-specific safety/efficacy monitoring first; avoid routine broad panels unless explicitly requested.
+12. If user asks for "one-line" output, return exactly one sentence.
+13. If user asks for an exact bullet count, follow that format exactly.
+14. For company portfolio/product-list queries in rep mode, use ONLY products explicitly present in the provided company product database context. If none are provided, say data is unavailable. Never invent brands or doses.
+15. For time-sensitive questions (e.g., latest/current/today/this year/recommendation updates), treat claims as unverified unless supported by provided [Web Search Results].
+16. If time-sensitive web results are present, include an explicit "As of <date>" statement and keep claims scoped to those sources only.
+17. If no live web evidence is provided for a time-sensitive ask, clearly say you cannot verify the current update right now.
+18. Do not assert country-specific guideline recommendations unless a matching country/regulator source is present.
 
 CONVERSATION STYLE:
 - Natural, professional, not robotic.
 - Simple language healthcare workers understand.
-- End with ONE relevant follow-up question.
-- Plain text only, no markdown, no bullet lists.
+- Do not append extra follow-up questions unless user asks for more.
+- Plain text by default; use bullets or structured format only when user requests it.
 - Keep under 250 words unless detail requested.
 """
 
@@ -125,38 +151,50 @@ def format_patient_context(context: Optional[PatientContext]) -> str:
 
 
 def extract_citations(response_text: str, drug_name: Optional[str] = None) -> List[Citation]:
-    """Extract or generate citations from response."""
+    """Extract trusted citations from response text only (no fabricated fallback links)."""
     citations = []
-    
+
     # Look for URLs in the text
-    url_pattern = r'https?://[^\s\)]+' 
-    urls = re.findall(url_pattern, response_text)
-    
-    for url in urls[:3]:
-        if "fda.gov" in url:
+    url_pattern = r'https?://[^\s\)\]\}\>,"]+'
+    urls = re.findall(url_pattern, response_text or "")
+    seen = set()
+
+    for raw_url in urls:
+        url = raw_url.rstrip(".,;:!?")
+        if not url or url in seen:
+            continue
+        seen.add(url)
+
+        try:
+            host = (urlparse(url).hostname or "").lower()
+        except Exception:
+            continue
+        if not host:
+            continue
+
+        trusted = None
+        for domain in TRUSTED_CITATION_DOMAINS:
+            if host == domain or host.endswith(f".{domain}"):
+                trusted = domain
+                break
+        if not trusted:
+            continue
+
+        if "fda.gov" in trusted:
             citations.append(Citation(title="FDA Drug Information", url=url, source="FDA"))
-        elif "nih.gov" in url or "ncbi" in url:
-            citations.append(Citation(title="NIH/PubMed Research", url=url, source="NIH"))
-        elif "drugs.com" in url:
-            citations.append(Citation(title="Drugs.com Reference", url=url, source="Drugs.com"))
+        elif "nih.gov" in trusted or "ncbi" in trusted or "dailymed" in trusted:
+            citations.append(Citation(title="NIH/PubMed/DailyMed", url=url, source="NIH"))
+        elif "cdc.gov" in trusted:
+            citations.append(Citation(title="CDC Guidance", url=url, source="CDC"))
+        elif "who.int" in trusted:
+            citations.append(Citation(title="WHO Guidance", url=url, source="WHO"))
         else:
-            citations.append(Citation(title="Reference", url=url, source="Web"))
-    
-    # Add standard FDA citation if we have a drug name but no citations found
-    if drug_name and not citations:
-        safe_name = drug_name.replace(" ", "+").lower()
-        citations.append(Citation(
-            title=f"FDA Label: {drug_name.title()}",
-            url=f"https://labels.fda.gov/search?q={safe_name}",
-            source="FDA"
-        ))
-        citations.append(Citation(
-            title=f"DailyMed: {drug_name.title()}",
-            url=f"https://dailymed.nlm.nih.gov/dailymed/search.cfm?query={safe_name}",
-            source="NIH"
-        ))
-    
-    return citations[:3]
+            citations.append(Citation(title="Reference", url=url, source=trusted))
+
+        if len(citations) >= 3:
+            break
+
+    return citations
 
 
 def generate_suggestions(message: str, response_text: str) -> List[str]:
@@ -207,6 +245,80 @@ def generate_suggestions(message: str, response_text: str) -> List[str]:
         ]
 
     return suggestions[:3]
+
+
+def _strip_trailing_cta(response_text: str) -> str:
+    """Remove trailing model CTA prompts like 'Would you like ...?'."""
+    text = (response_text or "").strip()
+    if not text:
+        return text
+
+    # Remove final line(s) that are pure CTA follow-up prompts.
+    lines = [ln.rstrip() for ln in text.splitlines()]
+    cta_prefixes = (
+        "would you like",
+        "do you want",
+        "would you want",
+    )
+    while lines:
+        last = lines[-1].strip().lower()
+        if any(last.startswith(p) for p in cta_prefixes):
+            lines.pop()
+            continue
+        break
+    text = "\n".join(lines).strip()
+
+    # If CTA appears as trailing sentence on same line, trim it.
+    text = re.sub(
+        r'(?is)\s*(would you like|do you want|would you want)\b.*\?$',
+        "",
+        text
+    ).strip()
+    return text
+
+
+def _enforce_user_format(message: str, response_text: str) -> str:
+    """Apply lightweight deterministic formatting constraints from user message."""
+    text = _strip_trailing_cta(response_text)
+    msg = (message or "").lower()
+
+    # One-line requests: return exactly one sentence.
+    if any(k in msg for k in ("one-line", "one line", "single line")):
+        first_line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+        if not first_line:
+            return text
+        m = re.match(r"(.+?[.!?])(\s|$)", first_line)
+        return (m.group(1).strip() if m else first_line).strip()
+
+    # Exact bullet count requests: coerce to N bullets when feasible.
+    m = re.search(r"exactly\s+(\d+)\s+bullet", msg)
+    if m:
+        n = max(1, min(int(m.group(1)), 10))
+
+        # Collect candidate items from existing lines first.
+        items = []
+        for ln in text.splitlines():
+            s = ln.strip()
+            if not s:
+                continue
+            s = re.sub(r'^\s*[-*•]\s*', '', s)
+            s = re.sub(r'^\s*\d+[.)]\s*', '', s)
+            if s and s not in items:
+                items.append(s)
+
+        # Fallback: split by sentences if lines are not enough.
+        if len(items) < n:
+            for s in re.split(r'(?<=[.!?])\s+', text):
+                s = s.strip()
+                if s and s not in items:
+                    items.append(s)
+                if len(items) >= n:
+                    break
+
+        if items:
+            return "\n".join(f"- {it.rstrip(' .')}" for it in items[:n])
+
+    return text
 
 
 async def _call_groq_api(
@@ -330,7 +442,7 @@ async def _generate_response_with_groq(
         temperature=0.7
     )
 
-    response_text = response_text.strip()
+    response_text = _enforce_user_format(message, response_text.strip())
 
     if not response_text:
         response_text = "I apologize, but I couldn't generate a response. Please try rephrasing your question."
@@ -533,7 +645,7 @@ async def generate_response(
             timeout=30.0
         )
         
-        response_text = (response.text or "").strip()
+        response_text = _enforce_user_format(message, (response.text or "").strip())
         
         if not response_text:
             response_text = "I apologize, but I couldn't generate a response. Please try rephrasing your question."

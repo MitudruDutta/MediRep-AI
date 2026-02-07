@@ -33,6 +33,12 @@ _PROCEDURE_STOPWORDS = {
     "what", "whats", "tell", "me", "pls", "please", "does", "do", "did",
     "under", "with", "without", "surgery", "operation", "treatment", "therapy",
     "cover", "medicine", "medicines", "medication",
+    # Instructional / formatting words that often follow a procedure name in prompts.
+    "give", "provide", "show", "list", "details", "detail",
+    "code", "codes", "packagecode", "packagecodes",
+    "include", "includes", "including", "inclusion", "inclusions",
+    "exclude", "excludes", "excluding", "exclusion", "exclusions",
+    "closest", "match", "matches", "multiple", "similar",
 }
 
 
@@ -367,12 +373,13 @@ class InsuranceService:
                     "rate_display": rate_display,
                     "rate_display_bold": f"**{rate_display}**",  # For markdown formatting
                     "package_code": r.get("package_code"),
-                    "category": f"{r.get('category', '')} - {r.get('sub_category', '')}".strip(" -"),
+                    "category": r.get("category"),
+                    "sub_category": r.get("sub_category"),
                     "includes_implants": r.get("includes_implants", False),
                     "special_conditions": r.get("special_conditions"),
                 }
 
-            matches = [_fmt(r) for r in rates[:3]]
+            matches = [_fmt(r) for r in rates[:10]]
             best = matches[0]
             best.update({
                 "procedure": procedure,

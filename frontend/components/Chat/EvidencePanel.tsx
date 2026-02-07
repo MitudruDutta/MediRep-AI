@@ -81,6 +81,17 @@ export function EvidencePanel({ track2 }: EvidencePanelProps) {
                                         </p>
                                     )}
 
+                                    {moa.pathway_equation && (
+                                        <div className="mt-3">
+                                            <p className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                                                Pathway Equation
+                                            </p>
+                                            <div className="text-xs font-mono leading-relaxed text-gray-700 dark:text-gray-200 bg-white/70 dark:bg-gray-900/40 border border-indigo-100/60 dark:border-indigo-800/30 rounded-lg px-3 py-2 overflow-x-auto">
+                                                {moa.pathway_equation}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {moa.targets && moa.targets.length > 0 && (
                                         <div className="mt-3 flex items-start gap-2">
                                             <Target className="w-3.5 h-3.5 text-gray-400 mt-0.5" />
