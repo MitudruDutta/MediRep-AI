@@ -99,7 +99,7 @@ export default function ConsultationChatPage() {
         fetchMessages();
 
         // Socket.IO Subscription
-        const socket = io(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}`, {
+        const socket = io(`${process.env.NEXT_PUBLIC_API_URL || "https://medirep-ai-production.up.railway.app"}`, {
             transports: ["websocket"],
             path: "/socket.io/"
         });

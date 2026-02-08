@@ -15,11 +15,11 @@ UUID_PATTERN = re.compile(
 def _socket_allowed_origins():
     is_production = os.getenv("ENV", "development").lower() == "production"
     if is_production:
-        return [os.getenv("FRONTEND_URL", "https://medirep.ai")]
+        return [os.getenv("FRONTEND_URL", "https://medirep-ai.vercel.app")]
     return [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        os.getenv("FRONTEND_URL", "http://localhost:3000"),
+        os.getenv("FRONTEND_URL", "https://medirep-ai.vercel.app"),
     ]
 
 # Initialize Socket.IO server (ASGI)

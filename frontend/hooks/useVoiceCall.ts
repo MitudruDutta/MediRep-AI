@@ -16,26 +16,26 @@ interface UseVoiceCallOptions {
   onVoiceTurn?: (text: string) => Promise<string | null> | string | null;
 }
 
-type TranscriptAlternative = { transcript: string };
-type TranscriptResult = { isFinal: boolean; 0?: TranscriptAlternative };
-type SpeechRecognitionEventLike = {
-  resultIndex: number;
-  results: ArrayLike<TranscriptResult>;
-};
-type SpeechRecognitionErrorEventLike = { error?: string };
-type SpeechRecognitionLike = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
-
 declare global {
+  type TranscriptAlternative = { transcript: string };
+  type TranscriptResult = { isFinal: boolean; 0?: TranscriptAlternative };
+  type SpeechRecognitionEventLike = {
+    resultIndex: number;
+    results: ArrayLike<TranscriptResult>;
+  };
+  type SpeechRecognitionErrorEventLike = { error?: string };
+  type SpeechRecognitionLike = {
+    continuous: boolean;
+    interimResults: boolean;
+    lang: string;
+    onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+    onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+    onend: (() => void) | null;
+    start: () => void;
+    stop: () => void;
+  };
+  type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
   interface Window {
     webkitSpeechRecognition?: SpeechRecognitionCtor;
     SpeechRecognition?: SpeechRecognitionCtor;

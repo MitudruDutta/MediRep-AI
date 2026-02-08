@@ -1,7 +1,7 @@
 import { PatientContext, Message, ChatResponse, SessionSummary, DrugInfo, RepModeContext } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "https://medirep-ai-production.up.railway.app").replace(/\/+$/, "");
 
 /**
  * Get authentication headers with the current user's access token

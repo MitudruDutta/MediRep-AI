@@ -77,7 +77,7 @@ export default function ChatInterface({ consultationId, pharmacistName, endTime,
         fetchMessages();
 
         // Socket.IO Subscription
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "https://medirep-ai-production.up.railway.app";
         const socket = io(backendUrl, {
             transports: ["websocket"],
             path: "/socket.io/"

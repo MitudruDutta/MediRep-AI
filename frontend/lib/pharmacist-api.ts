@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "https://medirep-ai-production.up.railway.app").replace(/\/+$/, "");
 
 export interface PharmacistStats {
     total_earnings: number;

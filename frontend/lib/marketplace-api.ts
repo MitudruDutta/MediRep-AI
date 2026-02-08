@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "https://medirep-ai-production.up.railway.app").replace(/\/+$/, "");
 
 export interface PharmacistPreview {
     id: string;

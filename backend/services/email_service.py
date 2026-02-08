@@ -288,10 +288,10 @@ Your pharmacist application has been {'approved' if is_approved else 'rejected'}
 def get_admin_url() -> str:
     """Get the admin dashboard URL."""
     import os
-    return os.getenv("NEXT_PUBLIC_SITE_URL", "http://localhost:3000") + "/admin"
+    return os.getenv("NEXT_PUBLIC_SITE_URL", "https://medirep-ai.vercel.app") + "/admin"
 
 
 def get_pharmacist_url() -> str:
     """Get the pharmacist dashboard URL."""
     import os
-    return os.getenv("NEXT_PUBLIC_SITE_URL", "http://localhost:3000") + "/pharmacist/dashboard"
+    return os.getenv("NEXT_PUBLIC_SITE_URL", "https://medirep-ai.vercel.app") + "/pharmacist/dashboard"

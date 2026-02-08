@@ -35,13 +35,6 @@ type SpeechRecognitionLike = {
 };
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
-declare global {
-  interface Window {
-    webkitSpeechRecognition?: SpeechRecognitionCtor;
-    SpeechRecognition?: SpeechRecognitionCtor;
-  }
-}
-
 interface PromptInputBoxProps {
   onSend: (message: string, files?: File[], isSearchMode?: boolean) => void;
   onStop?: () => void;
@@ -124,7 +117,14 @@ export function PromptInputBox({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const SpeechRecognition = (window.SpeechRecognition || window.webkitSpeechRecognition) as SpeechRecognitionCtor | undefined;
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: SpeechRecognitionCtor;
+      webkitSpeechRecognition?: SpeechRecognitionCtor;
+    };
+    const SpeechRecognition =
+      (speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition) as
+        | SpeechRecognitionCtor
+        | undefined;
     if (!SpeechRecognition) {
       setSpeechSupported(false);
       return;
@@ -226,7 +226,7 @@ export function PromptInputBox({
               ) : (
                 <Paperclip className="h-4 w-4" />
               )}
-              <span className="max-w-[120px] truncate">{file.name}</span>
+              <span className="max-w-30 truncate">{file.name}</span>
               <button
                 type="button"
                 onClick={() => removeFile(index)}
@@ -294,7 +294,7 @@ export function PromptInputBox({
           placeholder={placeholder}
           disabled={isLoading}
           rows={1}
-          className="max-h-[180px] min-h-[38px] flex-1 resize-none border-0 bg-transparent p-2 text-[28px] tracking-wide text-zinc-100 placeholder:text-zinc-400 focus-visible:border-0 focus-visible:ring-0"
+          className="max-h-45 min-h-[38px] flex-1 resize-none border-0 bg-transparent p-2 text-[28px] tracking-wide text-zinc-100 placeholder:text-zinc-400 focus-visible:border-0 focus-visible:ring-0"
         />
 
         <div className="flex shrink-0 items-center gap-1">

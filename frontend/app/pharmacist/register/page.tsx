@@ -173,7 +173,7 @@ export default function PharmacistRegistrationPage() {
 
             formDataToSend.append('data', JSON.stringify(registrationData));
 
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/pharmacist/register`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://medirep-ai-production.up.railway.app'}/api/pharmacist/register`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${session.access_token}`

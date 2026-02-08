@@ -84,7 +84,10 @@ if AUTH_TIMEOUT <= 0:
 PORT = get_env_int("PORT", 8000)
 
 # Parse and trim ALLOWED_ORIGINS
-_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+_origins_raw = os.getenv(
+    "ALLOWED_ORIGINS",
+    "https://medirep-ai.vercel.app,http://localhost:3000,http://127.0.0.1:3000",
+)
 ALLOWED_ORIGINS = [origin.strip() for origin in _origins_raw.split(",") if origin.strip()]
 
 # Limits with positive validation

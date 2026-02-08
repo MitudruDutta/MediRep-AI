@@ -57,7 +57,7 @@ function getSafeOrigin(headersList: Awaited<ReturnType<typeof headers>>): string
   const headerOrigin = headersList.get("origin");
   if (headerOrigin) return headerOrigin;
 
-  return "http://localhost:3000";
+  return "https://medirep-ai.vercel.app";
 }
 
 export async function signInWithEmail(formData: FormData): Promise<AuthResult> {
