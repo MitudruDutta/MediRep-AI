@@ -309,7 +309,7 @@ export default function HomePage() {
 
                 <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-white font-medium max-w-3xl mx-auto leading-relaxed mt-6 sm:mt-8 md:mt-10 drop-shadow-md bg-black/10 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/10">
                   Get instant access to drug information, interaction checks, and
-                  safety alerts. Built for medical representatives who need accurate
+                  MOA and representation. Built for medical representatives who need accurate
                   information fast.
                 </p>
               </div>
