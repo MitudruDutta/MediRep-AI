@@ -4,11 +4,8 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
-  Pill,
   ArrowRight,
   Shield,
-  Zap,
-  Users,
   Loader2,
   Github,
   MessageSquareText,
@@ -169,13 +166,6 @@ export default function HomePage() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const scrollToHash = (hash: string) => {
-    const el = document.querySelector(hash);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth" });
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-[#fde4c8] text-(--landing-ink) font-sans selection:bg-(--landing-clay) selection:text-white">
       {/* Video Background - Only for Hero Section */}
@@ -294,12 +284,9 @@ export default function HomePage() {
         )}
       </nav>
 
-      {/* Spacer for fixed navbar */}
-      <div className="h-20" />
-
-      {/* Hero Section */}
+      {/* Hero Section - Takes remaining viewport height */}
       <main className="flex-1 relative z-10">
-        <section className="py-20 px-4">
+        <section className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-16 sm:py-20 md:py-24 pt-24 sm:pt-28 md:pt-32">
           <div className="container mx-auto text-center space-y-8 max-w-4xl">
             {/* Hero Content - Floating freely */}
             <div className="relative z-10 space-y-8 py-10">
@@ -312,15 +299,15 @@ export default function HomePage() {
                   Trusted by healthcare professionals
                 </div>
 
-                <h1 className="font-sans text-6xl sm:text-7xl md:text-8xl lg:text-[7rem] font-black tracking-tighter text-white leading-[0.9] drop-shadow-2xl uppercase">
+                <h1 className="font-sans text-4xl xs:text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-[7rem] font-black tracking-tighter text-white leading-[0.9] drop-shadow-2xl uppercase">
                   MediRep <span className="text-[#c85a3a] inline-block hover:scale-105 transition-transform duration-300">AI</span>
                   <br />
-                  <span className="font-serif italic font-light tracking-normal text-5xl sm:text-6xl md:text-7xl normal-case text-white/90 block mt-2">
+                  <span className="font-serif italic font-light tracking-normal text-2xl xs:text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl normal-case text-white/90 block mt-2">
                     Medical Assistant
                   </span>
                 </h1>
 
-                <p className="text-lg sm:text-xl md:text-2xl text-white font-medium max-w-3xl mx-auto leading-relaxed mt-10 drop-shadow-md bg-black/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-white font-medium max-w-3xl mx-auto leading-relaxed mt-6 sm:mt-8 md:mt-10 drop-shadow-md bg-black/10 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/10">
                   Get instant access to drug information, interaction checks, and
                   safety alerts. Built for medical representatives who need accurate
                   information fast.
@@ -328,16 +315,16 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="flex gap-4 justify-center items-center flex-wrap pt-6">
+            <div className="flex gap-3 sm:gap-4 justify-center items-center flex-wrap pt-4 sm:pt-6 px-2">
               {user ? (
                 <>
                   <Link href="/dashboard">
-                    <Button size="lg" className="h-14 px-10 text-base rounded-full bg-[#c85a3a] text-white hover:bg-[#b14a2f] shadow-xl transition-all hover:scale-105 duration-200 font-semibold">
+                    <Button size="lg" className="h-11 sm:h-14 px-6 sm:px-10 text-sm sm:text-base rounded-full bg-[#c85a3a] text-white hover:bg-[#b14a2f] shadow-xl transition-all hover:scale-105 duration-200 font-semibold">
                       Go to Dashboard
                     </Button>
                   </Link>
                   <Link href="/pharmacist/dashboard">
-                    <Button size="lg" variant="outline" className="h-14 px-10 text-base text-white hover:text-white hover:bg-white/10 font-semibold rounded-full backdrop-blur-md border-2 border-white/30 bg-white/5 shadow-lg transition-all hover:scale-105 duration-200">
+                    <Button size="lg" variant="outline" className="h-11 sm:h-14 px-6 sm:px-10 text-sm sm:text-base text-white hover:text-white hover:bg-white/10 font-semibold rounded-full backdrop-blur-md border-2 border-white/30 bg-white/5 shadow-lg transition-all hover:scale-105 duration-200">
                       Pharmacist Portal
                     </Button>
                   </Link>
@@ -345,12 +332,12 @@ export default function HomePage() {
               ) : (
                 <>
                   <Link href="/auth/signup?role=patient">
-                    <Button size="lg" className="h-14 px-10 text-base rounded-full bg-[#c85a3a] text-white hover:bg-[#b14a2f] shadow-xl transition-all hover:scale-105 duration-200 font-semibold">
+                    <Button size="lg" className="h-11 sm:h-14 px-6 sm:px-10 text-sm sm:text-base rounded-full bg-[#c85a3a] text-white hover:bg-[#b14a2f] shadow-xl transition-all hover:scale-105 duration-200 font-semibold">
                       Get Started
                     </Button>
                   </Link>
                   <Link href="/pharmacist/auth/signup">
-                    <Button size="lg" variant="outline" className="h-14 px-10 text-base text-white hover:text-white hover:bg-white/10 font-semibold rounded-full backdrop-blur-md border-2 border-white/30 bg-white/5 shadow-lg transition-all hover:scale-105 duration-200">
+                    <Button size="lg" variant="outline" className="h-11 sm:h-14 px-6 sm:px-10 text-sm sm:text-base text-white hover:text-white hover:bg-white/10 font-semibold rounded-full backdrop-blur-md border-2 border-white/30 bg-white/5 shadow-lg transition-all hover:scale-105 duration-200">
                       Join as Pharmacist
                     </Button>
                   </Link>
@@ -425,20 +412,20 @@ export default function HomePage() {
                   Demo prompt
                 </div>
 
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold" style={{ color: "var(--landing-ink)" }}>
-                  <span className="rounded-full border px-3 py-1" style={{ borderColor: "var(--landing-border)" }}>
+                <div className="mt-3 flex flex-wrap items-center justify-start gap-1.5 sm:gap-2 text-xs sm:text-sm font-semibold" style={{ color: "var(--landing-ink)" }}>
+                  <span className="rounded-full border px-2 sm:px-3 py-0.5 sm:py-1" style={{ borderColor: "var(--landing-border)" }}>
                     warfarin + aspirin
                   </span>
-                  <span className="opacity-50">→</span>
-                  <span className="rounded-full border px-3 py-1" style={{ borderColor: "var(--landing-border)" }}>
+                  <span className="opacity-50 hidden sm:inline">→</span>
+                  <span className="rounded-full border px-2 sm:px-3 py-0.5 sm:py-1" style={{ borderColor: "var(--landing-border)" }}>
                     interaction + mitigation
                   </span>
-                  <span className="opacity-50">→</span>
-                  <span className="rounded-full border px-3 py-1" style={{ borderColor: "var(--landing-border)" }}>
+                  <span className="opacity-50 hidden sm:inline">→</span>
+                  <span className="rounded-full border px-2 sm:px-3 py-0.5 sm:py-1" style={{ borderColor: "var(--landing-border)" }}>
                     cite sources
                   </span>
-                  <span className="opacity-50">→</span>
-                  <span className="rounded-full border px-3 py-1" style={{ borderColor: "var(--landing-border)" }}>
+                  <span className="opacity-50 hidden sm:inline">→</span>
+                  <span className="rounded-full border px-2 sm:px-3 py-0.5 sm:py-1" style={{ borderColor: "var(--landing-border)" }}>
                     escalate if uncertain
                   </span>
                 </div>
@@ -662,24 +649,50 @@ export default function HomePage() {
       </main>
 
       {/* Discord-style Footer */}
-      <footer className="bg-[#c85a3a] pt-24 pb-12 relative overflow-hidden">
-        <div className="mx-auto w-full max-w-[1400px] px-6 relative flex flex-col justify-center min-h-[400px]">
+      <footer className="bg-[#c85a3a] pt-12 sm:pt-16 md:pt-24 pb-8 sm:pb-12 relative overflow-hidden">
+        <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 relative flex flex-col justify-center min-h-[280px] sm:min-h-[320px] md:min-h-[400px]">
 
-          {/* Floating Elements */}
-          <div className="absolute top-0 right-6 text-white/80 text-xs font-bold tracking-widest uppercase mt-6 font-mono z-10">
+          {/* Floating Elements - Hidden on very small screens */}
+          <div className="hidden sm:block absolute top-0 right-4 sm:right-6 text-white/80 text-[10px] sm:text-xs font-bold tracking-widest uppercase mt-4 sm:mt-6 font-mono z-10">
             Official AI Medical Assistant
           </div>
 
-          {/* Giant Typography */}
-          <div className="flex justify-center md:justify-start items-center w-full">
-            <h1 className="font-black text-[13vw] leading-[0.9] tracking-tighter text-white uppercase font-sans select-none mix-blend-overlay opacity-90">
+          {/* Giant Typography - Responsive sizing with clamp */}
+          <div className="flex justify-center md:justify-start items-center w-full py-6 sm:py-8 md:py-0">
+            <h1
+              className="font-black leading-[0.9] tracking-tighter text-white uppercase font-sans select-none mix-blend-overlay opacity-90 text-center md:text-left"
+              style={{ fontSize: "clamp(2.5rem, 10vw, 12rem)" }}
+            >
               MediRep AI
             </h1>
           </div>
 
-          {/* Bottom Controls */}
-          <div className="absolute bottom-6 right-6 flex items-center gap-4 z-10">
-            <div className="hidden md:flex items-center gap-6 text-white/70 text-sm font-semibold mr-4">
+          {/* Mobile Footer Links */}
+          <div className="flex md:hidden flex-wrap justify-center gap-4 text-white/70 text-sm font-semibold mt-4 mb-6">
+            <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+            <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
+            <Link href="https://github.com/MitudruDutta/MediRep-AI" target="_blank" className="hover:text-white transition-colors flex items-center gap-2">
+              <Github className="w-4 h-4" />
+              GitHub
+            </Link>
+          </div>
+
+          {/* Mobile Help Button & Copyright */}
+          <div className="flex md:hidden flex-col items-center gap-4 mt-2">
+            <Link href="/help">
+              <Button className="rounded-full bg-white text-[#c85a3a] hover:bg-white/90 font-bold px-5 py-5 shadow-xl hover:shadow-2xl transition-all flex items-center gap-2 text-sm">
+                <CircleHelp className="w-4 h-4" />
+                Help
+              </Button>
+            </Link>
+            <div className="text-white/40 text-[10px] font-mono text-center leading-tight">
+              © 2026 MediRep AI. System Status: <span className="text-green-300">Operational</span>
+            </div>
+          </div>
+
+          {/* Desktop Bottom Controls */}
+          <div className="hidden md:flex absolute bottom-6 right-6 items-center gap-4 z-10">
+            <div className="flex items-center gap-6 text-white/70 text-sm font-semibold mr-4">
               <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
               <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
               <Link href="https://github.com/MitudruDutta/MediRep-AI" target="_blank" className="hover:text-white transition-colors flex items-center gap-2">
@@ -696,8 +709,8 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* Copyright/Status (Tiny) */}
-          <div className="absolute bottom-8 left-8 text-white/40 text-[10px] font-mono max-w-xs leading-tight z-10">
+          {/* Desktop Copyright/Status (Tiny) */}
+          <div className="hidden md:block absolute bottom-8 left-8 text-white/40 text-[10px] font-mono max-w-xs leading-tight z-10">
             © 2026 MediRep AI.<br />
             System Status: <span className="text-green-300">Operational</span>
           </div>
