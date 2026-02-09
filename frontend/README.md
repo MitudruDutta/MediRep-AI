@@ -13,7 +13,7 @@ Modern, responsiveness-first frontend for MediRep AI - your AI-powered digital m
 - **Strict Modes**: Toggle between **Normal**, **Insurance**, **MOA**, and **Rep Mode**.
 - **Dynamic Suggestions**: Context-aware prompts based on the current mode (e.g., "Check PMJAY rates" in Insurance mode).
 - **Pharma Rep Dashboard**: Company-specific context loading (`rep:company_name`) to simulate brand detailing.
-- **Voice Interface**: Real-time speech visualization and interaction via ElevenLabs integration.
+- **Voice Interface**: Real-time speech visualization and interaction via backend voice APIs (Groq STT/TTS, Gemini fallback).
 
 ### 📊 Clinical Dashboard
 - **Patient Statistics**: Visual overview of patient demographics and vitals.
@@ -75,7 +75,7 @@ Create `.env.local`:
 ```env
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_anon_key
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 
 # Backend API
 NEXT_PUBLIC_API_URL=http://localhost:8000

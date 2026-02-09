@@ -44,11 +44,9 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     logger.warning("GEMINI_API_KEY not set. AI features (chat/vision/interactions) will be disabled.")
 
-# Optional - HuggingFace token (not currently used but kept for future)
-HF_TOKEN = os.getenv("HF_TOKEN")
 
 # AI Configuration
-GEMINI_MODEL = get_env_str("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = get_env_str("GEMINI_MODEL", "gemini-3-flash-preview")
 
 # Supabase Configuration (Required for full functionality)
 SUPABASE_URL = os.getenv("SUPABASE_URL")

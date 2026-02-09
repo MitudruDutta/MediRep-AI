@@ -1,6 +1,6 @@
 # MediRep AI Backend
 
-A powerful medical representative AI backend powered by **Google Gemini 2.5 Flash**. Provides strict-context medical Q&A, drug information, interaction checking, pill identification, and FDA alerts via a RESTful API.
+A powerful medical representative AI backend powered by the **Google Gemini API**. Provides strict-context medical Q&A, drug information, interaction checking, pill identification, and FDA alerts via a RESTful API.
 
 ## 🚀 Key Features
 
@@ -10,7 +10,7 @@ A powerful medical representative AI backend powered by **Google Gemini 2.5 Flas
 | **🧠 "Rep" Engine**         | Enhanced intent detection pipeline for high-fidelity responses              |
 | **💊 Indian Medicines DB**  | Access to 250,000+ Indian brand/generic drugs via **Turso**                 |
 | **🔍 Semantic Search (RAG)**| Vector-based retrieval using **Qdrant** for precise medical guidelines      |
-| **🎙️ Voice AI**             | Natural speech-to-text and text-to-speech via **ElevenLabs**                |
+| **🎙️ Voice AI**             | Low-latency STT/TTS via **Groq**, with Gemini fallback for transcription     |
 | **🏢 Pharma Rep Mode**      | Simulate brand-specific interactions with company portfolio constraints     |
 | **⚖️ Comparison Engine**    | Comparative analysis of drugs on price, efficacy, and side effects          |
 | **⚠️ Interaction Checker**  | AI-powered drug-drug interaction analysis                                   |
@@ -20,7 +20,7 @@ A powerful medical representative AI backend powered by **Google Gemini 2.5 Flas
 ## 📋 Tech Stack
 
 - **Framework**: FastAPI (Python 3.10+)
-- **AI Engine**: Google Gemini 2.5 Flash
+- **AI Engine**: Google Gemini API (configured via `GEMINI_MODEL`)
 - **Primary Data Store**: Supabase (PostgreSQL + pgvector)
 - **Specialized DB**: Turso (LibSQL for Indian Medicines)
 - **Vector Search**: Qdrant (Local/Cloud)
@@ -55,7 +55,7 @@ Copy `.env.example` to `.env` and configure the following keys:
 
 **Server:**
 - `PORT`: Server port (default: `8000`)
-- `GEMINI_MODEL`: Model name (default: `gemini-2.5-flash`)
+- `GEMINI_MODEL`: Target Gemini model ID (code default: `gemini-3-flash-preview`)
 
 ### 3. Run the Server
 
@@ -93,7 +93,7 @@ Strict mode handling for tailored execution.
 
 ### 🎙️ Voice & Vision
 
-- **POST** `/api/audio/transcribe`: Transcribe audio using ElevenLabs.
+- **POST** `/api/voice/transcribe`: Transcribe audio using Groq (Gemini fallback).
 - **POST** `/api/vision/identify-pill`: Identify pill from image.
 
 ## 🔐 Strict Mode Enforcement
@@ -114,7 +114,7 @@ backend/
 ├── routers/             # API Route Handlers
 │   ├── chat.py          # Core Chat Logic (Strict Mode Pipeline)
 │   ├── drugs.py         # Drug Search & Interactions
-│   ├── voice.py         # ElevenLabs Integration
+│   ├── voice.py         # Voice STT/TTS Integration
 │   ├── vision.py        # Pill ID
 │   ├── user.py          # Rep Mode & Profile
 │   └── ...
