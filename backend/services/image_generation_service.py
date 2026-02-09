@@ -351,18 +351,8 @@ class ChemicalDiagramService:
   <text x="100" y="317" text-anchor="middle" fill="#0369a1" font-family="Arial, sans-serif" font-size="11" font-weight="500">Reactant 1</text>
   
   <!-- Plus Sign -->
-  <circle cx="210" cy="200" r="20" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
-  <text x="210" y="208" text-anchor="middle" fill="#d97706" font-family="Arial, sans-serif" font-size="28" font-weight="bold">+</text>
-  
-  <!-- Reaction Arrow Section -->
-  <rect x="240" y="155" width="220" height="90" rx="8" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
-  
-  <!-- Arrow -->
-  <line x1="260" y1="200" x2="430" y2="200" stroke="url(#arrowGrad)" stroke-width="5" stroke-linecap="round" marker-end="url(#arrowhead)"/>
-  
-  <!-- Reaction Label -->
-  <text x="350" y="180" text-anchor="middle" fill="#991b1b" font-family="Arial, sans-serif" font-size="11" font-weight="bold">Esterification</text>
-  <text x="350" y="230" text-anchor="middle" fill="#dc2626" font-family="Arial, sans-serif" font-size="9">(Coupling Agent)</text>
+  <circle cx="350" cy="200" r="20" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+  <text x="350" y="208" text-anchor="middle" fill="#d97706" font-family="Arial, sans-serif" font-size="28" font-weight="bold">+</text>
   
   <!-- Drug 2 Card -->
   <rect x="515" y="105" width="170" height="230" rx="10" fill="#faf5ff" stroke="#a855f7" stroke-width="2" filter="url(#shadow)"/>

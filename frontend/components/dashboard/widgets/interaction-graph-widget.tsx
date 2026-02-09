@@ -715,7 +715,7 @@ export default function InteractionGraphWidget() {
                           <FlaskConical className="h-10 w-10 text-purple-400 relative z-10" />
                         </div>
                         <p className="text-sm text-purple-300/80">Generating chemical reaction diagram...</p>
-                        <p className="text-xs text-slate-500">Using Freepik AI Image Generation</p>
+                        <p className="text-xs text-slate-500">Using Gemini AI Image Generation</p>
                       </div>
                     ) : reactionImageUrl ? (
                       <div className="relative group">
